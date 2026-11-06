@@ -1,0 +1,9 @@
+# Never commit footage or renders
+output/
+work/
+*.mov
+*.mp4
+*.m4v
+__pycache__/
+*.pyc
+.env
