@@ -24,7 +24,7 @@ post_times = ["17:00"]
 
 [platforms.instagram]
 enabled = true
-method = "manual"                # switch to "api" once the connection check passes
+method = "api"                   # connection check passed 2026-11-07 (@oozstudioink)
 ig_user_id = "17841426631544131" # @oozstudioink
 share_to_feed = false            # false = Reels tab only, keeps the main grid clean
 max_per_day = 1
