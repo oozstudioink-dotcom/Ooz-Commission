@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import os
 import random
+import re
 import tempfile
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -303,9 +304,15 @@ class Runner:
 
 
 def run(phase: str) -> None:
-    token = os.environ.get("TELEGRAM_BOT_TOKEN")
-    if not token:
+    raw = os.environ.get("TELEGRAM_BOT_TOKEN", "")
+    if not raw.strip():
         raise SystemExit("TELEGRAM_BOT_TOKEN is not set (add it under the repo's Actions secrets)")
+    # Pasted secrets often carry stray spaces/newlines or surrounding text; keep just the token.
+    m = re.search(r"\d{6,}:[A-Za-z0-9_-]{30,}", raw)
+    if not m:
+        raise SystemExit("TELEGRAM_BOT_TOKEN doesn't look like a BotFather token "
+                         "(expected digits, a colon, then ~35 letters/numbers). Re-paste it.")
+    token = m.group(0)
     state, config = load_state(), load_config()
     runner = Runner(Bot(token), state, config)
     try:
