@@ -32,5 +32,15 @@ share_to_feed = false            # false = Reels tab only, keeps the main grid c
 max_per_day = 1
 post_times = ["19:00"]
 
+[platforms.tiktok]
+enabled = true
+method = "manual"                # switch to "api" once TikTok is connected and the check passes
+mode = "inbox"                   # "inbox": draft in your TikTok inbox (add a sound, tap post)
+                                 # "direct": post straight away (private until TikTok's app audit)
+privacy = "PUBLIC_TO_EVERYONE"
+redirect_uri = "https://oozstudioink-dotcom.github.io/Ooz-Commission/tiktok-callback.html"
+max_per_day = 1
+post_times = ["18:00"]
+
 [bank]
 warn_below_days = 3              # Telegram alert when the approved-video bank gets this low

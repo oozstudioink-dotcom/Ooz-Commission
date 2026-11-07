@@ -25,7 +25,7 @@ STYLE_LABELS = {
     "detail_zoom": "Detail zoom",
     "ink_only": "Ink only",
 }
-PLATFORM_LABELS = {"youtube": "YouTube Shorts", "instagram": "Instagram Reels"}
+PLATFORM_LABELS = {"youtube": "YouTube Shorts", "instagram": "Instagram Reels", "tiktok": "TikTok"}
 MAX_BOT_DOWNLOAD = 20 * 1024 * 1024   # Telegram bots can only download files up to 20 MB
 
 HELP = (
@@ -239,7 +239,11 @@ class Runner:
                 note = f"\n\u26a0\ufe0f {res['note']}" if res.get("note") else ""
                 if res.get("note"):
                     v["posts"][platform]["note"] = res["note"]
-                self.say(f"\u2705 Posted to {name}: {STYLE_LABELS.get(v['style'], v['style'])} ({v['drawing']}){link}{note}")
+                verb = "\U0001f4e5 Sent to your" if res.get("caption_for_user") else "\u2705 Posted to"
+                self.say(f"{verb} {name}: {STYLE_LABELS.get(v['style'], v['style'])} ({v['drawing']}){link}{note}")
+                if res.get("caption_for_user"):
+                    self.say(v["caption"])
+                self.note_rotated_token(platform, client)
                 return
             except Exception as e:  # noqa: BLE001 - never lose a post slot to an API hiccup
                 error = str(e)[:300]
@@ -251,6 +255,13 @@ class Runner:
         v.setdefault("posts", {})[platform] = {"at": iso(self.clock()), "method": "manual",
                                                **({"error": error} if error else {})}
         v["status"] = "posted"
+
+    def note_rotated_token(self, platform: str, client) -> None:
+        new = getattr(client, "rotated_refresh_token", None)
+        if new and self.state.get(f"{platform}_rotated_sent") != new[-6:]:
+            self.state[f"{platform}_rotated_sent"] = new[-6:]
+            self.say(f"\U0001f511 {PLATFORM_LABELS.get(platform, platform)} issued a new refresh token. "
+                     f"When convenient, replace the GitHub secret {platform.upper()}_REFRESH_TOKEN with:\n{new}")
 
     # ------------------------------------------------------------------ bank
     def bank(self) -> dict[str, int]:
@@ -402,6 +413,12 @@ def run(phase: str) -> None:
     token = m.group(0)
     state, config = load_state(), load_config()
     runner = Runner(Bot(token), state, config, clients=make_clients(config))
+    if phase == "tiktok-connect":
+        try:
+            tiktok_connect(runner, config)
+        finally:
+            save_state(state)
+        return
     if phase == "check":
         try:
             check(runner)
@@ -434,7 +451,34 @@ def make_clients(config: dict) -> dict:
     if yt.get("enabled") and all(yt_env):
         from .youtube import YouTube
         clients["youtube"] = YouTube(*yt_env)
+    tt = config.get("platforms", {}).get("tiktok", {})
+    tt_env = [os.environ.get(k, "").strip() for k in ("TIKTOK_CLIENT_KEY", "TIKTOK_CLIENT_SECRET", "TIKTOK_REFRESH_TOKEN")]
+    if tt.get("enabled") and all(tt_env):
+        from .tiktok import TikTok
+        clients["tiktok"] = TikTok(*tt_env)
     return clients
+
+
+def tiktok_connect(runner: Runner, config: dict) -> None:
+    """Exchange the one-time code from tiktok-callback.html; send the refresh token privately."""
+    from .tiktok import exchange_code
+    code = os.environ.get("TIKTOK_AUTH_CODE", "").strip()
+    key, secret = os.environ.get("TIKTOK_CLIENT_KEY", ""), os.environ.get("TIKTOK_CLIENT_SECRET", "")
+    redirect = config.get("platforms", {}).get("tiktok", {}).get("redirect_uri", "")
+    if not (code and key.strip() and secret.strip()):
+        runner.say("\u26a0\ufe0f TikTok connect needs the code from the TikTok page plus the "
+                   "TIKTOK_CLIENT_KEY and TIKTOK_CLIENT_SECRET secrets.")
+        raise SystemExit("missing TikTok code or client secrets")
+    try:
+        tokens = exchange_code(key, secret, code, redirect)
+    except Exception as e:  # noqa: BLE001
+        runner.say(f"\u274c TikTok connect failed: {e}\nCodes expire after a few minutes: open the "
+                   "TikTok connect page again and use the new code right away.")
+        raise SystemExit(1) from None
+    runner.say("\u2705 TikTok connected. Last step: save this as the GitHub secret "
+               "TIKTOK_REFRESH_TOKEN (then delete this message):")
+    runner.say(tokens["refresh_token"])
+    print("TikTok connected; refresh token sent to the owner on Telegram (not printed here).")
 
 
 def check(runner: Runner) -> None:
@@ -476,6 +520,22 @@ def check(runner: Runner) -> None:
                 lines.append(f"\u2022 {vid['published'][:10]} {vid['title'][:40]!r}: {stats}")
         except Exception as e:  # noqa: BLE001
             lines.append(f"YouTube: \u274c {e}")
+    tt = runner.clients.get("tiktok")
+    if not tt:
+        lines.append("TikTok: not connected (needs TIKTOK_CLIENT_KEY, TIKTOK_CLIENT_SECRET, TIKTOK_REFRESH_TOKEN)")
+    else:
+        try:
+            me = tt.whoami()
+            lines.append(f"TikTok: \u2705 {me.get('display_name', '?')}")
+            try:
+                ci = tt.creator_info()
+                lines.append(f"\u2022 can post as: {', '.join(ci.get('privacy_level_options') or ['?'])}"
+                             f" \u00b7 max length {ci.get('max_video_post_duration_sec', '?')}s")
+            except Exception as e:  # noqa: BLE001
+                lines.append(f"\u2022 direct posting not available yet ({e}); inbox drafts still work")
+            runner.note_rotated_token("tiktok", tt)
+        except Exception as e:  # noqa: BLE001
+            lines.append(f"TikTok: \u274c {e}")
     text = "\n".join(lines)
     print(text)
     runner.say(text)

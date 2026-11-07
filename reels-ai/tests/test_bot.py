@@ -491,3 +491,89 @@ class YouTubeClientTest(unittest.TestCase):
         t = shorts_title("x" * 200, "Naruto")
         self.assertEqual(len(t), 100)
         self.assertTrue(t.endswith("| Naruto manga inking #Shorts"))
+
+
+class TikTokClientTest(unittest.TestCase):
+    """The real TikTok client against a local fake of TikTok's endpoints."""
+
+    def setUp(self):
+        import threading
+        from http.server import BaseHTTPRequestHandler, HTTPServer
+        from urllib.parse import parse_qs, urlparse
+
+        self.calls = calls = []
+
+        class H(BaseHTTPRequestHandler):
+            def log_message(self, *a):
+                pass
+
+            def _send(self, obj):
+                body = json.dumps(obj).encode()
+                self.send_response(200)
+                self.send_header("Content-Type", "application/json")
+                self.end_headers()
+                self.wfile.write(body)
+
+            def _body(self):
+                return self.rfile.read(int(self.headers.get("Content-Length", 0)))
+
+            def do_POST(self):
+                u, body = urlparse(self.path), self._body()
+                if u.path == "/v2/oauth/token/":
+                    q = parse_qs(body.decode())
+                    calls.append(("TOKEN", q["grant_type"][0], q.get("refresh_token", q.get("code"))[0]))
+                    return self._send({"access_token": "act", "refresh_token": "rft-NEW", "open_id": "o1"})
+                j = json.loads(body or b"{}")
+                calls.append(("POST", u.path, j, self.headers["Authorization"]))
+                ok = {"error": {"code": "ok", "message": ""}}
+                up = f"http://127.0.0.1:{srv.server_port}/up/1"
+                if u.path.endswith("/inbox/video/init/") or u.path.endswith("/post/publish/video/init/"):
+                    return self._send({"data": {"publish_id": "p1", "upload_url": up}, **ok})
+                if u.path.endswith("/creator_info/query/"):
+                    return self._send({"data": {"privacy_level_options": ["SELF_ONLY"]}, **ok})
+                if u.path.endswith("/status/fetch/"):
+                    return self._send({"data": {"status": "SEND_TO_USER_INBOX"}, **ok})
+                self._send({"error": {"code": "not_found", "message": u.path}})
+
+            def do_PUT(self):
+                body = self._body()
+                calls.append(("PUT", self.path, len(body), self.headers["Content-Range"]))
+                self.send_response(201)
+                self.end_headers()
+
+        srv = HTTPServer(("127.0.0.1", 0), H)
+        threading.Thread(target=srv.serve_forever, daemon=True).start()
+        self.addCleanup(srv.shutdown)
+        os.environ["NO_PROXY"] = os.environ["no_proxy"] = "127.0.0.1"
+        from reels_ai.tiktok import TikTok
+        self.tt = TikTok(" key ", "sec\n", " rft-OLD ")
+        self.tt.api = f"http://127.0.0.1:{srv.server_port}"
+        self.vid = Path(tempfile.mkdtemp()) / "v.mp4"
+        self.vid.write_bytes(b"x" * 777)
+
+    def test_inbox_draft_flow(self):
+        res = self.tt.publish(self.vid, {"caption": "Inking #manga"}, {"mode": "inbox"})
+        self.assertEqual(res["id"], "p1")
+        self.assertTrue(res["caption_for_user"])
+        self.assertEqual(self.calls[0], ("TOKEN", "refresh_token", "rft-OLD"))
+        init = self.calls[1]
+        self.assertEqual(init[1], "/v2/post/publish/inbox/video/init/")
+        self.assertEqual(init[2]["source_info"], {"source": "FILE_UPLOAD", "video_size": 777,
+                                                  "chunk_size": 777, "total_chunk_count": 1})
+        self.assertEqual(init[3], "Bearer act")
+        self.assertEqual(self.calls[2], ("PUT", "/up/1", 777, "bytes 0-776/777"))
+        self.assertEqual(self.tt.rotated_refresh_token, "rft-NEW")
+
+    def test_direct_post_falls_back_to_allowed_privacy(self):
+        self.tt.wait = lambda pid: {"status": "PUBLISH_COMPLETE"}
+        res = self.tt.publish(self.vid, {"caption": "c"}, {"mode": "direct", "privacy": "PUBLIC_TO_EVERYONE"})
+        init = [c for c in self.calls if c[0] == "POST" and c[1] == "/v2/post/publish/video/init/"][0]
+        self.assertEqual(init[2]["post_info"]["privacy_level"], "SELF_ONLY")
+        self.assertIn("private", res["note"])
+
+    def test_authorize_url(self):
+        from reels_ai.tiktok import authorize_url
+        u = authorize_url(" ck ", "https://x.github.io/cb.html")
+        self.assertIn("client_key=ck", u)
+        self.assertIn("redirect_uri=https%3A%2F%2Fx.github.io%2Fcb.html", u)
+        self.assertIn("scope=user.info.basic%2Cvideo.upload%2Cvideo.publish", u)
