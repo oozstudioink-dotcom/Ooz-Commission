@@ -247,6 +247,9 @@ class FakeInstagram:
     def __init__(self, fail=False):
         self.fail, self.posted, self.asked = fail, [], []
 
+    def publish(self, video, variant, settings):
+        return self.publish_reel(video, variant["caption"], settings.get("share_to_feed", False))
+
     def publish_reel(self, video, caption, share_to_feed=False):
         assert Path(video).exists()
         if self.fail:
@@ -378,3 +381,113 @@ class InstagramClientTest(unittest.TestCase):
         self.assertEqual(create["access_token"], ["EAAtoken"])   # whitespace stripped
         self.assertEqual(calls[1], ("UPLOAD", "OAuth EAAtoken", "5000", 5000))
         self.assertEqual(calls[-2][1], "/123/media_publish")
+
+
+class YouTubeClientTest(unittest.TestCase):
+    """The real YouTube client against a local fake of Google's endpoints."""
+
+    def setUp(self):
+        import threading
+        from http.server import BaseHTTPRequestHandler, HTTPServer
+        from urllib.parse import parse_qs, urlparse
+
+        self.calls = calls = []
+        stored_privacy = self.stored_privacy = ["private"]
+
+        class H(BaseHTTPRequestHandler):
+            def log_message(self, *a):
+                pass
+
+            def _send(self, obj, code=200, headers=None):
+                body = json.dumps(obj).encode()
+                self.send_response(code)
+                self.send_header("Content-Type", "application/json")
+                for k, v in (headers or {}).items():
+                    self.send_header(k, v)
+                self.end_headers()
+                self.wfile.write(body)
+
+            def _body(self):
+                return self.rfile.read(int(self.headers.get("Content-Length", 0)))
+
+            def do_POST(self):
+                u, body = urlparse(self.path), self._body()
+                if u.path == "/token":
+                    q = parse_qs(body.decode())
+                    calls.append(("TOKEN", q["refresh_token"][0], q["grant_type"][0]))
+                    return self._send({"access_token": "AT"})
+                if u.path == "/upload":
+                    calls.append(("START", parse_qs(u.query), json.loads(body), self.headers["Authorization"],
+                                  self.headers["X-Upload-Content-Length"]))
+                    return self._send({}, headers={"Location": f"http://127.0.0.1:{srv.server_port}/session1"})
+                self._send({"error": {"message": "unexpected"}}, 400)
+
+            def do_PUT(self):
+                body = self._body()
+                calls.append(("PUT", self.path, len(body), self.headers["Content-Type"]))
+                self._send({"id": "VID1", "status": {"privacyStatus": stored_privacy[0]}})
+
+            def do_GET(self):
+                u = urlparse(self.path)
+                q = parse_qs(u.query)
+                calls.append(("GET", u.path, q))
+                if u.path == "/api/channels":
+                    return self._send({"items": [{"id": "UC1", "snippet": {"title": "Ooz Studio Ink"},
+                                                  "statistics": {"subscriberCount": "19", "videoCount": "4"},
+                                                  "contentDetails": {"relatedPlaylists": {"uploads": "UU1"}}}]})
+                if u.path == "/analytics":
+                    return self._send({"columnHeaders": [{"name": "views"}, {"name": "subscribersGained"}],
+                                       "rows": [[812, 2]]})
+                self._send({"error": {"message": "nope"}}, 404)
+
+        srv = HTTPServer(("127.0.0.1", 0), H)
+        threading.Thread(target=srv.serve_forever, daemon=True).start()
+        self.addCleanup(srv.shutdown)
+        os.environ["NO_PROXY"] = os.environ["no_proxy"] = "127.0.0.1"
+        from reels_ai.youtube import YouTube
+        base = f"http://127.0.0.1:{srv.server_port}"
+        self.yt = YouTube(" cid ", "secret\n", " 1//refresh ")
+        self.yt.token_url, self.yt.api = f"{base}/token", f"{base}/api"
+        self.yt.upload_url, self.yt.analytics_url = f"{base}/upload", f"{base}/analytics"
+
+    def test_upload_flow_and_private_lock_note(self):
+        vid = Path(tempfile.mkdtemp()) / "v.mp4"
+        vid.write_bytes(b"x" * 4321)
+        variant = {"hook": "Wait for the ink", "subject": "Deku",
+                   "caption": "Inking Deku by hand ✍\U0001f3fe\n\n#mha #inking #mangaart"}
+        res = self.yt.publish(vid, variant, {"privacy": "public", "category_id": 1})
+        self.assertEqual(res["id"], "VID1")
+        self.assertEqual(res["permalink"], "https://youtube.com/shorts/VID1")
+        self.assertIn("PRIVATE", res["note"])
+        token, start, put = self.calls[0], self.calls[1], self.calls[2]
+        self.assertEqual(token, ("TOKEN", "1//refresh", "refresh_token"))   # whitespace stripped
+        self.assertEqual(start[1]["uploadType"], ["resumable"])
+        meta = start[2]
+        self.assertEqual(meta["snippet"]["title"], "Wait for the ink | Deku manga inking #Shorts")
+        self.assertEqual(meta["snippet"]["tags"], ["mha", "inking", "mangaart"])
+        self.assertEqual(meta["status"]["privacyStatus"], "public")
+        self.assertFalse(meta["status"]["selfDeclaredMadeForKids"])
+        self.assertEqual(start[3], "Bearer AT")
+        self.assertEqual(start[4], "4321")
+        self.assertEqual(put, ("PUT", "/session1", 4321, "video/mp4"))
+
+    def test_public_when_allowed_has_no_note(self):
+        self.stored_privacy[0] = "public"
+        vid = Path(tempfile.mkdtemp()) / "v.mp4"
+        vid.write_bytes(b"x")
+        res = self.yt.publish(vid, {"hook": "h", "subject": None, "caption": "c"}, {})
+        self.assertIsNone(res["note"])
+
+    def test_whoami_and_insights(self):
+        ch = self.yt.whoami()
+        self.assertEqual((ch["title"], ch["subscribers"], ch["uploads"]), ("Ooz Studio Ink", "19", "UU1"))
+        self.assertEqual(self.yt.insights("VID1"), {"views": 812, "subscribersGained": 2})
+        q = [c for c in self.calls if c[0] == "GET" and c[1] == "/analytics"][0][2]
+        self.assertEqual(q["filters"], ["video==VID1"])
+        self.assertEqual(q["ids"], ["channel==MINE"])
+
+    def test_title_trimmed_to_100(self):
+        from reels_ai.youtube import shorts_title
+        t = shorts_title("x" * 200, "Naruto")
+        self.assertEqual(len(t), 100)
+        self.assertTrue(t.endswith("| Naruto manga inking #Shorts"))

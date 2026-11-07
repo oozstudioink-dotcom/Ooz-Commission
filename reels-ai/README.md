@@ -69,6 +69,6 @@ Tests: `python -m unittest discover -s tests` (add `REELS_TEST_VIDEO=clip.mov` f
 
 1. ~~Editing engine + review page~~
 2. ~~Telegram approval bot, hourly GitHub Actions schedule, manual posting~~
-3. YouTube: Analytics API stats per variant + API upload (after Google's upload audit)
+3. YouTube: ~~Analytics stats + API upload~~ (secrets `YT_CLIENT_ID`, `YT_CLIENT_SECRET`, `YT_REFRESH_TOKEN`; uploads stay private until Google's API audit is approved)
 4. Instagram: ~~stats + Reels-tab posting~~ (set `method = "api"` after `Run workflow` → task `check` passes); trial reels once the account has 200 followers
 5. Learning: weight styles/hooks by retention and subs gained

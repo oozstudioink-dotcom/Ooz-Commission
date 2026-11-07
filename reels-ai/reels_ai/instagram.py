@@ -91,6 +91,11 @@ class Instagram:
         return {}
 
     # ------------------------------------------------------------------ publishing
+    def publish(self, video: Path, variant: dict, settings: dict) -> dict:
+        """Common interface used by the bot."""
+        return self.publish_reel(video, variant["caption"],
+                                 share_to_feed=settings.get("share_to_feed", False))
+
     def publish_reel(self, video: Path, caption: str, share_to_feed: bool = False,
                      wait_s: int = 600) -> dict:
         """Upload a local video as a Reel and publish it. Returns {id, permalink}."""

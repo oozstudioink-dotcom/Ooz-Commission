@@ -230,13 +230,16 @@ class Runner:
             try:
                 with tempfile.TemporaryDirectory() as tmp:
                     video = self.bot.download(v["file_id"], Path(tmp) / "variant.mp4")
-                    res = client.publish_reel(video, v["caption"],
-                                              share_to_feed=pc.get("share_to_feed", False))
+                    subject = self.state["drawings"].get(v["drawing"], {}).get("subject")
+                    res = client.publish(video, {**v, "subject": subject}, pc)
                 v.setdefault("posts", {})[platform] = {"at": iso(self.clock()), "method": "api",
                                                        "id": res["id"], "permalink": res.get("permalink")}
                 v["status"] = "posted"
                 link = f"\n{res['permalink']}" if res.get("permalink") else ""
-                self.say(f"\u2705 Posted to {name}: {STYLE_LABELS.get(v['style'], v['style'])} ({v['drawing']}){link}")
+                note = f"\n\u26a0\ufe0f {res['note']}" if res.get("note") else ""
+                if res.get("note"):
+                    v["posts"][platform]["note"] = res["note"]
+                self.say(f"\u2705 Posted to {name}: {STYLE_LABELS.get(v['style'], v['style'])} ({v['drawing']}){link}{note}")
                 return
             except Exception as e:  # noqa: BLE001 - never lose a post slot to an API hiccup
                 error = str(e)[:300]
@@ -426,6 +429,11 @@ def make_clients(config: dict) -> dict:
     if ig.get("enabled") and os.environ.get("IG_ACCESS_TOKEN", "").strip():
         from .instagram import Instagram
         clients["instagram"] = Instagram(os.environ["IG_ACCESS_TOKEN"], ig.get("ig_user_id"))
+    yt = config.get("platforms", {}).get("youtube", {})
+    yt_env = [os.environ.get(k, "").strip() for k in ("YT_CLIENT_ID", "YT_CLIENT_SECRET", "YT_REFRESH_TOKEN")]
+    if yt.get("enabled") and all(yt_env):
+        from .youtube import YouTube
+        clients["youtube"] = YouTube(*yt_env)
     return clients
 
 
@@ -451,6 +459,23 @@ def check(runner: Runner) -> None:
                 lines.append(f"\u2022 {m.get('timestamp', '')[:10]} {(m.get('caption') or '')[:40]!r}: {stats}")
         except Exception as e:  # noqa: BLE001
             lines.append(f"Instagram: \u274c {e}")
+    yt = runner.clients.get("youtube")
+    if not yt:
+        lines.append("YouTube: not connected (needs YT_CLIENT_ID, YT_CLIENT_SECRET, YT_REFRESH_TOKEN secrets)")
+    else:
+        try:
+            ch = yt.whoami()
+            lines.append(f"YouTube: \u2705 {ch['title']} \u00b7 {ch.get('subscribers', '?')} subscribers"
+                         f" \u00b7 {ch.get('videos', '?')} videos")
+            for vid in yt.recent_videos(ch["uploads"], 3):
+                try:
+                    st = yt.insights(vid["id"])
+                    stats = ", ".join(f"{k} {v}" for k, v in st.items())
+                except Exception as e:  # noqa: BLE001
+                    stats = f"stats unavailable: {e}"
+                lines.append(f"\u2022 {vid['published'][:10]} {vid['title'][:40]!r}: {stats}")
+        except Exception as e:  # noqa: BLE001
+            lines.append(f"YouTube: \u274c {e}")
     text = "\n".join(lines)
     print(text)
     runner.say(text)
