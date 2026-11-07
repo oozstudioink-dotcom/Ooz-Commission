@@ -49,6 +49,14 @@ class FakeBot:
         self.markups[self.next_msg] = reply_markup
         return {"message_id": self.next_msg, "video": {"file_id": fid}}
 
+    def send_media_group(self, chat_id, videos, caption=""):
+        out = []
+        for i, v in enumerate(videos):
+            m = self.send_video(chat_id, v, caption=caption if i == 0 else "")
+            out.append(m)
+        self.sent.append(("album", chat_id, caption))
+        return out
+
     def edit_markup(self, chat_id, message_id, reply_markup):
         self.markups[message_id] = reply_markup
 
@@ -84,6 +92,16 @@ def fresh_state():
     return json.loads(json.dumps(EMPTY))
 
 
+def platforms_config():
+    """The per-platform schedule with approval buttons (the drops feed has its own tests)."""
+    cfg = load_config()
+    cfg["delivery"]["mode"] = "platforms"
+    cfg["approval"]["mode"] = "approve_or_auto"
+    cfg["variants"]["per_drawing"] = 2
+    cfg["platforms"]["tiktok"]["enabled"] = False
+    return cfg
+
+
 class FakeVariantsMixin:
     """Swap the heavy renderer for a stub so poll/approval logic tests run in milliseconds."""
 
@@ -113,7 +131,7 @@ class FakeVariantsMixin:
 class BotFlowTest(FakeVariantsMixin, unittest.TestCase):
     def setUp(self):
         os.environ.pop("TELEGRAM_OWNER_ID", None)
-        self.cfg = load_config()
+        self.cfg = platforms_config()
         self.cfg["timezone"] = "UTC"
         self.cfg["platforms"]["youtube"]["post_times"] = ["17:00"]
         self.cfg["platforms"]["instagram"]["enabled"] = False
@@ -226,6 +244,71 @@ class BotFlowTest(FakeVariantsMixin, unittest.TestCase):
         self.assertIn("20 MB", self.bot.texts()[-1])
 
 
+class DropsFeedTest(FakeVariantsMixin, unittest.TestCase):
+    """Default setup: auto-approve into a bank, shuffled manual drops, nothing auto-posted."""
+
+    def setUp(self):
+        os.environ.pop("TELEGRAM_OWNER_ID", None)
+        self.cfg = load_config()
+        self.cfg["timezone"] = "UTC"
+        self.clock = Clock(datetime(2026, 11, 7, 9, 0, tzinfo=timezone.utc))
+        self.bot, self.state = FakeBot(), fresh_state()
+        self.r = Runner(self.bot, self.state, self.cfg, clock=self.clock,
+                        clients={"instagram": FakeInstagram()})          # must stay unused
+        src = Path(tempfile.mkdtemp()) / "in.mp4"
+        src.write_bytes(b"raw")
+        self.bot.push(**msg(OWNER, text="hi"))
+        for i, name in enumerate(["Naruto", "Deku", "Goku"]):
+            fid = f"raw{i}"
+            self.bot.files[fid] = src
+            self.bot.push(**msg(OWNER, video={"file_id": fid, "file_unique_id": f"u{i}", "file_size": 1000},
+                                caption=name))
+        self.r.poll()
+        self.stub_render(self.r)
+
+    def drops(self):
+        return [p for k, _, p in self.bot.sent if k == "video" and p.startswith("\U0001f3ac Drop")]
+
+    def test_variants_land_in_bank_as_albums(self):
+        self.assertEqual(len(self.state["variants"]), 15)              # 3 drawings x 5 styles
+        self.assertTrue(all(v["status"] == "approved" for v in self.state["variants"].values()))
+        albums = [p for k, _, p in self.bot.sent if k == "album"]
+        self.assertEqual(len(albums), 3)
+        self.assertIn("5 variants added", albums[0])
+        self.assertFalse(any(m for m in self.bot.markups.values()))   # no approval buttons
+
+    def test_shuffled_drops_never_repeat_and_never_auto_post(self):
+        order = []
+        for day in range(8):
+            self.clock.t = datetime(2026, 11, 7, 20, 0, tzinfo=timezone.utc) + timedelta(days=day)
+            self.r.poll()
+            self.r.poll()                                             # extra runs never double-drop
+        dropped = sorted((v for v in self.state["variants"].values() if v.get("dropped_at")),
+                         key=lambda v: v["drop_no"])
+        self.assertEqual(len(dropped), 15)                            # 2/day until the bank is empty
+        ids = [(v["drawing"], v["style"]) for v in dropped]
+        self.assertEqual(len(set(ids)), 15)                           # never the same variant twice
+        self.assertTrue(all(a[0] != b[0] for a, b in zip(ids, ids[1:])), ids)   # no drawing back-to-back
+        self.assertEqual(len(self.drops()), 15)
+        self.assertIn("trending sound", self.drops()[0])
+        self.assertEqual(self.r.clients["instagram"].posted, [])      # nothing auto-posted
+        self.assertTrue(any("running low" in t for t in self.bot.texts()))
+
+    def test_drop_times(self):
+        self.clock.t = datetime(2026, 11, 7, 16, 59, tzinfo=timezone.utc)
+        self.r.poll()
+        self.assertEqual(len(self.drops()), 0)
+        self.clock.t = self.clock.t.replace(hour=17, minute=1)
+        self.r.poll()
+        self.assertEqual(len(self.drops()), 1)
+        self.clock.t = self.clock.t.replace(hour=23)
+        self.r.poll()
+        self.assertEqual(len(self.drops()), 2)
+        self.bot.push(**msg(OWNER, text="/queue"))
+        self.r.poll()
+        self.assertTrue(any("Drops: 13 videos" in t for t in self.bot.texts()))
+
+
 @unittest.skipUnless(os.environ.get("REELS_TEST_VIDEO"), "set REELS_TEST_VIDEO to run a real render")
 class RealRenderTest(unittest.TestCase):
     def test_real_render(self):
@@ -264,7 +347,7 @@ class FakeInstagram:
 
 class InstagramPostingTest(FakeVariantsMixin, unittest.TestCase):
     def make(self, ig):
-        cfg = load_config()
+        cfg = platforms_config()
         cfg["timezone"] = "UTC"
         cfg["platforms"]["youtube"]["enabled"] = False
         cfg["platforms"]["instagram"].update(method="api", post_times=["19:00"])
