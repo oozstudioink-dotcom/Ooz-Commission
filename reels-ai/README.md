@@ -56,7 +56,8 @@ Runs hourly on GitHub Actions (`.github/workflows/reels-bot.yml`), free.
    twice in a row. Until the YouTube / Instagram connections exist (`method = "manual"`) it
    sends you the finished video + caption to upload yourself.
 
-Commands: `/status`, `/pause`, `/resume`, `/help`. The first person to message the bot becomes
+Commands: `/status`, `/queue` (video bank and days of posts it covers), `/pause`, `/resume`, `/help`.
+The bot warns in Telegram when the bank drops below `[bank] warn_below_days`. The first person to message the bot becomes
 its owner; everyone else is ignored. Memory lives in `state/state.json` (committed by the job).
 
 Setup: repo secret `TELEGRAM_BOT_TOKEN` (from @BotFather). Scheduled jobs only run from the
@@ -69,5 +70,5 @@ Tests: `python -m unittest discover -s tests` (add `REELS_TEST_VIDEO=clip.mov` f
 1. ~~Editing engine + review page~~
 2. ~~Telegram approval bot, hourly GitHub Actions schedule, manual posting~~
 3. YouTube: Analytics API stats per variant + API upload (after Google's upload audit)
-4. Instagram: stats + Reels-tab posting; trial reels once the account has 200 followers
+4. Instagram: ~~stats + Reels-tab posting~~ (set `method = "api"` after `Run workflow` → task `check` passes); trial reels once the account has 200 followers
 5. Learning: weight styles/hooks by retention and subs gained

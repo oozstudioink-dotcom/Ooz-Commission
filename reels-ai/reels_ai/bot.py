@@ -31,7 +31,7 @@ MAX_BOT_DOWNLOAD = 20 * 1024 * 1024   # Telegram bots can only download files up
 HELP = (
     "Send me a drawing timelapse (as a video) and I'll make variants for you to approve.\n"
     "Add the character name as the video's caption, e.g. Naruto.\n\n"
-    "/status  what's queued\n/pause  stop all posting\n/resume  start posting again\n/help  this message"
+    "/status  overview\n/queue  your video bank and how many days it covers\n/pause  stop all posting\n/resume  start posting again\n/help  this message"
 )
 
 
@@ -48,8 +48,9 @@ def label_markup(text: str) -> dict:
 
 
 class Runner:
-    def __init__(self, bot: Bot, state: dict, config: dict, clock=now):
+    def __init__(self, bot: Bot, state: dict, config: dict, clock=now, clients: dict | None = None):
         self.bot, self.state, self.cfg, self.clock = bot, state, config, clock
+        self.clients = clients or {}          # platform -> API client (e.g. Instagram)
         self.tz = ZoneInfo(config.get("timezone", "UTC"))
         owner = os.environ.get("TELEGRAM_OWNER_ID")
         if owner:
@@ -87,6 +88,8 @@ class Runner:
         if not self.state["paused"]:
             self.auto_approve()
             self.post_due()
+            self.warn_low_bank()
+        self.refresh_stats()
         return any(d["status"] == "queued" for d in self.state["drawings"].values())
 
     # ------------------------------------------------------------------ messages
@@ -119,6 +122,8 @@ class Runner:
             self.say("▶️ Resumed.")
         elif cmd == "/status":
             self.say(self.status_text())
+        elif cmd == "/queue":
+            self.say(self.queue_text())
         elif text and self.state["awaiting_caption"]:
             vid = self.state["awaiting_caption"]
             self.state["awaiting_caption"] = None
@@ -219,15 +224,89 @@ class Runner:
 
     def post(self, v: dict, platform: str, pc: dict) -> None:
         name = PLATFORM_LABELS.get(platform, platform)
-        method = pc.get("method", "manual")
-        if method == "manual":
-            self.bot.send_video(self.owner, v["file_id"],
-                                caption=f"\U0001f4e4 Time to post on {name}\nCaption is in the next message.")
-            self.say(v["caption"])
-            v.setdefault("posts", {})[platform] = {"at": iso(self.clock()), "method": "manual"}
-        else:
-            raise NotImplementedError(f"{method} posting for {platform} is not connected yet")
+        client = self.clients.get(platform) if pc.get("method") == "api" else None
+        error = None
+        if client:
+            try:
+                with tempfile.TemporaryDirectory() as tmp:
+                    video = self.bot.download(v["file_id"], Path(tmp) / "variant.mp4")
+                    res = client.publish_reel(video, v["caption"],
+                                              share_to_feed=pc.get("share_to_feed", False))
+                v.setdefault("posts", {})[platform] = {"at": iso(self.clock()), "method": "api",
+                                                       "id": res["id"], "permalink": res.get("permalink")}
+                v["status"] = "posted"
+                link = f"\n{res['permalink']}" if res.get("permalink") else ""
+                self.say(f"\u2705 Posted to {name}: {STYLE_LABELS.get(v['style'], v['style'])} ({v['drawing']}){link}")
+                return
+            except Exception as e:  # noqa: BLE001 - never lose a post slot to an API hiccup
+                error = str(e)[:300]
+                print(f"warn: {platform} publish failed: {error}")
+        note = f"\u26a0\ufe0f Auto-post to {name} failed ({error}), so please post this one yourself.\n" if error else ""
+        self.bot.send_video(self.owner, v["file_id"],
+                            caption=f"{note}\U0001f4e4 Time to post on {name}\nCaption is in the next message.")
+        self.say(v["caption"])
+        v.setdefault("posts", {})[platform] = {"at": iso(self.clock()), "method": "manual",
+                                               **({"error": error} if error else {})}
         v["status"] = "posted"
+
+    # ------------------------------------------------------------------ bank
+    def bank(self) -> dict[str, int]:
+        """Approved (or still pending) videos not yet sent to each enabled platform."""
+        out = {}
+        for p, pc in self.cfg.get("platforms", {}).items():
+            if pc.get("enabled"):
+                out[p] = sum(1 for v in self.state["variants"].values()
+                             if v["status"] in ("approved", "pending", "posted") and p not in v.get("posts", {}))
+        return out
+
+    def queue_text(self) -> str:
+        lines = ["\U0001f3e6 Video bank"]
+        for p, n in self.bank().items():
+            per_day = max(1, self.cfg["platforms"][p].get("max_per_day", 1))
+            lines.append(f"{PLATFORM_LABELS.get(p, p)}: {n} videos \u2248 {n // per_day} days")
+        pending = sum(1 for v in self.state["variants"].values() if v["status"] == "pending")
+        if pending:
+            lines.append(f"({pending} still waiting for your OK are counted)")
+        queued = sum(1 for d in self.state["drawings"].values() if d["status"] == "queued")
+        if queued:
+            lines.append(f"{queued} drawing(s) waiting to be turned into variants")
+        return "\n".join(lines)
+
+    def warn_low_bank(self) -> None:
+        low_at = self.cfg.get("bank", {}).get("warn_below_days", 3)
+        today = self.local(self.clock()).date().isoformat()
+        if self.state.get("low_bank_warned") == today or not self.state["variants"]:
+            return
+        short = []
+        for p, n in self.bank().items():
+            days = n // max(1, self.cfg["platforms"][p].get("max_per_day", 1))
+            if days < low_at:
+                short.append(f"{PLATFORM_LABELS.get(p, p)}: {days} day(s) left")
+        if short:
+            self.state["low_bank_warned"] = today
+            self.say("\U0001faab Video bank is running low\n" + "\n".join(short) +
+                     "\nSend me your next page of timelapses when you can.")
+
+    def refresh_stats(self, every_hours: int = 6, days_back: int = 14) -> None:
+        """Pull metrics for recent API posts (used later to learn which styles/hooks win)."""
+        t = self.clock()
+        last = self.state.get("stats_at")
+        if last and t - parse(last) < timedelta(hours=every_hours):
+            return
+        did_any = False
+        for platform, client in self.clients.items():
+            for v in self.state["variants"].values():
+                post = v.get("posts", {}).get(platform)
+                if not post or not post.get("id") or t - parse(post["at"]) > timedelta(days=days_back):
+                    continue
+                try:
+                    post["stats"] = client.insights(post["id"])
+                    post["stats_at"] = iso(t)
+                    did_any = True
+                except Exception as e:  # noqa: BLE001
+                    print(f"warn: stats {platform} {post['id']}: {e}")
+        if did_any or self.clients:
+            self.state["stats_at"] = iso(t)
 
     # ------------------------------------------------------------------ status
     def status_text(self) -> str:
@@ -319,7 +398,13 @@ def run(phase: str) -> None:
                          "(expected digits, a colon, then ~35 letters/numbers). Re-paste it.")
     token = m.group(0)
     state, config = load_state(), load_config()
-    runner = Runner(Bot(token), state, config)
+    runner = Runner(Bot(token), state, config, clients=make_clients(config))
+    if phase == "check":
+        try:
+            check(runner)
+        finally:
+            save_state(state)
+        return
     try:
         needs_render = False
         if phase in ("poll", "all"):
@@ -333,3 +418,39 @@ def run(phase: str) -> None:
         with open(out, "a") as f:
             f.write(f"render={'true' if needs_render else 'false'}\n")
     print(f"phase={phase} needs_render={needs_render}")
+
+
+def make_clients(config: dict) -> dict:
+    clients = {}
+    ig = config.get("platforms", {}).get("instagram", {})
+    if ig.get("enabled") and os.environ.get("IG_ACCESS_TOKEN", "").strip():
+        from .instagram import Instagram
+        clients["instagram"] = Instagram(os.environ["IG_ACCESS_TOKEN"], ig.get("ig_user_id"))
+    return clients
+
+
+def check(runner: Runner) -> None:
+    """Read-only connection test: account, recent posts and their stats. Posts nothing."""
+    lines = ["\U0001f50c Connection check (nothing was posted)"]
+    ig = runner.clients.get("instagram")
+    if not ig:
+        lines.append("Instagram: no IG_ACCESS_TOKEN secret found")
+    else:
+        try:
+            me = ig.whoami()
+            lines.append(f"Instagram: \u2705 @{me.get('username')} \u00b7 {me.get('followers_count', '?')} followers"
+                         f" \u00b7 {me.get('media_count', '?')} posts (user id {me['resolved_user_id']})")
+            for m in ig.recent_media(5):
+                if m.get("media_product_type") != "REELS":
+                    continue
+                try:
+                    st = ig.insights(m["id"])
+                    stats = ", ".join(f"{k} {v}" for k, v in st.items() if v is not None) or "no stats"
+                except Exception as e:  # noqa: BLE001
+                    stats = f"stats unavailable: {e}"
+                lines.append(f"\u2022 {m.get('timestamp', '')[:10]} {(m.get('caption') or '')[:40]!r}: {stats}")
+        except Exception as e:  # noqa: BLE001
+            lines.append(f"Instagram: \u274c {e}")
+    text = "\n".join(lines)
+    print(text)
+    runner.say(text)

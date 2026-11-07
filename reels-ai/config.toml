@@ -15,7 +15,7 @@ styles = ["reveal_first", "speedrun", "before_after", "detail_zoom", "ink_only"]
 
 # method = "manual": at post time the bot sends you the finished video + caption to upload
 #                    (until the YouTube / Instagram API connections are set up)
-# method = "api"   : uploads automatically (coming next)
+# method = "api"   : uploads automatically (Instagram supported; needs the IG_ACCESS_TOKEN secret)
 [platforms.youtube]
 enabled = true
 method = "manual"
@@ -24,6 +24,11 @@ post_times = ["17:00"]
 
 [platforms.instagram]
 enabled = true
-method = "manual"
+method = "manual"                # switch to "api" once the connection check passes
+ig_user_id = "17841426631544131" # @oozstudioink
+share_to_feed = false            # false = Reels tab only, keeps the main grid clean
 max_per_day = 1
 post_times = ["19:00"]
+
+[bank]
+warn_below_days = 3              # Telegram alert when the approved-video bank gets this low
