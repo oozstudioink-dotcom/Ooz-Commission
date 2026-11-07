@@ -1,0 +1,29 @@
+# Ooz Reels bot settings. Edit on GitHub; changes apply on the next hourly run.
+
+timezone = "America/New_York"   # used for post_times below
+
+[approval]
+# "approve"        : nothing posts until you tap Post
+# "auto"           : posts without asking (you still get a copy)
+# "approve_or_auto": asks you; if you don't answer within fallback_hours, posts anyway
+mode = "approve_or_auto"
+fallback_hours = 6
+
+[variants]
+per_drawing = 2                  # max variants made from each drawing
+styles = ["reveal_first", "speedrun", "before_after", "detail_zoom", "ink_only"]
+
+# method = "manual": at post time the bot sends you the finished video + caption to upload
+#                    (until the YouTube / Instagram API connections are set up)
+# method = "api"   : uploads automatically (coming next)
+[platforms.youtube]
+enabled = true
+method = "manual"
+max_per_day = 1
+post_times = ["17:00"]
+
+[platforms.instagram]
+enabled = true
+method = "manual"
+max_per_day = 1
+post_times = ["19:00"]

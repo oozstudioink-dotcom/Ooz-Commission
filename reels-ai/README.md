@@ -44,9 +44,30 @@ Options: `--variants reveal_first ink_only` (pick some), `--seed 2` (different h
 
 Hooks, end cards and captions live in `reels_ai/hooks.py`; edit freely.
 
+## Telegram approval bot
+
+Runs hourly on GitHub Actions (`.github/workflows/reels-bot.yml`), free.
+
+1. You send a timelapse to the bot as a video, with the character name as the caption.
+2. Within the hour it makes **2 variants** (least-used styles first), sends each with
+   **Post / Skip / Edit caption** buttons.
+3. No answer within 6 h -> auto-approved (`config.toml` -> `[approval]`).
+4. At each platform's `post_times` it posts at most `max_per_day`, never the same drawing
+   twice in a row. Until the YouTube / Instagram connections exist (`method = "manual"`) it
+   sends you the finished video + caption to upload yourself.
+
+Commands: `/status`, `/pause`, `/resume`, `/help`. The first person to message the bot becomes
+its owner; everyone else is ignored. Memory lives in `state/state.json` (committed by the job).
+
+Setup: repo secret `TELEGRAM_BOT_TOKEN` (from @BotFather). Scheduled jobs only run from the
+default branch, so this folder and the workflow must be on `main`.
+
+Tests: `python -m unittest discover -s tests` (add `REELS_TEST_VIDEO=clip.mov` for a real render).
+
 ## Roadmap
 
 1. ~~Editing engine + review page~~
-2. Gemini (free tier) picks moments and writes hooks; compare against stage 1
-3. Instagram API: pull Reel stats, rank winners, fetch source videos (or raw files from Google Drive)
-4. GitHub Actions daily schedule + trial-reel auto-posting with daily caps and an approval switch
+2. ~~Telegram approval bot, hourly GitHub Actions schedule, manual posting~~
+3. YouTube: Analytics API stats per variant + API upload (after Google's upload audit)
+4. Instagram: stats + Reels-tab posting; trial reels once the account has 200 followers
+5. Learning: weight styles/hooks by retention and subs gained
