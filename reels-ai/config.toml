@@ -52,5 +52,11 @@ redirect_uri = "https://oozstudioink-dotcom.github.io/Ooz-Commission/tiktok-call
 max_per_day = 1
 post_times = ["18:00"]
 
+[ai]
+# Hooks + captions written by Google Gemini when the GEMINI_API_KEY secret is set
+# (free key: aistudio.google.com -> Get API key). Without a key the built-in hooks are used.
+enabled = true
+model = "gemini-flash-latest"
+
 [bank]
 warn_below_days = 3              # Telegram alert when the approved-video bank gets this low

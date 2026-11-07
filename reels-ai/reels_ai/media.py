@@ -95,15 +95,19 @@ class FrameStore:
 class Encoder:
     """Pipe BGR frames into ffmpeg -> Instagram-friendly MP4 (H.264 high, AAC track, faststart)."""
 
-    def __init__(self, path: Path, width: int, height: int, audio: Path | None = None):
+    def __init__(self, path: Path, width: int, height: int, audio: Path | None = None,
+                 duration: float | None = None, volume: float = 0.9, crf: int = 17):
         cmd = ["ffmpeg", "-v", "error", "-y",
                "-f", "rawvideo", "-pix_fmt", "bgr24", "-s", f"{width}x{height}", "-r", str(FPS), "-i", "-"]
         if audio:
             cmd += ["-stream_loop", "-1", "-i", str(audio)]
+            fade = (f",afade=t=in:d=0.3,afade=t=out:st={max(0.0, duration - 1.2):.2f}:d=1.2"
+                    if duration else "")
+            cmd += ["-filter:a", f"aresample=44100,volume={volume}{fade}", "-ac", "2"]
         else:
             cmd += ["-f", "lavfi", "-i", "anullsrc=r=44100:cl=stereo"]
         cmd += ["-map", "0:v", "-map", "1:a", "-shortest",
-                "-c:v", "libx264", "-profile:v", "high", "-crf", "17", "-preset", "medium",
+                "-c:v", "libx264", "-profile:v", "high", "-crf", str(crf), "-preset", "medium",
                 "-pix_fmt", "yuv420p", "-c:a", "aac", "-b:a", "128k",
                 "-movflags", "+faststart", str(path)]
         self.proc = subprocess.Popen(cmd, stdin=subprocess.PIPE)

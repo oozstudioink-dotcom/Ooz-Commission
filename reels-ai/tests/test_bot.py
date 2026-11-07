@@ -671,3 +671,96 @@ class TikTokClientTest(unittest.TestCase):
         self.assertIn("client_key=ck", u)
         self.assertIn("redirect_uri=https%3A%2F%2Fx.github.io%2Fcb.html", u)
         self.assertIn("scope=user.info.basic%2Cvideo.upload%2Cvideo.publish", u)
+
+
+class ReportTest(unittest.TestCase):
+    def test_matches_posts_to_styles_and_ranks(self):
+        from reels_ai.report import build, match_variant
+        variants = [
+            {"style": "reveal_first", "hook": "This started as a circle",
+             "caption": "Inking Naruto by hand ✍\U0001f3fe Who should I draw next?\n\n#naruto #inking"},
+            {"style": "ink_only", "hook": "Just the ink.",
+             "caption": "Pencil to ink, start to finish. Which stage do you like more?\n\n#mangaart"},
+        ]
+        self.assertEqual(match_variant("Inking Naruto by hand ✍\U0001f3fe Who should I draw next? #naruto",
+                                       variants)["style"], "reveal_first")
+        self.assertIsNone(match_variant("My lunch today", variants))
+
+        class IG:
+            def whoami(self):
+                return {"followers_count": 14}
+
+            def recent_media(self, n):
+                return [{"id": "a", "timestamp": "2026-11-05T18:00:00+0000", "media_product_type": "REELS",
+                         "caption": "Inking Naruto by hand ✍\U0001f3fe Who should I draw next?"},
+                        {"id": "b", "timestamp": "2026-11-06T18:00:00+0000", "media_product_type": "REELS",
+                         "caption": "Pencil to ink, start to finish. Which stage do you like more?"}]
+
+            def insights(self, mid):
+                return {"views": 1600 if mid == "a" else 200, "ig_reels_avg_watch_time": 8800}
+
+        state = {"variants": {"v1": variants[0], "v2": variants[1]}, "report_followers": {"instagram": 10}}
+        text = build(state, {"instagram": IG()}, datetime(2026, 11, 8, 15, tzinfo=timezone.utc))
+        self.assertIn("1,800 views", text)
+        self.assertIn("(+4 this week)", text)
+        self.assertIn("1. Reveal first: 1,600", text)
+        self.assertIn("Reveal first is winning", text)
+        self.assertEqual(state["report_followers"]["instagram"], 14)
+
+
+class GeminiCopyTest(unittest.TestCase):
+    def test_write_copy_and_override(self):
+        import threading
+        from http.server import BaseHTTPRequestHandler, HTTPServer
+
+        seen = {}
+
+        class H(BaseHTTPRequestHandler):
+            def log_message(self, *a):
+                pass
+
+            def do_POST(self):
+                seen["key"] = self.headers["x-goog-api-key"]
+                seen["body"] = json.loads(self.rfile.read(int(self.headers["Content-Length"])))
+                reply = {"subject": "Naruto Uzumaki",
+                         "hooks": {"reveal_first": "Ink brings him alive", "speedrun": "x" * 99,
+                                   "bogus_style": "nope"},
+                         "caption": "Naruto in pure ink ✍\U0001f3fe Who next? \U0001f447\U0001f3fe",
+                         "hashtags": ["#Naruto", "mangaart", "#ink ing"]}
+                body = json.dumps({"candidates": [{"content": {"parts": [{"text": json.dumps(reply)}]}}]}).encode()
+                self.send_response(200)
+                self.send_header("Content-Type", "application/json")
+                self.end_headers()
+                self.wfile.write(body)
+
+        srv = HTTPServer(("127.0.0.1", 0), H)
+        threading.Thread(target=srv.serve_forever, daemon=True).start()
+        self.addCleanup(srv.shutdown)
+        os.environ["NO_PROXY"] = os.environ["no_proxy"] = "127.0.0.1"
+        from reels_ai.ai import write_copy
+        img = Path(tempfile.mkdtemp()) / "f.jpg"
+        img.write_bytes(b"\xff\xd8jpeg")
+        copy = write_copy(img, None, ["reveal_first", "speedrun"], " KEY\n",
+                          endpoint=f"http://127.0.0.1:{srv.server_port}/{{model}}")
+        self.assertEqual(seen["key"], "KEY")
+        self.assertEqual(seen["body"]["contents"][0]["parts"][1]["inline_data"]["mime_type"], "image/jpeg")
+        self.assertEqual(copy["hooks"], {"reveal_first": "Ink brings him alive"})   # junk dropped
+        self.assertEqual(copy["hashtags"], ["#naruto", "#mangaart", "#inking"])
+        self.assertEqual(copy["subject"], "Naruto Uzumaki")
+
+        from reels_ai import variants
+        from reels_ai.analyze import Analysis
+        a = Analysis(n_frames=100, fps=30, width=720, height=1280, draw_start=0, sketch_idx=20, ink_start=30,
+                     ink_end=90, peak_idx=60, reveal_idx=99, detail_box=(0.3, 0.2, 0.4, 0.4),
+                     focus=(0.5, 0.5, 1.0), detail_start=40, detail_end=80, hand_score=[0] * 100,
+                     ink_progress=[], window_frames=15, usable=[True] * 100)
+        plans = {p.name: p for p in variants.build(a, ["reveal_first", "speedrun"], 1, "Naruto", copy)}
+        self.assertEqual(plans["reveal_first"].hook, "Ink brings him alive")
+        self.assertIn("Ink brings him alive", [c.text for c in plans["reveal_first"].texts])
+        self.assertTrue(plans["speedrun"].caption.startswith("Naruto in pure ink"))
+        self.assertTrue(plans["speedrun"].caption.endswith("#naruto #mangaart #inking"))
+        self.assertNotEqual(plans["speedrun"].hook, "x" * 99)              # template kept
+
+    def test_no_key_means_templates(self):
+        from reels_ai.ai import write_copy
+        self.assertIsNone(write_copy(Path("x.jpg"), "Naruto", ["speedrun"], ""))
