@@ -34,7 +34,7 @@
   "next_id": 22,
   "owner_chat_id": 5745191999,
   "paused": false,
-  "stats_at": "2026-11-07T14:11:26+00:00",
+  "stats_at": "2026-11-07T22:49:02+00:00",
   "style_uses": {
     "before_after": 4,
     "detail_zoom": 3,
@@ -175,12 +175,14 @@
       "decided_at": "2026-11-07T04:28:50+00:00",
       "decided_by": "auto",
       "drawing": "d6",
+      "drop_no": 4,
+      "dropped_at": "2026-11-07T22:49:02+00:00",
       "file_id": "BAACAgEAAxUHau6pAQaFvf98CjQIzYWiAko9wGUAAkQJAAKFAnlHd6PC12-Y1eI9BA",
       "hook": "Inking Shinobi undercover, no talking",
       "message_id": 42,
       "posts": {},
       "seconds": 9.4,
-      "status": "approved",
+      "status": "posted",
       "style": "ink_only"
     },
     "v19": {
@@ -295,12 +297,14 @@
       "decided_at": "2026-11-07T04:27:26+00:00",
       "decided_by": "auto",
       "drawing": "d4",
+      "drop_no": 3,
+      "dropped_at": "2026-11-07T22:49:02+00:00",
       "file_id": "BAACAgEAAxUHau6orTQ8JBWoOdejOLtpkMJ9NkoAAj0JAAKFAnlHTmTfljlKhiA9BA",
       "hook": "Watch this come to life",
       "message_id": 33,
       "posts": {},
       "seconds": 12.0,
-      "status": "approved",
+      "status": "posted",
       "style": "reveal_first"
     }
   }
