@@ -1,4 +1,8 @@
-"""Variant recipes. Each recipe turns the analysed beats into a frame-by-frame edit plan."""
+"""Variant recipes. Each recipe turns the analysed beats into a frame-by-frame edit plan.
+
+All variants target 8-15 s: channel data shows viewers watch ~7-10 s on average, so the
+finished piece (or a strong visual) must land in the first second and the whole arc must fit.
+"""
 from __future__ import annotations
 
 import random
@@ -100,17 +104,17 @@ def secs(n_shots: int) -> float:
 def reveal_first(a: Analysis, rng, subject) -> Plan:
     p = Plan("reveal_first", "Opens on the finished piece, flashes back to the blank page, "
              "speed-ramps through the process, slows on the biggest ink moment.", "clean")
-    open_ = hold(a.reveal_idx, 1.3)
+    open_ = hold(a.reveal_idx, 1.0)
     p.shots += shots(open_, push(len(open_), 1.12, 1.0))
     p.shots += [Shot(a.draw_start, flash=1 - k / 6) for k in range(6)]
-    p.shots += shots(ramp(a, a.draw_start, a.ink_start, 5.0))
-    p.shots += shots(ramp(a, a.ink_start, a.ink_end, 8.5, focus=a.peak_idx))
-    end = hold(a.reveal_idx, 2.2)
+    p.shots += shots(ramp(a, a.draw_start, a.ink_start, 2.5))
+    p.shots += shots(ramp(a, a.ink_start, a.ink_end, 6.5, focus=a.peak_idx))
+    end = hold(a.reveal_idx, 1.8)
     t_end = p.seconds
     p.shots += shots(end, push(len(end), 1.0, 1.05))
     p.hook = hooks.pick_hook("reveal_first", rng, subject, round(p.seconds))
-    p.texts = [TextCard(p.hook, "outline", 0, 2.6),
-               TextCard(hooks.pick_end_card(rng), "box", t_end + 0.2, p.seconds)]
+    p.texts = [TextCard(p.hook, "outline", 0, 2.4),
+               TextCard(hooks.pick_end_card(rng), "box", t_end + 0.1, p.seconds)]
     return p
 
 
@@ -130,19 +134,19 @@ def before_after(a: Analysis, rng, subject) -> Plan:
     seq: list[Shot] = []
     for k in range(int(0.4 * FPS)):
         seq.append(Shot(a.sketch_idx, alt=a.reveal_idx, wipe=0.0))
-    n = int(1.4 * FPS)
+    n = int(1.2 * FPS)
     seq += [Shot(a.sketch_idx, alt=a.reveal_idx, wipe=fx.ease(k / (n - 1))) for k in range(n)]
-    seq += [Shot(a.sketch_idx, alt=a.reveal_idx, wipe=1.0) for _ in range(int(0.5 * FPS))]
-    n = int(1.0 * FPS)
+    seq += [Shot(a.sketch_idx, alt=a.reveal_idx, wipe=1.0) for _ in range(int(0.4 * FPS))]
+    n = int(0.8 * FPS)
     seq += [Shot(a.sketch_idx, alt=a.reveal_idx, wipe=1 - fx.ease(k / (n - 1))) for k in range(n)]
     p.shots = seq
     t1 = p.seconds
-    p.shots += shots(ramp(a, a.ink_start, a.ink_end, 9.0, focus=a.peak_idx))
-    end = hold(a.reveal_idx, 1.6)
+    p.shots += shots(ramp(a, a.ink_start, a.ink_end, 6.5, focus=a.peak_idx))
+    end = hold(a.reveal_idx, 1.3)
     p.shots += shots(end, push(len(end), 1.0, 1.04))
     p.hook = hooks.pick_hook("before_after", rng, subject, round(p.seconds))
     p.texts = [TextCard(p.hook, "box", 0, t1),
-               TextCard("Now watch the ink", "box", t1, t1 + 1.8)]
+               TextCard("Now watch the ink", "box", t1, t1 + 1.5)]
     return p
 
 
@@ -151,27 +155,27 @@ def detail_zoom(a: Analysis, rng, subject) -> Plan:
              "being inked, then pulls back for the full reveal.", "clean")
     x, y, w, h = a.detail_box
     cx, cy = x + w / 2, y + h / 2
-    p.shots += shots(ramp(a, a.draw_start, a.ink_start, 4.0))
-    ink = ramp(a, a.ink_start, a.ink_end, 12.0, focus=a.peak_idx, slow=2.0)
+    p.shots += shots(ramp(a, a.draw_start, a.ink_start, 2.0))
+    ink = ramp(a, a.ink_start, a.ink_end, 8.5, focus=a.peak_idx, slow=2.0)
     max_zoom_frames = int(len(ink) * 0.45)
     zoomed = 0
     z = 1.0
     for i in ink:
         want = 1.8 if (a.detail_start <= i <= a.detail_end and zoomed < max_zoom_frames) else 1.0
         zoomed += want > 1
-        z += (want - z) * 0.09                      # smooth camera
+        z += (want - z) * 0.12                      # smooth camera
         p.shots.append(Shot(i, (cx, cy, z)))
-    end = hold(a.reveal_idx, 2.2)
+    end = hold(a.reveal_idx, 1.6)
     p.shots += [Shot(i, c) for i, c in zip(end, push(len(end), max(z, 1.25), 1.0, cx, cy))]
     p.hook = hooks.pick_hook("detail_zoom", rng, subject, round(p.seconds))
-    p.texts = [TextCard(p.hook, "outline", 0, 2.8)]
+    p.texts = [TextCard(p.hook, "outline", 0, 2.4)]
     return p
 
 
 def ink_only(a: Analysis, rng, subject) -> Plan:
     p = Plan("ink_only", "Skips the pencils entirely: straight into the ink, high-contrast B&W look.", "mono")
-    p.shots += shots(ramp(a, a.ink_start, a.ink_end, 9.5, focus=a.peak_idx, slow=3.0))
-    end = hold(a.reveal_idx, 1.6)
+    p.shots += shots(ramp(a, a.ink_start, a.ink_end, 8.0, focus=a.peak_idx, slow=3.0))
+    end = hold(a.reveal_idx, 1.4)
     p.shots += shots(end, push(len(end), 1.0, 1.05))
     p.hook = hooks.pick_hook("ink_only", rng, subject, round(p.seconds))
     p.texts = [TextCard(p.hook, "ink", 0, 2.6)]

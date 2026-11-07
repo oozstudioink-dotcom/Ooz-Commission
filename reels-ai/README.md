@@ -32,7 +32,7 @@ Options: `--variants reveal_first ink_only` (pick some), `--seed 2` (different h
 - **detail box**: the most line-dense area (usually the face) and when it gets inked.
 - **arm sweeps**: frames where an arm covers the page are dropped from the edit.
 
-### Variants
+### Variants (all 8-15 s: channel data shows ~7-10 s average watch time)
 
 | Name | Idea | Look |
 |---|---|---|
