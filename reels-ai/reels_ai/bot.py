@@ -25,7 +25,7 @@ STYLE_LABELS = {
     "detail_zoom": "Detail zoom",
     "ink_only": "Ink only",
 }
-PLATFORM_LABELS = {"youtube": "YouTube Shorts", "instagram": "Instagram Reels"}
+PLATFORM_LABELS = {"youtube": "YouTube Shorts", "instagram": "Instagram Reels", "tiktok": "TikTok"}
 MAX_BOT_DOWNLOAD = 20 * 1024 * 1024   # Telegram bots can only download files up to 20 MB
 
 HELP = (
@@ -87,7 +87,10 @@ class Runner:
                 print(f"warn: update {u['update_id']}: {e}")
         if not self.state["paused"]:
             self.auto_approve()
-            self.post_due()
+            if self.drops_mode:
+                self.drop_due()
+            else:
+                self.post_due()
             self.warn_low_bank()
         self.refresh_stats()
         return any(d["status"] == "queued" for d in self.state["drawings"].values())
@@ -192,6 +195,68 @@ class Runner:
                 self.bot.edit_markup(self.owner, v["message_id"],
                                      label_markup("⏱ Auto-approved: queued to post"))
 
+    # ------------------------------------------------------------------ drops (manual posting)
+    @property
+    def drops_mode(self) -> bool:
+        return self.cfg.get("delivery", {}).get("mode") == "drops"
+
+    @property
+    def drop_times(self) -> list[str]:
+        return self.cfg.get("delivery", {}).get("drop_times", ["17:00"])
+
+    def drop_due(self) -> None:
+        """Deliver one never-sent variant per drop time, shuffled, for the owner to post."""
+        lt = self.local(self.clock())
+        open_slots = sum(1 for hhmm in self.drop_times
+                         if lt.time() >= datetime.strptime(hhmm, "%H:%M").time())
+        done_today = sum(1 for v in self.state["variants"].values()
+                         if v.get("dropped_at") and self.local(parse(v["dropped_at"])).date() == lt.date())
+        while done_today < open_slots:
+            v = self.next_drop()
+            if not v:
+                return
+            self.deliver(v)
+            done_today += 1
+
+    def next_drop(self) -> dict | None:
+        """Shuffled, but spread out: never the same drawing back-to-back when avoidable, prefer a
+        different style than last time, and draw from the drawings with the most videos left so
+        one drawing's variants don't pile up at the end of the bank."""
+        pool = [v for v in self.state["variants"].values()
+                if v["status"] == "approved" and not v.get("dropped_at")]
+        if not pool:
+            return None
+        sent = [v for v in self.state["variants"].values() if v.get("dropped_at")]
+        last = max(sent, key=lambda v: v.get("drop_no", 0)) if sent else None
+        rng = random.Random(f"{self.local(self.clock()).date()}-{len(sent)}")
+        if last:
+            other = [v for v in pool if v["drawing"] != last["drawing"]]
+            pool = other or pool
+        left = {}
+        for v in pool:
+            left[v["drawing"]] = left.get(v["drawing"], 0) + 1
+        most = max(left.values())
+        pool = [v for v in pool if left[v["drawing"]] == most]
+        if last:
+            fresh_style = [v for v in pool if v["style"] != last["style"]]
+            pool = fresh_style or pool
+        pool.sort(key=lambda v: (v["drawing"], v["style"]))
+        return rng.choice(pool)
+
+    def deliver(self, v: dict) -> None:
+        n = max((x.get("drop_no", 0) for x in self.state["variants"].values()), default=0) + 1
+        subject = self.state["drawings"].get(v["drawing"], {}).get("subject") or "this piece"
+        where = self.cfg.get("delivery", {}).get("post_to", "TikTok \u00b7 Reels \u00b7 Shorts")
+        self.bot.send_video(self.owner, v["file_id"], caption=(
+            f"\U0001f3ac Drop #{n}: {subject} \u00b7 {STYLE_LABELS.get(v['style'], v['style'])}"
+            f" \u00b7 {v.get('seconds', '?')}s\nHook on video: \u201c{v.get('hook', '')}\u201d\n\n"
+            f"Post to: {where}\n\U0001f3b5 Add a trending sound when you post.\n"
+            "Caption is in the next message."))
+        self.say(v["caption"])
+        v["dropped_at"] = iso(self.clock())
+        v["drop_no"] = n
+        v["status"] = "posted"
+
     # ------------------------------------------------------------------ posting
     def post_due(self) -> None:
         t = self.clock()
@@ -239,7 +304,11 @@ class Runner:
                 note = f"\n\u26a0\ufe0f {res['note']}" if res.get("note") else ""
                 if res.get("note"):
                     v["posts"][platform]["note"] = res["note"]
-                self.say(f"\u2705 Posted to {name}: {STYLE_LABELS.get(v['style'], v['style'])} ({v['drawing']}){link}{note}")
+                verb = "\U0001f4e5 Sent to your" if res.get("caption_for_user") else "\u2705 Posted to"
+                self.say(f"{verb} {name}: {STYLE_LABELS.get(v['style'], v['style'])} ({v['drawing']}){link}{note}")
+                if res.get("caption_for_user"):
+                    self.say(v["caption"])
+                self.note_rotated_token(platform, client)
                 return
             except Exception as e:  # noqa: BLE001 - never lose a post slot to an API hiccup
                 error = str(e)[:300]
@@ -252,9 +321,24 @@ class Runner:
                                                **({"error": error} if error else {})}
         v["status"] = "posted"
 
+    def note_rotated_token(self, platform: str, client) -> None:
+        new = getattr(client, "rotated_refresh_token", None)
+        if new and self.state.get(f"{platform}_rotated_sent") != new[-6:]:
+            self.state[f"{platform}_rotated_sent"] = new[-6:]
+            self.say(f"\U0001f511 {PLATFORM_LABELS.get(platform, platform)} issued a new refresh token. "
+                     f"When convenient, replace the GitHub secret {platform.upper()}_REFRESH_TOKEN with:\n{new}")
+
     # ------------------------------------------------------------------ bank
+    def per_day(self, key: str) -> int:
+        if key == "drops":
+            return max(1, len(self.drop_times))
+        return max(1, self.cfg["platforms"][key].get("max_per_day", 1))
+
     def bank(self) -> dict[str, int]:
         """Approved (or still pending) videos not yet sent to each enabled platform."""
+        if self.drops_mode:
+            return {"drops": sum(1 for v in self.state["variants"].values()
+                                 if v["status"] in ("approved", "pending") and not v.get("dropped_at"))}
         out = {}
         for p, pc in self.cfg.get("platforms", {}).items():
             if pc.get("enabled"):
@@ -265,8 +349,8 @@ class Runner:
     def queue_text(self) -> str:
         lines = ["\U0001f3e6 Video bank"]
         for p, n in self.bank().items():
-            per_day = max(1, self.cfg["platforms"][p].get("max_per_day", 1))
-            lines.append(f"{PLATFORM_LABELS.get(p, p)}: {n} videos \u2248 {n // per_day} days")
+            label = "Drops" if p == "drops" else PLATFORM_LABELS.get(p, p)
+            lines.append(f"{label}: {n} videos \u2248 {n // self.per_day(p)} days")
         pending = sum(1 for v in self.state["variants"].values() if v["status"] == "pending")
         if pending:
             lines.append(f"({pending} still waiting for your OK are counted)")
@@ -282,9 +366,10 @@ class Runner:
             return
         short = []
         for p, n in self.bank().items():
-            days = n // max(1, self.cfg["platforms"][p].get("max_per_day", 1))
+            days = n // self.per_day(p)
             if days < low_at:
-                short.append(f"{PLATFORM_LABELS.get(p, p)}: {days} day(s) left")
+                label = "Drops" if p == "drops" else PLATFORM_LABELS.get(p, p)
+                short.append(f"{label}: {days} day(s) left ({n} videos)")
         if short:
             self.state["low_bank_warned"] = today
             self.say("\U0001faab Video bank is running low\n" + "\n".join(short) +
@@ -324,6 +409,10 @@ class Runner:
             f"Posted: {count('posted')}   Skipped: {count('skipped')}",
             f"Approval: {self.cfg['approval']['mode']} ({self.cfg['approval'].get('fallback_hours', 0)}h)",
         ]
+        if self.drops_mode:
+            lines.append(f"Drops: {len(self.drop_times)}/day at {', '.join(self.drop_times)} "
+                         f"(you post them; nothing is auto-posted)")
+            return "\n".join(lines)
         for p, pc in self.cfg.get("platforms", {}).items():
             if pc.get("enabled"):
                 lines.append(f"{PLATFORM_LABELS.get(p, p)}: {pc.get('max_per_day', 1)}/day at "
@@ -360,6 +449,10 @@ class Runner:
                     d["error"] = str(e)[:300]
                     self.say(f"⚠️ Couldn't process that video ({did}): {d['error']}")
                     continue
+                if mode == "auto":
+                    self.bank_album(did, d, out_dir, results)
+                    d["status"] = "rendered"
+                    continue
                 for r in results:
                     vid = new_id(self.state, "v")
                     created = self.clock()
@@ -389,6 +482,31 @@ class Runner:
                     uses[r["name"]] = uses.get(r["name"], 0) + 1
                 d["status"] = "rendered"
 
+    def bank_album(self, did: str, d: dict, out_dir: Path, results: list[dict]) -> None:
+        """Auto mode: send the drawing's variants as one album and add them straight to the bank."""
+        subject = d.get("subject") or "your drawing"
+        for start in range(0, len(results), 10):
+            chunk = results[start:start + 10]
+            if start == 0:
+                styles = ", ".join(STYLE_LABELS[r["name"]] for r in results)
+                bank_after = self.bank().get("drops", 0) + len(results) if self.drops_mode else None
+                tail = (f"\nBank: {bank_after} videos \u2248 {bank_after // self.per_day('drops')} days"
+                        if bank_after is not None else "")
+                caption = f"\U0001f3a8 {subject}: {len(results)} variants added ({styles}){tail}"
+            else:
+                caption = ""
+            msgs = self.bot.send_media_group(self.owner, [out_dir / r["file"] for r in chunk], caption)
+            for r, m in zip(chunk, msgs):
+                vid = new_id(self.state, "v")
+                self.state["variants"][vid] = {
+                    "drawing": did, "style": r["name"], "hook": r["hook"], "caption": r["caption"],
+                    "seconds": round(r["seconds"], 1), "file_id": m["video"]["file_id"],
+                    "message_id": m["message_id"], "created": iso(self.clock()), "deadline": None,
+                    "status": "approved", "decided_by": "auto", "decided_at": iso(self.clock()),
+                    "posts": {}}
+                uses = self.state["style_uses"]
+                uses[r["name"]] = uses.get(r["name"], 0) + 1
+
 
 def run(phase: str) -> None:
     raw = os.environ.get("TELEGRAM_BOT_TOKEN", "")
@@ -402,6 +520,12 @@ def run(phase: str) -> None:
     token = m.group(0)
     state, config = load_state(), load_config()
     runner = Runner(Bot(token), state, config, clients=make_clients(config))
+    if phase == "tiktok-connect":
+        try:
+            tiktok_connect(runner, config)
+        finally:
+            save_state(state)
+        return
     if phase == "check":
         try:
             check(runner)
@@ -434,7 +558,34 @@ def make_clients(config: dict) -> dict:
     if yt.get("enabled") and all(yt_env):
         from .youtube import YouTube
         clients["youtube"] = YouTube(*yt_env)
+    tt = config.get("platforms", {}).get("tiktok", {})
+    tt_env = [os.environ.get(k, "").strip() for k in ("TIKTOK_CLIENT_KEY", "TIKTOK_CLIENT_SECRET", "TIKTOK_REFRESH_TOKEN")]
+    if tt.get("enabled") and all(tt_env):
+        from .tiktok import TikTok
+        clients["tiktok"] = TikTok(*tt_env)
     return clients
+
+
+def tiktok_connect(runner: Runner, config: dict) -> None:
+    """Exchange the one-time code from tiktok-callback.html; send the refresh token privately."""
+    from .tiktok import exchange_code
+    code = os.environ.get("TIKTOK_AUTH_CODE", "").strip()
+    key, secret = os.environ.get("TIKTOK_CLIENT_KEY", ""), os.environ.get("TIKTOK_CLIENT_SECRET", "")
+    redirect = config.get("platforms", {}).get("tiktok", {}).get("redirect_uri", "")
+    if not (code and key.strip() and secret.strip()):
+        runner.say("\u26a0\ufe0f TikTok connect needs the code from the TikTok page plus the "
+                   "TIKTOK_CLIENT_KEY and TIKTOK_CLIENT_SECRET secrets.")
+        raise SystemExit("missing TikTok code or client secrets")
+    try:
+        tokens = exchange_code(key, secret, code, redirect)
+    except Exception as e:  # noqa: BLE001
+        runner.say(f"\u274c TikTok connect failed: {e}\nCodes expire after a few minutes: open the "
+                   "TikTok connect page again and use the new code right away.")
+        raise SystemExit(1) from None
+    runner.say("\u2705 TikTok connected. Last step: save this as the GitHub secret "
+               "TIKTOK_REFRESH_TOKEN (then delete this message):")
+    runner.say(tokens["refresh_token"])
+    print("TikTok connected; refresh token sent to the owner on Telegram (not printed here).")
 
 
 def check(runner: Runner) -> None:
@@ -476,6 +627,22 @@ def check(runner: Runner) -> None:
                 lines.append(f"\u2022 {vid['published'][:10]} {vid['title'][:40]!r}: {stats}")
         except Exception as e:  # noqa: BLE001
             lines.append(f"YouTube: \u274c {e}")
+    tt = runner.clients.get("tiktok")
+    if not tt:
+        lines.append("TikTok: not connected (needs TIKTOK_CLIENT_KEY, TIKTOK_CLIENT_SECRET, TIKTOK_REFRESH_TOKEN)")
+    else:
+        try:
+            me = tt.whoami()
+            lines.append(f"TikTok: \u2705 {me.get('display_name', '?')}")
+            try:
+                ci = tt.creator_info()
+                lines.append(f"\u2022 can post as: {', '.join(ci.get('privacy_level_options') or ['?'])}"
+                             f" \u00b7 max length {ci.get('max_video_post_duration_sec', '?')}s")
+            except Exception as e:  # noqa: BLE001
+                lines.append(f"\u2022 direct posting not available yet ({e}); inbox drafts still work")
+            runner.note_rotated_token("tiktok", tt)
+        except Exception as e:  # noqa: BLE001
+            lines.append(f"TikTok: \u274c {e}")
     text = "\n".join(lines)
     print(text)
     runner.say(text)

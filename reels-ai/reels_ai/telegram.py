@@ -62,6 +62,18 @@ class Bot:
         params["reply_markup"] = reply_markup
         return self._call("sendVideo", params)
 
+    def send_media_group(self, chat_id: int, videos: list[Path], caption: str = "") -> list[dict]:
+        """Send up to 10 videos as one album. Returns the sent messages (same order)."""
+        media, files = [], {}
+        for i, path in enumerate(videos[:10]):
+            item = {"type": "video", "media": f"attach://v{i}", "supports_streaming": True,
+                    "width": 720, "height": 1280}
+            if i == 0 and caption:
+                item["caption"] = caption[:1024]
+            media.append(item)
+            files[f"v{i}"] = path
+        return self._call("sendMediaGroup", {"chat_id": chat_id, "media": json.dumps(media)}, files=files)
+
     def edit_markup(self, chat_id: int, message_id: int, reply_markup: dict | None) -> None:
         try:
             self._call("editMessageReplyMarkup", {"chat_id": chat_id, "message_id": message_id,

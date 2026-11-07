@@ -8,10 +8,14 @@ on:
   workflow_dispatch:
     inputs:
       task:
-        description: "run = normal bot run; check = test social connections (posts nothing)"
+        description: "run = normal bot run; check = test social connections (posts nothing); tiktok-connect = finish TikTok sign-in"
         type: choice
-        options: [run, check]
+        options: [run, check, tiktok-connect]
         default: run
+      code:
+        description: "tiktok-connect only: the code shown on the TikTok connect page"
+        type: string
+        required: false
 
 permissions:
   contents: write
@@ -34,6 +38,9 @@ jobs:
       YT_CLIENT_ID: ${{ secrets.YT_CLIENT_ID }}
       YT_CLIENT_SECRET: ${{ secrets.YT_CLIENT_SECRET }}
       YT_REFRESH_TOKEN: ${{ secrets.YT_REFRESH_TOKEN }}
+      TIKTOK_CLIENT_KEY: ${{ secrets.TIKTOK_CLIENT_KEY }}
+      TIKTOK_CLIENT_SECRET: ${{ secrets.TIKTOK_CLIENT_SECRET }}
+      TIKTOK_REFRESH_TOKEN: ${{ secrets.TIKTOK_REFRESH_TOKEN }}
     steps:
       # Always start from the latest main, so "Re-run" never works from an outdated bot memory.
       - uses: actions/checkout@v5
@@ -48,10 +55,16 @@ jobs:
         if: inputs.task == 'check'
         run: python -m reels_ai bot --phase check
 
+      - name: Connect TikTok (one time)
+        if: inputs.task == 'tiktok-connect'
+        env:
+          TIKTOK_AUTH_CODE: ${{ inputs.code }}
+        run: python -m reels_ai bot --phase tiktok-connect
+
       # Fast path: stdlib only. Reads Telegram, handles taps, posts what's due.
       - name: Poll Telegram
         id: poll
-        if: inputs.task != 'check'
+        if: inputs.task != 'check' && inputs.task != 'tiktok-connect'
         run: python -m reels_ai bot --phase poll
 
       # Slow path, only when a new timelapse arrived.

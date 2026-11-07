@@ -44,6 +44,15 @@ Options: `--variants reveal_first ink_only` (pick some), `--seed 2` (different h
 
 Hooks, end cards and captions live in `reels_ai/hooks.py`; edit freely.
 
+## Drops feed (default)
+
+`config.toml` → `[delivery] mode = "drops"`, `[approval] mode = "auto"`, `per_drawing = 5`:
+send the bot timelapses; each becomes all 5 styles, delivered as one album and added to the bank.
+At each `drop_times` slot the bot sends one variant you haven't had yet, shuffled (never the same
+drawing back-to-back when avoidable, prefers a new style, spreads drawings evenly), with its caption,
+for you to post with a trending sound. Nothing is auto-posted. Switch `[delivery] mode = "platforms"`
+to use the per-platform schedules and API posting below.
+
 ## Telegram approval bot
 
 Runs hourly on GitHub Actions (`.github/workflows/reels-bot.yml`), free.

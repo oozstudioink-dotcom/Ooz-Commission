@@ -1,16 +1,26 @@
-# Ooz Reels bot settings. Edit on GitHub; changes apply on the next hourly run.
+# Ooz Reels bot settings. Edit on GitHub; changes apply on the next run.
+# The [platforms.*] sections are only used when [delivery] mode = "platforms".
 
 timezone = "America/New_York"   # used for post_times below
 
+[delivery]
+# "drops"    : one shuffled feed. At each drop time the bot sends you a variant you haven't had
+#              yet (never the same drawing twice in a row) to post yourself with a trending sound.
+#              Nothing is auto-posted.
+# "platforms": per-platform schedules below, with optional auto-posting (method = "api").
+mode = "drops"
+drop_times = ["17:00", "17:00"]      # same time twice = both videos at 5 PM
+post_to = "TikTok \u00b7 Instagram Reels \u00b7 YouTube Shorts"
+
 [approval]
-# "approve"        : nothing posts until you tap Post
-# "auto"           : posts without asking (you still get a copy)
-# "approve_or_auto": asks you; if you don't answer within fallback_hours, posts anyway
-mode = "approve_or_auto"
+# "approve"        : each variant waits for your Post / Skip tap
+# "auto"           : variants go straight into the bank (sent to you as one album per drawing)
+# "approve_or_auto": asks you; if you don't answer within fallback_hours, approves anyway
+mode = "auto"
 fallback_hours = 6
 
 [variants]
-per_drawing = 2                  # max variants made from each drawing
+per_drawing = 5                  # max variants made from each drawing (5 = every style)
 styles = ["reveal_first", "speedrun", "before_after", "detail_zoom", "ink_only"]
 
 # method = "manual": at post time the bot sends you the finished video + caption to upload
@@ -31,6 +41,16 @@ ig_user_id = "17841426631544131" # @oozstudioink
 share_to_feed = false            # false = Reels tab only, keeps the main grid clean
 max_per_day = 1
 post_times = ["19:00"]
+
+[platforms.tiktok]
+enabled = true
+method = "manual"                # switch to "api" once TikTok is connected and the check passes
+mode = "inbox"                   # "inbox": draft in your TikTok inbox (add a sound, tap post)
+                                 # "direct": post straight away (private until TikTok's app audit)
+privacy = "PUBLIC_TO_EVERYONE"
+redirect_uri = "https://oozstudioink-dotcom.github.io/Ooz-Commission/tiktok-callback.html"
+max_per_day = 1
+post_times = ["18:00"]
 
 [bank]
 warn_below_days = 3              # Telegram alert when the approved-video bank gets this low

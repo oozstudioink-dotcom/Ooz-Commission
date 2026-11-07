@@ -1,0 +1,90 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="robots" content="noindex">
+<title>Connect TikTok</title>
+<style>
+:root{--bg:#f7f6f3;--fg:#161616;--muted:#5d5d5d;--card:#fff;--line:#e2e0db;--accent:#111}
+@media (prefers-color-scheme:dark){:root{--bg:#141414;--fg:#ececec;--muted:#a3a3a3;--card:#1d1d1d;--line:#2c2c2c;--accent:#f2f2f2}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font:16px/1.55 system-ui,-apple-system,sans-serif}
+main{max-width:620px;margin:0 auto;padding:32px 16px 64px}
+h1{font-size:26px;margin:0 0 6px}
+.muted{color:var(--muted)}
+.card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:18px;margin:18px 0}
+label{display:block;font-weight:600;margin-bottom:6px}
+input,textarea{width:100%;font:15px ui-monospace,SFMono-Regular,Menlo,monospace;padding:10px 12px;border:1px solid var(--line);border-radius:8px;background:var(--bg);color:var(--fg)}
+textarea{min-height:96px;word-break:break-all;resize:vertical}
+button{margin-top:12px;font:600 15px system-ui,sans-serif;padding:10px 16px;border-radius:8px;border:0;background:var(--accent);color:var(--bg);cursor:pointer}
+ol{padding-left:20px} li{margin:6px 0}
+.hidden{display:none}
+.err{color:#c0392b}
+</style>
+</head>
+<body>
+<main>
+  <h1>Connect TikTok</h1>
+  <p class="muted">For the Ooz Reels Bot. This page never sends your code anywhere; it only shows it to you.</p>
+
+  <section id="start" class="card">
+    <label for="key">TikTok Client key</label>
+    <input id="key" autocomplete="off" spellcheck="false" placeholder="from developers.tiktok.com &rarr; your app">
+    <button id="go" type="button">Connect TikTok</button>
+    <p class="muted">You'll sign in to TikTok, approve, and come back here with a code.</p>
+  </section>
+
+  <section id="done" class="card hidden">
+    <label for="code">Your one-time code (expires in a few minutes)</label>
+    <textarea id="code" readonly></textarea>
+    <button id="copy" type="button">Copy code</button>
+    <ol>
+      <li>Open the bot's GitHub Actions page &rarr; <b>reels-bot</b> &rarr; <b>Run workflow</b>.</li>
+      <li>Set <b>task</b> to <b>tiktok-connect</b> and paste the code into <b>code</b>.</li>
+      <li>Click <b>Run workflow</b>. The bot sends your TikTok token to you on Telegram.</li>
+    </ol>
+  </section>
+
+  <p id="error" class="err hidden"></p>
+</main>
+<script>
+(function () {
+  var params = new URLSearchParams(location.search);
+  var redirect = location.origin + location.pathname;
+  var code = params.get("code");
+  var err = params.get("error_description") || params.get("error");
+  if (err) {
+    var e = document.getElementById("error");
+    e.textContent = "TikTok said: " + err;
+    e.classList.remove("hidden");
+  }
+  if (code) {
+    document.getElementById("start").classList.add("hidden");
+    document.getElementById("done").classList.remove("hidden");
+    document.getElementById("code").value = code;
+    history.replaceState(null, "", redirect);   // keep the code out of the address bar / history
+  }
+  document.getElementById("copy").onclick = function () {
+    var t = document.getElementById("code");
+    t.select();
+    var done = function () { document.getElementById("copy").textContent = "Copied"; };
+    if (navigator.clipboard) { navigator.clipboard.writeText(t.value).then(done, function () { document.execCommand("copy"); done(); }); }
+    else { document.execCommand("copy"); done(); }
+  };
+  document.getElementById("go").onclick = function () {
+    var key = document.getElementById("key").value.replace(/\s+/g, "");
+    if (!key) { return; }
+    var q = new URLSearchParams({
+      client_key: key,
+      scope: "user.info.basic,video.upload,video.publish",
+      response_type: "code",
+      redirect_uri: redirect,
+      state: "ooz"
+    });
+    location.href = "https://www.tiktok.com/v2/auth/authorize/?" + q.toString();
+  };
+})();
+</script>
+</body>
+</html>

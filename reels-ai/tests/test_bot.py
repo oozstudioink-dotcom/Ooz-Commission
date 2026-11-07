@@ -49,6 +49,14 @@ class FakeBot:
         self.markups[self.next_msg] = reply_markup
         return {"message_id": self.next_msg, "video": {"file_id": fid}}
 
+    def send_media_group(self, chat_id, videos, caption=""):
+        out = []
+        for i, v in enumerate(videos):
+            m = self.send_video(chat_id, v, caption=caption if i == 0 else "")
+            out.append(m)
+        self.sent.append(("album", chat_id, caption))
+        return out
+
     def edit_markup(self, chat_id, message_id, reply_markup):
         self.markups[message_id] = reply_markup
 
@@ -84,6 +92,16 @@ def fresh_state():
     return json.loads(json.dumps(EMPTY))
 
 
+def platforms_config():
+    """The per-platform schedule with approval buttons (the drops feed has its own tests)."""
+    cfg = load_config()
+    cfg["delivery"]["mode"] = "platforms"
+    cfg["approval"]["mode"] = "approve_or_auto"
+    cfg["variants"]["per_drawing"] = 2
+    cfg["platforms"]["tiktok"]["enabled"] = False
+    return cfg
+
+
 class FakeVariantsMixin:
     """Swap the heavy renderer for a stub so poll/approval logic tests run in milliseconds."""
 
@@ -113,7 +131,7 @@ class FakeVariantsMixin:
 class BotFlowTest(FakeVariantsMixin, unittest.TestCase):
     def setUp(self):
         os.environ.pop("TELEGRAM_OWNER_ID", None)
-        self.cfg = load_config()
+        self.cfg = platforms_config()
         self.cfg["timezone"] = "UTC"
         self.cfg["platforms"]["youtube"]["post_times"] = ["17:00"]
         self.cfg["platforms"]["instagram"]["enabled"] = False
@@ -226,6 +244,82 @@ class BotFlowTest(FakeVariantsMixin, unittest.TestCase):
         self.assertIn("20 MB", self.bot.texts()[-1])
 
 
+class DropsFeedTest(FakeVariantsMixin, unittest.TestCase):
+    """Default setup: auto-approve into a bank, shuffled manual drops, nothing auto-posted."""
+
+    def setUp(self):
+        os.environ.pop("TELEGRAM_OWNER_ID", None)
+        self.cfg = load_config()
+        self.cfg["timezone"] = "UTC"
+        self.clock = Clock(datetime(2026, 11, 7, 9, 0, tzinfo=timezone.utc))
+        self.bot, self.state = FakeBot(), fresh_state()
+        self.r = Runner(self.bot, self.state, self.cfg, clock=self.clock,
+                        clients={"instagram": FakeInstagram()})          # must stay unused
+        src = Path(tempfile.mkdtemp()) / "in.mp4"
+        src.write_bytes(b"raw")
+        self.bot.push(**msg(OWNER, text="hi"))
+        for i, name in enumerate(["Naruto", "Deku", "Goku"]):
+            fid = f"raw{i}"
+            self.bot.files[fid] = src
+            self.bot.push(**msg(OWNER, video={"file_id": fid, "file_unique_id": f"u{i}", "file_size": 1000},
+                                caption=name))
+        self.r.poll()
+        self.stub_render(self.r)
+
+    def drops(self):
+        return [p for k, _, p in self.bot.sent if k == "video" and p.startswith("\U0001f3ac Drop")]
+
+    def test_variants_land_in_bank_as_albums(self):
+        self.assertEqual(len(self.state["variants"]), 15)              # 3 drawings x 5 styles
+        self.assertTrue(all(v["status"] == "approved" for v in self.state["variants"].values()))
+        albums = [p for k, _, p in self.bot.sent if k == "album"]
+        self.assertEqual(len(albums), 3)
+        self.assertIn("5 variants added", albums[0])
+        self.assertFalse(any(m for m in self.bot.markups.values()))   # no approval buttons
+
+    def test_shuffled_drops_never_repeat_and_never_auto_post(self):
+        order = []
+        for day in range(8):
+            self.clock.t = datetime(2026, 11, 7, 20, 0, tzinfo=timezone.utc) + timedelta(days=day)
+            self.r.poll()
+            self.r.poll()                                             # extra runs never double-drop
+        dropped = sorted((v for v in self.state["variants"].values() if v.get("dropped_at")),
+                         key=lambda v: v["drop_no"])
+        self.assertEqual(len(dropped), 15)                            # 2/day until the bank is empty
+        ids = [(v["drawing"], v["style"]) for v in dropped]
+        self.assertEqual(len(set(ids)), 15)                           # never the same variant twice
+        self.assertTrue(all(a[0] != b[0] for a, b in zip(ids, ids[1:])), ids)   # no drawing back-to-back
+        self.assertEqual(len(self.drops()), 15)
+        self.assertIn("trending sound", self.drops()[0])
+        self.assertEqual(self.r.clients["instagram"].posted, [])      # nothing auto-posted
+        self.assertTrue(any("running low" in t for t in self.bot.texts()))
+
+    def test_both_drops_at_once(self):
+        self.cfg["delivery"]["drop_times"] = ["17:00", "17:00"]
+        self.clock.t = datetime(2026, 11, 7, 16, 59, tzinfo=timezone.utc)
+        self.r.poll()
+        self.assertEqual(len(self.drops()), 0)
+        self.clock.t = self.clock.t.replace(hour=17, minute=1)
+        self.r.poll()
+        self.r.poll()
+        self.assertEqual(len(self.drops()), 2)
+
+    def test_drop_times(self):
+        self.cfg["delivery"]["drop_times"] = ["17:00", "19:00"]
+        self.clock.t = datetime(2026, 11, 7, 16, 59, tzinfo=timezone.utc)
+        self.r.poll()
+        self.assertEqual(len(self.drops()), 0)
+        self.clock.t = self.clock.t.replace(hour=17, minute=1)
+        self.r.poll()
+        self.assertEqual(len(self.drops()), 1)
+        self.clock.t = self.clock.t.replace(hour=23)
+        self.r.poll()
+        self.assertEqual(len(self.drops()), 2)
+        self.bot.push(**msg(OWNER, text="/queue"))
+        self.r.poll()
+        self.assertTrue(any("Drops: 13 videos" in t for t in self.bot.texts()))
+
+
 @unittest.skipUnless(os.environ.get("REELS_TEST_VIDEO"), "set REELS_TEST_VIDEO to run a real render")
 class RealRenderTest(unittest.TestCase):
     def test_real_render(self):
@@ -264,7 +358,7 @@ class FakeInstagram:
 
 class InstagramPostingTest(FakeVariantsMixin, unittest.TestCase):
     def make(self, ig):
-        cfg = load_config()
+        cfg = platforms_config()
         cfg["timezone"] = "UTC"
         cfg["platforms"]["youtube"]["enabled"] = False
         cfg["platforms"]["instagram"].update(method="api", post_times=["19:00"])
@@ -491,3 +585,89 @@ class YouTubeClientTest(unittest.TestCase):
         t = shorts_title("x" * 200, "Naruto")
         self.assertEqual(len(t), 100)
         self.assertTrue(t.endswith("| Naruto manga inking #Shorts"))
+
+
+class TikTokClientTest(unittest.TestCase):
+    """The real TikTok client against a local fake of TikTok's endpoints."""
+
+    def setUp(self):
+        import threading
+        from http.server import BaseHTTPRequestHandler, HTTPServer
+        from urllib.parse import parse_qs, urlparse
+
+        self.calls = calls = []
+
+        class H(BaseHTTPRequestHandler):
+            def log_message(self, *a):
+                pass
+
+            def _send(self, obj):
+                body = json.dumps(obj).encode()
+                self.send_response(200)
+                self.send_header("Content-Type", "application/json")
+                self.end_headers()
+                self.wfile.write(body)
+
+            def _body(self):
+                return self.rfile.read(int(self.headers.get("Content-Length", 0)))
+
+            def do_POST(self):
+                u, body = urlparse(self.path), self._body()
+                if u.path == "/v2/oauth/token/":
+                    q = parse_qs(body.decode())
+                    calls.append(("TOKEN", q["grant_type"][0], q.get("refresh_token", q.get("code"))[0]))
+                    return self._send({"access_token": "act", "refresh_token": "rft-NEW", "open_id": "o1"})
+                j = json.loads(body or b"{}")
+                calls.append(("POST", u.path, j, self.headers["Authorization"]))
+                ok = {"error": {"code": "ok", "message": ""}}
+                up = f"http://127.0.0.1:{srv.server_port}/up/1"
+                if u.path.endswith("/inbox/video/init/") or u.path.endswith("/post/publish/video/init/"):
+                    return self._send({"data": {"publish_id": "p1", "upload_url": up}, **ok})
+                if u.path.endswith("/creator_info/query/"):
+                    return self._send({"data": {"privacy_level_options": ["SELF_ONLY"]}, **ok})
+                if u.path.endswith("/status/fetch/"):
+                    return self._send({"data": {"status": "SEND_TO_USER_INBOX"}, **ok})
+                self._send({"error": {"code": "not_found", "message": u.path}})
+
+            def do_PUT(self):
+                body = self._body()
+                calls.append(("PUT", self.path, len(body), self.headers["Content-Range"]))
+                self.send_response(201)
+                self.end_headers()
+
+        srv = HTTPServer(("127.0.0.1", 0), H)
+        threading.Thread(target=srv.serve_forever, daemon=True).start()
+        self.addCleanup(srv.shutdown)
+        os.environ["NO_PROXY"] = os.environ["no_proxy"] = "127.0.0.1"
+        from reels_ai.tiktok import TikTok
+        self.tt = TikTok(" key ", "sec\n", " rft-OLD ")
+        self.tt.api = f"http://127.0.0.1:{srv.server_port}"
+        self.vid = Path(tempfile.mkdtemp()) / "v.mp4"
+        self.vid.write_bytes(b"x" * 777)
+
+    def test_inbox_draft_flow(self):
+        res = self.tt.publish(self.vid, {"caption": "Inking #manga"}, {"mode": "inbox"})
+        self.assertEqual(res["id"], "p1")
+        self.assertTrue(res["caption_for_user"])
+        self.assertEqual(self.calls[0], ("TOKEN", "refresh_token", "rft-OLD"))
+        init = self.calls[1]
+        self.assertEqual(init[1], "/v2/post/publish/inbox/video/init/")
+        self.assertEqual(init[2]["source_info"], {"source": "FILE_UPLOAD", "video_size": 777,
+                                                  "chunk_size": 777, "total_chunk_count": 1})
+        self.assertEqual(init[3], "Bearer act")
+        self.assertEqual(self.calls[2], ("PUT", "/up/1", 777, "bytes 0-776/777"))
+        self.assertEqual(self.tt.rotated_refresh_token, "rft-NEW")
+
+    def test_direct_post_falls_back_to_allowed_privacy(self):
+        self.tt.wait = lambda pid: {"status": "PUBLISH_COMPLETE"}
+        res = self.tt.publish(self.vid, {"caption": "c"}, {"mode": "direct", "privacy": "PUBLIC_TO_EVERYONE"})
+        init = [c for c in self.calls if c[0] == "POST" and c[1] == "/v2/post/publish/video/init/"][0]
+        self.assertEqual(init[2]["post_info"]["privacy_level"], "SELF_ONLY")
+        self.assertIn("private", res["note"])
+
+    def test_authorize_url(self):
+        from reels_ai.tiktok import authorize_url
+        u = authorize_url(" ck ", "https://x.github.io/cb.html")
+        self.assertIn("client_key=ck", u)
+        self.assertIn("redirect_uri=https%3A%2F%2Fx.github.io%2Fcb.html", u)
+        self.assertIn("scope=user.info.basic%2Cvideo.upload%2Cvideo.publish", u)
