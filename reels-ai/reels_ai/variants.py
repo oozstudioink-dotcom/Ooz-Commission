@@ -154,14 +154,15 @@ def detail_zoom(a: Analysis, rng, subject) -> Plan:
     p = Plan("detail_zoom", "Punches in on the most detailed area (usually the face) while it is "
              "being inked, then pulls back for the full reveal.", "clean")
     x, y, w, h = a.detail_box
-    cx, cy = x + w / 2, y + h / 2
+    cx, cy = fx.to_view(x + w / 2, y + h / 2, a.focus)
+    dz = max(1.2, min(1.8, 2.0 / a.focus[2]))     # total zoom (focus x detail) stays <= ~2x
     p.shots += shots(ramp(a, a.draw_start, a.ink_start, 2.0))
     ink = ramp(a, a.ink_start, a.ink_end, 8.5, focus=a.peak_idx, slow=2.0)
     max_zoom_frames = int(len(ink) * 0.45)
     zoomed = 0
     z = 1.0
     for i in ink:
-        want = 1.8 if (a.detail_start <= i <= a.detail_end and zoomed < max_zoom_frames) else 1.0
+        want = dz if (a.detail_start <= i <= a.detail_end and zoomed < max_zoom_frames) else 1.0
         zoomed += want > 1
         z += (want - z) * 0.12                      # smooth camera
         p.shots.append(Shot(i, (cx, cy, z)))
@@ -202,7 +203,8 @@ def build(a: Analysis, names: list[str], seed: int, subject: str | None) -> list
 
 
 # ---------------------------------------------------------------- render
-def render(plan: Plan, store: FrameStore, out: Path, audio: Path | None = None) -> Path:
+def render(plan: Plan, store: FrameStore, out: Path, audio: Path | None = None,
+           focus: tuple[float, float, float] = (0.5, 0.5, 1.0)) -> Path:
     w, h = store.width, store.height
     enc = Encoder(out, w, h, audio)
     graded: dict[int, np.ndarray] = {}
@@ -221,6 +223,7 @@ def render(plan: Plan, store: FrameStore, out: Path, audio: Path | None = None) 
             img = frame(s.idx)
             if s.wipe is not None and s.alt is not None:
                 img = fx.wipe(img, frame(s.alt), s.wipe)
+            img = fx.camera(img, *focus)            # frame this clip's drawing
             img = fx.camera(img, *s.cam)
             for card in plan.texts:
                 if card.start <= t < card.end:

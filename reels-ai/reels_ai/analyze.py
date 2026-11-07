@@ -7,6 +7,8 @@ Beats found:
   peak_idx     the moment the most ink goes down fastest (usually a solid black fill)
   reveal_idx   cleanest view of the finished piece
   detail_box   the most line-dense area (usually the face) plus when it gets inked
+  focus        where this clip's drawing is on the page (cx, cy, zoom). One page often holds
+               several finished drawings; variants are framed on the new one.
 
 Key trick: anything that is ink in the finished frame stays ink. So for every ink pixel we
 find the last moment it was still blank paper (ignoring moments the hand covered it). That
@@ -38,6 +40,7 @@ class Analysis:
     peak_idx: int
     reveal_idx: int
     detail_box: tuple[float, float, float, float]   # x, y, w, h as fractions of the frame
+    focus: tuple[float, float, float]                # cx, cy, zoom of the framing crop
     detail_start: int
     detail_end: int
     hand_score: list[float]
@@ -142,13 +145,21 @@ def analyze(store: FrameStore) -> Analysis:
             return np.linspace(0, 1, nw)
         return np.array([(vals <= w).mean() for w in range(nw)])
 
-    ink_prog = progress(ink_t, ink_map)
-    mark_prog = progress(mark_t, mark_map & ~ink_map)
+    # Pixels never seen as blank paper (t == 0) were already drawn when the clip starts, or
+    # hidden under the hand until then. We don't know when they were inked, so they say nothing
+    # about this clip's timing: leave them out (unless that leaves almost nothing).
+    def observed(t: np.ndarray, mask: np.ndarray) -> np.ndarray:
+        seen = mask & (t > 0)
+        return seen if seen.sum() > 0.15 * max(1, mask.sum()) else mask
+
+    ink_obs = observed(ink_t, ink_map)
+    ink_prog = progress(ink_t, ink_obs)
+    mark_prog = progress(mark_t, observed(mark_t, mark_map & ~ink_map))
 
     def to_frame(w: int) -> int:
         return int(min(n - 1, max(0, w * win)))
 
-    ink_start = to_frame(_first_crossing(ink_prog, 0.04))
+    ink_start = to_frame(_first_crossing(ink_prog, 0.015))
     ink_end = to_frame(_first_crossing(ink_prog, 0.97))
     draw_start = to_frame(max(0, _first_crossing(mark_prog, 0.005) - 1))
     if ink_end <= ink_start:
@@ -163,9 +174,27 @@ def analyze(store: FrameStore) -> Analysis:
     hi = min(n - 1, ink_start + FPS // 3)
     sketch_idx = int(lo + np.argmin(hand_score[lo:hi + 1])) if hi > lo else ink_start
 
-    # --- detail box: densest line work for a 2.2x punch-in ---------------------------
-    lines = ink_map.astype(np.uint8) - cv2.erode(ink_map.astype(np.uint8), np.ones((3, 3), np.uint8))
-    bw, bh = int(AW / 2.2), int(ah / 2.2)
+    # --- focus: frame the drawing made in THIS clip, not older ones on the same page ---
+    mark_obs = observed(mark_t, mark_map & ~ink_map)
+    new_work = ink_obs | mark_obs
+    focus = (0.5, 0.5, 1.0)
+    if new_work.sum() > 200:
+        ys, xs = np.nonzero(new_work)
+        x0, x1 = np.percentile(xs, [1, 99])
+        y0, y1 = np.percentile(ys, [1, 99])
+        fw, fh = (x1 - x0) * 1.25 + AW * 0.04, (y1 - y0) * 1.2 + ah * 0.04   # breathing room
+        if fw / fh < AW / ah:
+            fw = fh * AW / ah
+        else:
+            fh = fw * ah / AW
+        zoom = min(AW / fw, ah / fh, 1.8)       # cap: source resolution limits how far we crop
+        if zoom >= 1.12:
+            focus = (float((x0 + x1) / 2 / AW), float((y0 + y1) / 2 / ah), float(zoom))
+    fzoom = focus[2]
+
+    # --- detail box: densest NEW line work for a punch-in (sized relative to the focus view) ---
+    lines = ink_obs.astype(np.uint8) - cv2.erode(ink_obs.astype(np.uint8), np.ones((3, 3), np.uint8))
+    bw, bh = int(AW / fzoom / 2.2), int(ah / fzoom / 2.2)
     density = cv2.boxFilter(lines.astype(np.float32), -1, (bw, bh), normalize=False,
                             borderType=cv2.BORDER_CONSTANT)
     # keep the whole box on screen
@@ -175,7 +204,7 @@ def analyze(store: FrameStore) -> Analysis:
     box = (cx - bw // 2, cy - bh // 2, bw, bh)
     box_mask = np.zeros_like(ink_map)
     box_mask[box[1]:box[1] + bh, box[0]:box[0] + bw] = True
-    box_prog = progress(ink_t, ink_map & box_mask)
+    box_prog = progress(ink_t, observed(ink_t, ink_map & box_mask))
     detail_start = to_frame(_first_crossing(box_prog, 0.10))
     detail_end = to_frame(_first_crossing(box_prog, 0.90))
 
@@ -188,7 +217,7 @@ def analyze(store: FrameStore) -> Analysis:
         n_frames=n, fps=FPS, width=store.width, height=store.height,
         draw_start=draw_start, sketch_idx=sketch_idx, ink_start=ink_start, ink_end=ink_end,
         peak_idx=peak_idx, reveal_idx=reveal_idx,
-        detail_box=(box[0] / AW, box[1] / ah, bw / AW, bh / ah),
+        detail_box=(box[0] / AW, box[1] / ah, bw / AW, bh / ah), focus=focus,
         detail_start=detail_start, detail_end=max(detail_end, detail_start + FPS),
         hand_score=hand_score.round(4).tolist(), ink_progress=ink_prog.round(4).tolist(),
         window_frames=win, usable=usable.tolist(),

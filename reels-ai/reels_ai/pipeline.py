@@ -91,7 +91,7 @@ def make_variants(src: Path, out_root: Path, names: list[str] | None = None, see
     results = []
     for plan in plans:
         dst = out_dir / "variants" / f"{plan.name}.mp4"
-        render(plan, store, dst, audio)
+        render(plan, store, dst, audio, a.focus)
         _thumb(dst, 0.02, out_dir / "thumbs" / f"{plan.name}.jpg")
         if sheets:
             _contact_sheet(dst, out_dir / "thumbs" / f"{plan.name}_sheet.jpg")

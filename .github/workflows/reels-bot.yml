@@ -25,7 +25,10 @@ jobs:
       TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
       TELEGRAM_OWNER_ID: ${{ secrets.TELEGRAM_OWNER_ID }}
     steps:
+      # Always start from the latest main, so "Re-run" never works from an outdated bot memory.
       - uses: actions/checkout@v5
+        with:
+          ref: ${{ github.event.repository.default_branch }}
 
       - uses: actions/setup-python@v6
         with:
@@ -55,8 +58,14 @@ jobs:
           git config user.email "ooz-reels-bot@users.noreply.github.com"
           [ -f state/state.json ] || exit 0
           git add state/state.json
-          if ! git diff --cached --quiet; then
-            git commit -q -m "reels-bot: update state"
-            git pull -q --rebase
-            git push -q
-          fi
+          git diff --cached --quiet && exit 0
+          git commit -q -m "reels-bot: update state"
+          # If main moved while we ran, keep this run's state (it is the newest).
+          for i in 1 2 3; do
+            git fetch -q origin "${{ github.event.repository.default_branch }}" &&
+              git rebase -q -X theirs FETCH_HEAD &&
+              git push -q origin HEAD:"${{ github.event.repository.default_branch }}" && exit 0
+            git rebase --abort 2>/dev/null || true
+            sleep $((i * 3))
+          done
+          echo "::error::Could not save bot state"; exit 1
