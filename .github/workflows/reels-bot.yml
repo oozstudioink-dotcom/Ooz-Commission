@@ -6,6 +6,12 @@ on:
   schedule:
     - cron: "23 * * * *"
   workflow_dispatch:
+    inputs:
+      task:
+        description: "run = normal bot run; check = test social connections (posts nothing)"
+        type: choice
+        options: [run, check]
+        default: run
 
 permissions:
   contents: write
@@ -24,6 +30,7 @@ jobs:
     env:
       TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
       TELEGRAM_OWNER_ID: ${{ secrets.TELEGRAM_OWNER_ID }}
+      IG_ACCESS_TOKEN: ${{ secrets.IG_ACCESS_TOKEN }}
     steps:
       # Always start from the latest main, so "Re-run" never works from an outdated bot memory.
       - uses: actions/checkout@v5
@@ -34,9 +41,14 @@ jobs:
         with:
           python-version: "3.12"
 
+      - name: Check social connections (posts nothing)
+        if: inputs.task == 'check'
+        run: python -m reels_ai bot --phase check
+
       # Fast path: stdlib only. Reads Telegram, handles taps, posts what's due.
       - name: Poll Telegram
         id: poll
+        if: inputs.task != 'check'
         run: python -m reels_ai bot --phase poll
 
       # Slow path, only when a new timelapse arrived.

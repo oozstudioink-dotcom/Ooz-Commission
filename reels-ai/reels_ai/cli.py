@@ -38,7 +38,8 @@ def main() -> None:
     m.add_argument("--keep-work", action="store_true")
     m.set_defaults(func=make)
     b = sub.add_parser("bot", help="one run of the Telegram approval bot")
-    b.add_argument("--phase", choices=["poll", "render", "all"], default="all")
+    b.add_argument("--phase", choices=["poll", "render", "all", "check"], default="all",
+                   help="check = read-only connection test of the social accounts")
     b.set_defaults(func=bot)
     args = ap.parse_args()
     args.func(args)

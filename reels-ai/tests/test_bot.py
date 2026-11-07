@@ -241,3 +241,140 @@ class RealRenderTest(unittest.TestCase):
             self.assertEqual(v["status"], "pending")
             self.assertIsNotNone(v["deadline"])
         print([(v["style"], v["seconds"], v["hook"]) for v in state["variants"].values()])
+
+
+class FakeInstagram:
+    def __init__(self, fail=False):
+        self.fail, self.posted, self.asked = fail, [], []
+
+    def publish_reel(self, video, caption, share_to_feed=False):
+        assert Path(video).exists()
+        if self.fail:
+            raise RuntimeError("boom")
+        self.posted.append((caption, share_to_feed))
+        return {"id": f"m{len(self.posted)}", "permalink": "https://instagram.com/reel/x"}
+
+    def insights(self, media_id):
+        self.asked.append(media_id)
+        return {"views": 123, "shares": 4}
+
+
+class InstagramPostingTest(FakeVariantsMixin, unittest.TestCase):
+    def make(self, ig):
+        cfg = load_config()
+        cfg["timezone"] = "UTC"
+        cfg["platforms"]["youtube"]["enabled"] = False
+        cfg["platforms"]["instagram"].update(method="api", post_times=["19:00"])
+        clock = Clock(datetime(2026, 11, 7, 9, 0, tzinfo=timezone.utc))
+        bot, state = FakeBot(), fresh_state()
+        r = Runner(bot, state, cfg, clock=clock, clients={"instagram": ig})
+        src = Path(tempfile.mkdtemp()) / "in.mp4"
+        src.write_bytes(b"raw")
+        bot.files["raw1"] = src
+        bot.push(**msg(OWNER, text="hi"))
+        bot.push(**msg(OWNER, video={"file_id": "raw1", "file_size": 1000}, caption="Naruto"))
+        r.poll()
+        self.stub_render(r)
+        for vid in list(state["variants"]):
+            bot.push(**tap(f"ok:{vid}"))
+        r.poll()
+        clock.t = clock.t.replace(hour=19, minute=5)
+        return r, bot, state, clock
+
+    def test_api_post_publishes_and_collects_stats(self):
+        ig = FakeInstagram()
+        r, bot, state, clock = self.make(ig)
+        r.poll()
+        self.assertEqual(len(ig.posted), 1)
+        self.assertFalse(ig.posted[0][1])                         # Reels tab only
+        posted = [v for v in state["variants"].values() if v["status"] == "posted"]
+        self.assertEqual(posted[0]["posts"]["instagram"]["id"], "m1")
+        self.assertTrue(any("Posted to Instagram" in t for t in bot.texts()))
+        clock.t += timedelta(hours=7)
+        r.poll()
+        self.assertIn("m1", ig.asked)
+        self.assertEqual(posted[0]["posts"]["instagram"]["stats"]["views"], 123)
+
+    def test_api_failure_falls_back_to_manual(self):
+        r, bot, state, clock = self.make(FakeInstagram(fail=True))
+        r.poll()
+        v = [v for v in state["variants"].values() if v["status"] == "posted"][0]
+        self.assertEqual(v["posts"]["instagram"]["method"], "manual")
+        self.assertIn("boom", v["posts"]["instagram"]["error"])
+        self.assertTrue(any(k == "video" and "Auto-post to Instagram Reels failed" in p for k, _, p in bot.sent))
+
+    def test_queue_and_low_bank_alert(self):
+        r, bot, state, clock = self.make(FakeInstagram())
+        bot.push(**msg(OWNER, text="/queue"))
+        r.poll()                                                  # posts 1 of 2 -> 1 left
+        self.assertTrue(any("Video bank" in t and "Instagram" in t for t in bot.texts()))
+        self.assertTrue(any("running low" in t for t in bot.texts()))
+        n = sum("running low" in t for t in bot.texts())
+        r.poll()
+        self.assertEqual(sum("running low" in t for t in bot.texts()), n)   # once per day
+
+
+class InstagramClientTest(unittest.TestCase):
+    """The real client against a local fake of Meta's endpoints (resumable upload flow)."""
+
+    def test_publish_reel_flow(self):
+        import threading
+        from http.server import BaseHTTPRequestHandler, HTTPServer
+        from urllib.parse import parse_qs, urlparse
+
+        import reels_ai.instagram as igmod
+
+        calls = []
+
+        class H(BaseHTTPRequestHandler):
+            def log_message(self, *a):
+                pass
+
+            def _send(self, obj, code=200):
+                body = json.dumps(obj).encode()
+                self.send_response(code)
+                self.send_header("Content-Type", "application/json")
+                self.end_headers()
+                self.wfile.write(body)
+
+            def do_GET(self):
+                u = urlparse(self.path)
+                calls.append(("GET", u.path, parse_qs(u.query)))
+                if u.path == "/c1":
+                    self._send({"status_code": "FINISHED"})
+                elif u.path == "/m9":
+                    self._send({"permalink": "https://instagram.com/reel/abc"})
+                else:
+                    self._send({"error": {"message": "nope", "code": 100}}, 400)
+
+            def do_POST(self):
+                n = int(self.headers.get("Content-Length", 0))
+                body = self.rfile.read(n)
+                u = urlparse(self.path)
+                if u.path == "/upload/c1":
+                    calls.append(("UPLOAD", self.headers["Authorization"], self.headers["file_size"], len(body)))
+                    return self._send({"success": True})
+                q = parse_qs(body.decode())
+                calls.append(("POST", u.path, q))
+                if u.path == "/123/media":
+                    self._send({"id": "c1", "uri": f"http://127.0.0.1:{srv.server_port}/upload/c1"})
+                elif u.path == "/123/media_publish":
+                    self._send({"id": "m9"})
+
+        srv = HTTPServer(("127.0.0.1", 0), H)
+        threading.Thread(target=srv.serve_forever, daemon=True).start()
+        os.environ["NO_PROXY"] = os.environ["no_proxy"] = "127.0.0.1"
+        ig = igmod.Instagram(" EAAtoken\n", "123")
+        ig.host = f"http://127.0.0.1:{srv.server_port}"
+        vid = Path(tempfile.mkdtemp()) / "v.mp4"
+        vid.write_bytes(b"x" * 5000)
+        res = ig.publish_reel(vid, "Caption ✍\U0001f3fe #manga")
+        srv.shutdown()
+        self.assertEqual(res, {"id": "m9", "permalink": "https://instagram.com/reel/abc"})
+        create = calls[0][2]
+        self.assertEqual(create["media_type"], ["REELS"])
+        self.assertEqual(create["upload_type"], ["resumable"])
+        self.assertEqual(create["share_to_feed"], ["false"])
+        self.assertEqual(create["access_token"], ["EAAtoken"])   # whitespace stripped
+        self.assertEqual(calls[1], ("UPLOAD", "OAuth EAAtoken", "5000", 5000))
+        self.assertEqual(calls[-2][1], "/123/media_publish")
