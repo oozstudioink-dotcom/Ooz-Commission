@@ -50,14 +50,14 @@ END_CARDS = [
 ]
 
 CAPTIONS = [
-    "Inking {subject_or_this} by hand ✍️ Who should I draw next?",
+    "Inking {subject_or_this} by hand ✍\U0001f3fe Who should I draw next? \U0001f447\U0001f3fe",
     "Pencil to ink, start to finish. Which stage do you like more?",
-    "Brush pen on paper, no tablet. Drop a character for the next one \U0001f447",
+    "Brush pen on paper, no tablet. Drop a character for the next one \U0001f447\U0001f3fe",
     "The ink stage never gets old. Save this for inking reference.",
 ]
 
 BASE_TAGS = ["#mangaart", "#inking", "#animeart", "#timelapse", "#drawing", "#mangadrawing",
-             "#ink", "#traditionalart", "#fanart", "#artprocess"]
+             "#ink", "#traditionalart", "#fanart", "#artprocess", "#mangaka", "#drawingprocess"]
 
 
 def _fill(tpl: str, subject: str | None, secs: int) -> str | None:
