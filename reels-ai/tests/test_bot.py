@@ -294,7 +294,18 @@ class DropsFeedTest(FakeVariantsMixin, unittest.TestCase):
         self.assertEqual(self.r.clients["instagram"].posted, [])      # nothing auto-posted
         self.assertTrue(any("running low" in t for t in self.bot.texts()))
 
+    def test_both_drops_at_once(self):
+        self.cfg["delivery"]["drop_times"] = ["17:00", "17:00"]
+        self.clock.t = datetime(2026, 11, 7, 16, 59, tzinfo=timezone.utc)
+        self.r.poll()
+        self.assertEqual(len(self.drops()), 0)
+        self.clock.t = self.clock.t.replace(hour=17, minute=1)
+        self.r.poll()
+        self.r.poll()
+        self.assertEqual(len(self.drops()), 2)
+
     def test_drop_times(self):
+        self.cfg["delivery"]["drop_times"] = ["17:00", "19:00"]
         self.clock.t = datetime(2026, 11, 7, 16, 59, tzinfo=timezone.utc)
         self.r.poll()
         self.assertEqual(len(self.drops()), 0)
