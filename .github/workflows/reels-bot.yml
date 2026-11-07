@@ -1,0 +1,62 @@
+# Runs the Ooz Reels approval bot once an hour (and on demand from the Actions tab).
+# Needs repo secret TELEGRAM_BOT_TOKEN. Optional: TELEGRAM_OWNER_ID to pin the owner chat.
+name: reels-bot
+
+on:
+  schedule:
+    - cron: "23 * * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: reels-bot
+  cancel-in-progress: false
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    defaults:
+      run:
+        working-directory: reels-ai
+    env:
+      TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+      TELEGRAM_OWNER_ID: ${{ secrets.TELEGRAM_OWNER_ID }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      # Fast path: stdlib only. Reads Telegram, handles taps, posts what's due.
+      - name: Poll Telegram
+        id: poll
+        run: python -m reels_ai bot --phase poll
+
+      # Slow path, only when a new timelapse arrived.
+      - name: Install video tools
+        if: steps.poll.outputs.render == 'true'
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq --no-install-recommends ffmpeg fonts-inter
+          pip install -q -r requirements.txt
+
+      - name: Render variants and send for approval
+        if: steps.poll.outputs.render == 'true'
+        run: python -m reels_ai bot --phase render
+
+      - name: Save bot state
+        if: always()
+        run: |
+          git config user.name "ooz-reels-bot"
+          git config user.email "ooz-reels-bot@users.noreply.github.com"
+          [ -f state/state.json ] || exit 0
+          git add state/state.json
+          if ! git diff --cached --quiet; then
+            git commit -q -m "reels-bot: update state"
+            git pull -q --rebase
+            git push -q
+          fi
