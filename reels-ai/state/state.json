@@ -1,10 +1,48 @@
 {
   "awaiting_caption": null,
-  "drawings": {},
-  "next_id": 1,
+  "drawings": {
+    "d1": {
+      "file_id": "BAACAgEAAxkBAAMQau6N-POTh63SJR5cn0CGi8WCycsAAhkJAAKFAnlHrL7iYgUCS8U9BA",
+      "received": "2026-11-07T02:33:52+00:00",
+      "status": "rendered",
+      "subject": "Shinobi Undercover Manga",
+      "unique_id": "AgADGQkAAoUCeUc"
+    }
+  },
+  "next_id": 4,
   "owner_chat_id": 5745191999,
   "paused": false,
-  "style_uses": {},
-  "update_offset": 116973144,
-  "variants": {}
+  "style_uses": {
+    "before_after": 1,
+    "speedrun": 1
+  },
+  "update_offset": 116973148,
+  "variants": {
+    "v2": {
+      "caption": "Brush pen on paper, no tablet. Drop a character for the next one 👇🏾\n\n#timelapse #mangaart #ink #shinobiundercovermanga #shinobiundercovermangafanart #drawing #fanart #mangadrawing #animeart #artprocess",
+      "created": "2026-11-07T02:34:50+00:00",
+      "deadline": "2026-11-07T08:34:50+00:00",
+      "drawing": "d1",
+      "file_id": "BAACAgEAAxkDAAMSau6OTW-M9ZEvMBBWvFeQ5JqW83cAAhoJAAKFAnlHz83y4yBlHE89BA",
+      "hook": "Before / after inking",
+      "message_id": 18,
+      "posts": {},
+      "seconds": 10.6,
+      "status": "pending",
+      "style": "before_after"
+    },
+    "v3": {
+      "caption": "Inking Shinobi Undercover Manga by hand ✍🏾 Who should I draw next? 👇🏾\n\n#artprocess #shinobiundercovermanga #timelapse #shinobiundercovermangafanart #inking #ink #mangaart #fanart #mangaka #drawing",
+      "created": "2026-11-07T02:34:53+00:00",
+      "deadline": "2026-11-07T08:34:53+00:00",
+      "drawing": "d1",
+      "file_id": "BAACAgEAAxkDAAMTau6OTtVu9bEhz83Dtm7cfrZTzIQAAhsJAAKFAnlHpxyqFZssyeM9BA",
+      "hook": "Sketch → ink in 9 seconds",
+      "message_id": 19,
+      "posts": {},
+      "seconds": 8.7,
+      "status": "pending",
+      "style": "speedrun"
+    }
+  }
 }
