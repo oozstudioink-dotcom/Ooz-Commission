@@ -45,6 +45,17 @@ def camera(img: np.ndarray, cx: float, cy: float, zoom: float) -> np.ndarray:
     return cv2.warpAffine(img, m, (w, h), flags=cv2.INTER_CUBIC, borderMode=cv2.BORDER_REFLECT)
 
 
+def to_view(px: float, py: float, focus: tuple[float, float, float]) -> tuple[float, float]:
+    """Map a point (0..1 of the full frame) into the coordinates of the `focus` crop."""
+    cx, cy, z = focus
+    if z <= 1.0001:
+        return px, py
+    cw = 1 / z
+    x0 = min(max(cx - cw / 2, 0), 1 - cw)
+    y0 = min(max(cy - cw / 2, 0), 1 - cw)
+    return (px - x0) / cw, (py - y0) / cw
+
+
 # ---------------------------------------------------------------- grades
 def _lut(fn) -> np.ndarray:
     return np.clip([fn(v) for v in range(256)], 0, 255).astype(np.uint8)
