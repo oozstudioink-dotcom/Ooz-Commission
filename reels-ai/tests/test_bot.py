@@ -212,6 +212,14 @@ class BotFlowTest(FakeVariantsMixin, unittest.TestCase):
             self.clock.t += timedelta(days=1)
         self.assertTrue(all(a != b for a, b in zip(order, order[1:])), order)
 
+    def test_same_video_twice_is_skipped(self):
+        for _ in range(2):
+            self.bot.push(**msg(OWNER, video={"file_id": "raw1", "file_unique_id": "U1",
+                                             "file_size": 1000}, caption="Naruto"))
+        self.r.poll()
+        self.assertEqual(len(self.state["drawings"]), 1)
+        self.assertIn("already have", self.bot.texts()[-1])
+
     def test_too_big_file_rejected(self):
         self.bot.push(**msg(OWNER, video={"file_id": "x", "file_size": 50_000_000}))
         self.assertFalse(self.r.poll())

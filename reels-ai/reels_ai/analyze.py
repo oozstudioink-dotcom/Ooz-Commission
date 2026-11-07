@@ -142,13 +142,21 @@ def analyze(store: FrameStore) -> Analysis:
             return np.linspace(0, 1, nw)
         return np.array([(vals <= w).mean() for w in range(nw)])
 
-    ink_prog = progress(ink_t, ink_map)
-    mark_prog = progress(mark_t, mark_map & ~ink_map)
+    # Pixels never seen as blank paper (t == 0) were already drawn when the clip starts, or
+    # hidden under the hand until then. We don't know when they were inked, so they say nothing
+    # about this clip's timing: leave them out (unless that leaves almost nothing).
+    def observed(t: np.ndarray, mask: np.ndarray) -> np.ndarray:
+        seen = mask & (t > 0)
+        return seen if seen.sum() > 0.15 * max(1, mask.sum()) else mask
+
+    ink_obs = observed(ink_t, ink_map)
+    ink_prog = progress(ink_t, ink_obs)
+    mark_prog = progress(mark_t, observed(mark_t, mark_map & ~ink_map))
 
     def to_frame(w: int) -> int:
         return int(min(n - 1, max(0, w * win)))
 
-    ink_start = to_frame(_first_crossing(ink_prog, 0.04))
+    ink_start = to_frame(_first_crossing(ink_prog, 0.015))
     ink_end = to_frame(_first_crossing(ink_prog, 0.97))
     draw_start = to_frame(max(0, _first_crossing(mark_prog, 0.005) - 1))
     if ink_end <= ink_start:
@@ -175,7 +183,7 @@ def analyze(store: FrameStore) -> Analysis:
     box = (cx - bw // 2, cy - bh // 2, bw, bh)
     box_mask = np.zeros_like(ink_map)
     box_mask[box[1]:box[1] + bh, box[0]:box[0] + bw] = True
-    box_prog = progress(ink_t, ink_map & box_mask)
+    box_prog = progress(ink_t, observed(ink_t, ink_map & box_mask))
     detail_start = to_frame(_first_crossing(box_prog, 0.10))
     detail_end = to_frame(_first_crossing(box_prog, 0.90))
 

@@ -136,9 +136,14 @@ class Runner:
             self.say(f"⚠️ That file is {size / 1e6:.0f} MB. Bots can only download up to 20 MB.\n"
                      "Send it as a normal video (not as a file) so Telegram compresses it, or trim it.")
             return
+        uid = video.get("file_unique_id")
+        if uid and any(d.get("unique_id") == uid for d in self.state["drawings"].values()):
+            self.say("\U0001f501 I already have that video, so I'm skipping the duplicate.")
+            return
         did = new_id(self.state, "d")
         self.state["drawings"][did] = {"subject": subject[:60] or None, "file_id": video["file_id"],
-                                       "received": iso(self.clock()), "status": "queued"}
+                                       "unique_id": uid, "received": iso(self.clock()),
+                                       "status": "queued"}
         name = f" ({subject})" if subject else ""
         self.say(f"\U0001f3a8 Got it{name}! I'll make variants on the next run (within the hour).")
 
