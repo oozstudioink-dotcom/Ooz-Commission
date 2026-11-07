@@ -18,7 +18,7 @@ styles = ["reveal_first", "speedrun", "before_after", "detail_zoom", "ink_only"]
 # method = "api"   : uploads automatically (Instagram supported; needs the IG_ACCESS_TOKEN secret)
 [platforms.youtube]
 enabled = true
-method = "manual"                # switch to "api" once the connection check passes
+method = "api"                   # connection check passed 2026-11-07 (Ooz Studio Ink)
 privacy = "public"               # YouTube keeps API uploads private until Google's audit is approved
 category_id = 1                  # Film & Animation
 max_per_day = 1
