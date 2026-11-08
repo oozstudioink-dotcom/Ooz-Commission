@@ -8,6 +8,16 @@
       "subject": "Shinobi Undercover Manga",
       "unique_id": "AgADGQkAAoUCeUc"
     },
+    "d22": {
+      "drive_id": "1WlV-eBowuwEzkurywSgVcK268gVSo6IZ",
+      "drive_name": "Naruto_3.MOV",
+      "duration": 731.218,
+      "received": "2026-11-08T22:00:28+00:00",
+      "size_gb": 4.17,
+      "source": "drive",
+      "status": "rendered",
+      "subject": "Naruto"
+    },
     "d4": {
       "file_id": "BAACAgEAAxkBAAMZau6mTztA9rCuYE8AATWlHiSE8SH3AAI0CQAChQJ5R01gnupBOguXPQQ",
       "received": "2026-11-07T04:26:16+00:00",
@@ -30,9 +40,11 @@
       "unique_id": "AgADOAkAAoUCeUc"
     }
   },
-  "drive_seen": [],
+  "drive_seen": [
+    "1WlV-eBowuwEzkurywSgVcK268gVSo6IZ"
+  ],
   "low_bank_warned": "2026-11-06",
-  "next_id": 22,
+  "next_id": 28,
   "owner_chat_id": 5745191999,
   "paused": false,
   "report_followers": {
@@ -42,11 +54,11 @@
   "report_week": "2026-W45",
   "stats_at": "2026-11-08T17:00:26+00:00",
   "style_uses": {
-    "before_after": 4,
-    "detail_zoom": 3,
-    "ink_only": 3,
-    "reveal_first": 3,
-    "speedrun": 4
+    "before_after": 5,
+    "detail_zoom": 4,
+    "ink_only": 4,
+    "reveal_first": 4,
+    "speedrun": 5
   },
   "update_offset": 116973154,
   "variants": {
@@ -87,12 +99,14 @@
       "decided_at": "2026-11-07T04:28:04+00:00",
       "decided_by": "auto",
       "drawing": "d5",
+      "drop_no": 5,
+      "dropped_at": "2026-11-08T22:00:26+00:00",
       "file_id": "BAACAgEAAxUHau6o03Y-ur53I-MNvVGk37Rkwa8AAj4JAAKFAnlHx_qbH39ziwY9BA",
       "hook": "Watch the details",
       "message_id": 36,
       "posts": {},
       "seconds": 12.1,
-      "status": "approved",
+      "status": "posted",
       "style": "detail_zoom"
     },
     "v13": {
@@ -251,6 +265,86 @@
       "status": "approved",
       "style": "speedrun"
     },
+    "v23": {
+      "caption": "Brush pen on paper, no tablet. Drop a character for the next one 👇🏾\n\n#timelapse #ink #traditionalart #animeart #drawingprocess #mangaart #narutofanart #artprocess #mangadrawing #naruto",
+      "created": "2026-11-08T22:17:40+00:00",
+      "deadline": null,
+      "decided_at": "2026-11-08T22:17:40+00:00",
+      "decided_by": "auto",
+      "drawing": "d22",
+      "file_id": "BAACAgEAAxUHavD1AlkDAgK5LE_1Lx5eBQJy0OwAAp0IAAJTcYhHWnhse9kR0IA9BA",
+      "full_link": "https://drive.google.com/file/d/1RwSOGzZk5nmB-KB8qdrzF8apX-oYq8Dx/view?usp=drivesdk",
+      "hook": "Zoom in on this linework",
+      "message_id": 62,
+      "posts": {},
+      "seconds": 10.2,
+      "status": "approved",
+      "style": "detail_zoom"
+    },
+    "v24": {
+      "caption": "Inking Naruto by hand ✍🏾 Who should I draw next? 👇🏾\n\n#naruto #fanart #narutofanart #drawing #mangaka #ink #timelapse #drawingprocess #traditionalart #animeart",
+      "created": "2026-11-08T22:17:40+00:00",
+      "deadline": null,
+      "decided_at": "2026-11-08T22:17:40+00:00",
+      "decided_by": "auto",
+      "drawing": "d22",
+      "file_id": "BAACAgEAAxUHavD1AxNcowTptcs6aOABCs7DIhkAAp8IAAJTcYhHOQtrOh9JZII9BA",
+      "full_link": "https://drive.google.com/file/d/1c5ZGqrUHdJWExUvlYunJrYOQEmIYKhsB/view?usp=drivesdk",
+      "hook": "From a blank page to this",
+      "message_id": 63,
+      "posts": {},
+      "seconds": 9.6,
+      "status": "approved",
+      "style": "reveal_first"
+    },
+    "v25": {
+      "caption": "Brush pen on paper, no tablet. Drop a character for the next one 👇🏾\n\n#mangadrawing #ink #narutofanart #drawing #mangaka #naruto #inking #traditionalart #mangaart #drawingprocess",
+      "created": "2026-11-08T22:17:40+00:00",
+      "deadline": null,
+      "decided_at": "2026-11-08T22:17:40+00:00",
+      "decided_by": "auto",
+      "drawing": "d22",
+      "file_id": "BAACAgEAAxUHavD1A1MYzzimOxp0Aih07gmpBRYAAqAIAAJTcYhHfGPhfuuamVo9BA",
+      "full_link": "https://drive.google.com/file/d/1g9hCu2X5NmYLyw4XR0Mc5uheewXVG3ep/view?usp=drivesdk",
+      "hook": "The most satisfying part",
+      "message_id": 64,
+      "posts": {},
+      "seconds": 9.4,
+      "status": "approved",
+      "style": "ink_only"
+    },
+    "v26": {
+      "caption": "Inking Naruto by hand ✍🏾 Who should I draw next? 👇🏾\n\n#inking #narutofanart #drawingprocess #drawing #fanart #naruto #traditionalart #ink #animeart #mangadrawing",
+      "created": "2026-11-08T22:17:40+00:00",
+      "deadline": null,
+      "decided_at": "2026-11-08T22:17:40+00:00",
+      "decided_by": "auto",
+      "drawing": "d22",
+      "file_id": "BAACAgEAAxUHavD1A3fNlTt9-97BYJEIKvsn-3UAAp4IAAJTcYhHPcdrd3bL0yQ9BA",
+      "full_link": "https://drive.google.com/file/d/1mkZFFA8ARRDXfY5n9_NuqXcpRohk-4EQ/view?usp=drivesdk",
+      "hook": "Pencil vs. ink. Which is better?",
+      "message_id": 65,
+      "posts": {},
+      "seconds": 10.6,
+      "status": "approved",
+      "style": "before_after"
+    },
+    "v27": {
+      "caption": "Inking Naruto by hand ✍🏾 Who should I draw next? 👇🏾\n\n#ink #naruto #mangaart #drawing #fanart #mangaka #drawingprocess #timelapse #mangadrawing #traditionalart",
+      "created": "2026-11-08T22:17:40+00:00",
+      "deadline": null,
+      "decided_at": "2026-11-08T22:17:40+00:00",
+      "decided_by": "auto",
+      "drawing": "d22",
+      "file_id": "BAACAgEAAxUHavD1Anm8aAdNjnAd8knETmLp2_AAApwIAAJTcYhHpfvyPY2a3Nk9BA",
+      "full_link": "https://drive.google.com/file/d/1w2rB5QXGva3qeSZ3On_Of-PtHauMBQEb/view?usp=drivesdk",
+      "hook": "Blink and you'll miss it",
+      "message_id": 66,
+      "posts": {},
+      "seconds": 5.8,
+      "status": "approved",
+      "style": "speedrun"
+    },
     "v3": {
       "caption": "Inking Shinobi Undercover Manga by hand ✍🏾 Who should I draw next? 👇🏾\n\n#artprocess #shinobiundercovermanga #timelapse #shinobiundercovermangafanart #inking #ink #mangaart #fanart #mangaka #drawing",
       "created": "2026-11-07T02:34:53+00:00",
@@ -288,12 +382,14 @@
       "decided_at": "2026-11-07T04:27:26+00:00",
       "decided_by": "auto",
       "drawing": "d4",
+      "drop_no": 6,
+      "dropped_at": "2026-11-08T22:00:27+00:00",
       "file_id": "BAACAgEAAxUHau6ore7ZsxJOBhXpZFa0Lz3nmX0AAjkJAAKFAnlHWPmCqRIMtCo9BA",
       "hook": "The most satisfying part",
       "message_id": 32,
       "posts": {},
       "seconds": 9.4,
-      "status": "approved",
+      "status": "posted",
       "style": "ink_only"
     },
     "v9": {
