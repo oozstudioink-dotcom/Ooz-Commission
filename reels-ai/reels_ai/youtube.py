@@ -146,6 +146,53 @@ class YouTube:
         return {"id": vid, "permalink": f"https://youtube.com/shorts/{vid}", "note": note}
 
 
+    def upload_file(self, path: Path, title: str, description: str, tags: list[str],
+                    privacy: str = "public", category_id: int = 1, chunk: int = 32 * 1024 * 1024) -> dict:
+        """Chunked resumable upload for big files (a 25 min 4K video is several GB)."""
+        path = Path(path)
+        size = path.stat().st_size
+        meta = {"snippet": {"title": title[:100], "description": description[:4900],
+                            "tags": tags[:30], "categoryId": str(category_id)},
+                "status": {"privacyStatus": privacy, "selfDeclaredMadeForKids": False}}
+        start = self._req("POST", self.upload_url, {"uploadType": "resumable", "part": "snippet,status"},
+                          body=meta, headers={"X-Upload-Content-Type": "video/mp4",
+                                              "X-Upload-Content-Length": str(size)}, raw=True)
+        location = start.headers.get("Location")
+        if not location:
+            raise YouTubeError("YouTube didn't return an upload URL")
+        offset = 0
+        with open(path, "rb") as f:
+            while True:
+                f.seek(offset)
+                data = f.read(chunk)
+                end = offset + len(data) - 1
+                req = urllib.request.Request(location, data=data, method="PUT", headers={
+                    "Authorization": f"Bearer {self._token()}", "Content-Type": "video/mp4",
+                    "Content-Length": str(len(data)), "Content-Range": f"bytes {offset}-{end}/{size}"})
+                try:
+                    with urllib.request.urlopen(req, timeout=900) as r:
+                        res = json.load(r)
+                        break
+                except urllib.error.HTTPError as e:
+                    if e.code != 308:
+                        raise YouTubeError(f"upload failed: {_describe(e)}") from None
+                    rng = e.headers.get("Range")             # what YouTube actually stored
+                    offset = int(rng.split("-")[1]) + 1 if rng else end + 1
+        vid = res["id"]
+        stored = res.get("status", {}).get("privacyStatus")
+        note = None
+        if privacy == "public" and stored != "public":
+            note = ("YouTube saved it as PRIVATE (uploads stay private until Google approves the API "
+                    "audit). Open YouTube Studio and set it to Public.")
+        return {"id": vid, "permalink": f"https://youtu.be/{vid}", "note": note}
+
+    def set_thumbnail(self, video_id: str, jpeg: Path) -> None:
+        """Needs a phone-verified channel (youtube.com/verify)."""
+        url = self.upload_url.replace("/videos", "/thumbnails/set")
+        self._req("POST", url, {"videoId": video_id, "uploadType": "media"},
+                  body=Path(jpeg).read_bytes(), headers={"Content-Type": "image/jpeg"})
+
+
 def _describe(e: urllib.error.HTTPError) -> str:
     try:
         data = json.loads(e.read() or b"{}")

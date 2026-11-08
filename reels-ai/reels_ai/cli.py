@@ -24,6 +24,12 @@ def bot(args: argparse.Namespace) -> None:
     run(args.phase)
 
 
+def longform(args: argparse.Namespace) -> None:
+    from .longform_job import run
+
+    run(args.project)
+
+
 def main() -> None:
     ap = argparse.ArgumentParser(prog="reels_ai")
     sub = ap.add_subparsers(dest="cmd", required=True)
@@ -41,5 +47,8 @@ def main() -> None:
     b.add_argument("--phase", choices=["poll", "render", "all", "check", "tiktok-connect"], default="all",
                    help="check = read-only connection test of the social accounts")
     b.set_defaults(func=bot)
+    lf = sub.add_parser("longform", help="build a LongDraw from Drive > Longform > PROJECT")
+    lf.add_argument("--project", required=True)
+    lf.set_defaults(func=longform)
     args = ap.parse_args()
     args.func(args)

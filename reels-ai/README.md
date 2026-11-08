@@ -68,6 +68,30 @@ Each run:
 Needs the Drive API enabled in the Google project and a `YT_REFRESH_TOKEN` that includes the
 `https://www.googleapis.com/auth/drive` scope. `Run workflow → check` creates the folders.
 
+## LongDraw (long-form YouTube)
+
+1. Put every raw session for one project in Drive › `Ooz Reels/Longform/<project>/`. Optionally
+   add the finished page as `YT_Longform_Finished_Art_Panel.jpg` for the thumbnail.
+2. Royalty-free beats go in `Beats/`, and the commissions advert animation in `Side Panels/`
+   (exported at full size on black; it is placed pixel for pixel and never enlarged).
+3. In Telegram, `/longform` lists projects and `/longform <project>` starts the separate
+   `longform` workflow. You can also start it from Actions › longform.
+
+The job finds dead time (hand off the page and nothing changing for 8 s or more), picks one
+speed so the result lands in `target_minutes` (20 to 30), and renders 4K straight from Drive:
+- portrait sessions get the side panels: OOZ / STUDIO INK on the left; advert, socials and
+  schedule rotating on the right every 5 min, with a glitch-in
+- landscape sessions fill the frame
+
+It then adds:
+- a glitch-in title intro
+- a beat tape: shuffled, loudness-matched to -16 LUFS, crossfaded and looped
+- chapters and the LongDraw thumbnail (`EP. NN`; numbering continues from Done/Longform)
+
+It uploads to `Done/Longform/EP NN - <project>/` and to YouTube (private until Google's audit;
+the custom thumbnail needs a phone-verified channel), messages you the links, and moves the
+project folder to `Longform/Finished/`. Panel text lives in `config.toml` → `[panels]`.
+
 ## Extras
 
 - **Page compilations:** `/compile [title]` stitches every drawing since the last compilation into a
