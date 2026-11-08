@@ -25,7 +25,8 @@ def probe(path: Path) -> dict:
             "duration": float(data["format"]["duration"])}
 
 
-def normalize(src: Path, dst: Path, keep_wide: bool = False, max_wide_h: int = 1440) -> dict:
+def normalize(src: Path, dst: Path, keep_wide: bool = False, max_wide_h: int = 1440,
+              max_w: int = MAX_W) -> dict:
     """Make a 9:16, 30fps, <=90s H.264 working copy.
 
     Wider inputs get a blurred backdrop, unless keep_wide: then they keep their shape (height
@@ -37,7 +38,7 @@ def normalize(src: Path, dst: Path, keep_wide: bool = False, max_wide_h: int = 1
     cap.release()
     h, w = (frame.shape[:2] if ok else (info["height"], info["width"]))
 
-    out_w = min(MAX_W, w if w / h <= 9 / 16 else int(h * 9 / 16))
+    out_w = min(max_w, w if w / h <= 9 / 16 else int(h * 9 / 16))
     out_w -= out_w % 2
     out_h = int(round(out_w * 16 / 9))
     out_h -= out_h % 2
@@ -68,13 +69,14 @@ def normalize(src: Path, dst: Path, keep_wide: bool = False, max_wide_h: int = 1
 
 
 def crop_vertical(src: Path, dst: Path, center_x: float, out_w: int = 1080) -> dict:
+    """out_w is a cap: the crop is never enlarged past its own width."""
     """Cut a full-height 9:16 window out of a wide working copy, centred on center_x (0..1)."""
     info = probe(src)
     w, h = info["width"], info["height"]
     cw = int(round(h * 9 / 16))
     cw -= cw % 2
     x = int(round(min(max(center_x * w - cw / 2, 0), w - cw)))
-    ow = min(out_w, max(cw, out_w))
+    ow = min(out_w, cw)
     ow -= ow % 2
     oh = int(round(ow * 16 / 9))
     oh -= oh % 2
@@ -147,3 +149,14 @@ class Encoder:
         self.proc.stdin.close()
         if self.proc.wait() != 0:
             raise RuntimeError("ffmpeg encode failed")
+
+
+def preview_copy(src: Path, dst: Path, width: int = 1080, crf: int = 21) -> Path:
+    """Smaller copy for Telegram (bots can send at most 50 MB); returns src if already small."""
+    info = probe(src)
+    if info["width"] <= width and Path(src).stat().st_size < 45 * 1024 * 1024:
+        return Path(src)
+    subprocess.run(["ffmpeg", "-v", "error", "-y", "-i", str(src), "-vf", f"scale={width}:-2:flags=lanczos",
+                    "-c:v", "libx264", "-crf", str(crf), "-preset", "medium", "-pix_fmt", "yuv420p",
+                    "-c:a", "copy", "-movflags", "+faststart", str(dst)], check=True)
+    return Path(dst)
