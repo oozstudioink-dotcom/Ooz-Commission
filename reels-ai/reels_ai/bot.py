@@ -49,9 +49,11 @@ def label_markup(text: str) -> dict:
 
 
 class Runner:
-    def __init__(self, bot: Bot, state: dict, config: dict, clock=now, clients: dict | None = None):
+    def __init__(self, bot: Bot, state: dict, config: dict, clock=now, clients: dict | None = None,
+                 drive=None):
         self.bot, self.state, self.cfg, self.clock = bot, state, config, clock
         self.clients = clients or {}          # platform -> API client (e.g. Instagram)
+        self.drive = drive                    # Google Drive inbox / backups (optional)
         self.tz = ZoneInfo(config.get("timezone", "UTC"))
         owner = os.environ.get("TELEGRAM_OWNER_ID")
         if owner:
@@ -93,6 +95,7 @@ class Runner:
             else:
                 self.post_due()
             self.warn_low_bank()
+        self.check_drive_inbox()
         self.refresh_stats()
         self.weekly_report()
         return (any(d["status"] == "queued" for d in self.state["drawings"].values())
@@ -155,6 +158,64 @@ class Runner:
         elif text:
             self.say("Send me a timelapse video, or /help.")
 
+    # ------------------------------------------------------------------ Google Drive inbox
+    def drive_problem(self, e: Exception) -> None:
+        """Tell the owner about a Drive problem once per distinct message, not every run."""
+        msg = str(e)[:200]
+        print(f"warn: drive: {msg}")
+        if self.state.get("drive_error") != msg:
+            self.state["drive_error"] = msg
+            self.say(f"\u26a0\ufe0f Google Drive: {msg}")
+
+    def check_drive_inbox(self) -> None:
+        if not self.drive:
+            return
+        from .drive import subject_from_name
+        try:
+            inbox = self.drive.folder("Inbox")
+            files = self.drive.list(inbox, "video")
+        except Exception as e:  # noqa: BLE001 - never let Drive break Telegram handling
+            return self.drive_problem(e)
+        self.state.pop("drive_error", None)
+        seen = self.state.setdefault("drive_seen", [])
+        new = [f for f in files if f["id"] not in seen]
+        for f in new:
+            meta = f.get("videoMediaMetadata") or {}
+            did = new_id(self.state, "d")
+            self.state["drawings"][did] = {
+                "source": "drive", "drive_id": f["id"], "drive_name": f["name"],
+                "subject": subject_from_name(f["name"]), "received": iso(self.clock()),
+                "duration": (int(meta["durationMillis"]) / 1000) if meta.get("durationMillis") else None,
+                "size_gb": round(int(f.get("size") or 0) / 1e9, 2), "status": "queued"}
+            seen.append(f["id"])
+        if new:
+            names = ", ".join(f["name"] for f in new[:6]) + (" \u2026" if len(new) > 6 else "")
+            self.say(f"\U0001f4e5 Found {len(new)} new recording(s) in Drive \u203a Inbox: {names}\n"
+                     "I'll turn them into variants now. Long 4K files take a few minutes each.")
+
+    def drive_source(self, d: dict, tmp: Path) -> Path:
+        """Stream a raw Drive recording into a small timelapse working copy."""
+        from .drive import make_proxy
+        dur = d.get("duration") or 30 * 60        # unknown -> assume long (keyframe mode)
+        return make_proxy(self.drive.media_url(d["drive_id"]), self.drive.token(),
+                          tmp / f"{d['drive_id']}.mp4", dur)
+
+    def drive_after(self, did: str, d: dict, out_dir: Path, results: list[dict]) -> None:
+        """Move the raw file to Inbox/Processed and back the variants up to Done/Shorts."""
+        try:
+            self.drive.move(d["drive_id"], self.drive.folder("Inbox/Processed"), self.drive.folder("Inbox"))
+        except Exception as e:  # noqa: BLE001
+            print(f"warn: couldn't move {d.get('drive_name')}: {e}")
+        if not self.cfg.get("drive", {}).get("backup_shorts", True):
+            return
+        try:
+            name = d.get("subject") or Path(d.get("drive_name") or did).stem
+            folder = self.drive.folder(f"Done/Shorts/{name}")
+            for r in results:
+                self.drive.upload(out_dir / r["file"], folder, f"{name} - {STYLE_LABELS.get(r['name'], r['name'])}.mp4")
+        except Exception as e:  # noqa: BLE001
+            print(f"warn: Drive backup failed: {e}")
+
     # ------------------------------------------------------------------ reports
     def weekly_report(self) -> None:
         """Sunday after 10 AM, once a week, when at least one platform is connected."""
@@ -192,7 +253,8 @@ class Runner:
         with tempfile.TemporaryDirectory(dir=work_root) as tmp:
             tmp = Path(tmp)
             try:
-                sources = [(self.bot.download(d["file_id"], tmp / f"{did}.mp4"), d.get("subject"))
+                sources = [((self.drive_source(d, tmp) if d.get("source") == "drive"
+                             else self.bot.download(d["file_id"], tmp / f"{did}.mp4")), d.get("subject"))
                            for did, d in pending]
                 res = make_compilation(sources, tmp / "out", title)
             except Exception as e:  # noqa: BLE001
@@ -539,7 +601,10 @@ class Runner:
             with tempfile.TemporaryDirectory(dir=work_root) as tmp:
                 tmp = Path(tmp)
                 try:
-                    src = self.bot.download(d["file_id"], tmp / f"{did}.mp4")
+                    if d.get("source") == "drive":
+                        src = self.drive_source(d, tmp)
+                    else:
+                        src = self.bot.download(d["file_id"], tmp / f"{did}.mp4")
                     styles = self.choose_styles(did)
                     copy = self.ai_copy(src, d, styles, tmp)
                     out_dir, results = make_variants(src, tmp / "out", styles,
@@ -551,6 +616,8 @@ class Runner:
                     d["error"] = str(e)[:300]
                     self.say(f"⚠️ Couldn't process that video ({did}): {d['error']}")
                     continue
+                if d.get("source") == "drive" and self.drive:
+                    self.drive_after(did, d, out_dir, results)
                 if mode == "auto":
                     self.bank_album(did, d, out_dir, results)
                     d["status"] = "rendered"
@@ -640,7 +707,7 @@ def run(phase: str) -> None:
                          "(expected digits, a colon, then ~35 letters/numbers). Re-paste it.")
     token = m.group(0)
     state, config = load_state(), load_config()
-    runner = Runner(Bot(token), state, config, clients=make_clients(config))
+    runner = Runner(Bot(token), state, config, clients=make_clients(config), drive=make_drive(config))
     if phase == "tiktok-connect":
         try:
             tiktok_connect(runner, config)
@@ -666,6 +733,15 @@ def run(phase: str) -> None:
         with open(out, "a") as f:
             f.write(f"render={'true' if needs_render else 'false'}\n")
     print(f"phase={phase} needs_render={needs_render}")
+
+
+def make_drive(config: dict):
+    dc = config.get("drive", {})
+    env = [os.environ.get(k, "").strip() for k in ("YT_CLIENT_ID", "YT_CLIENT_SECRET", "YT_REFRESH_TOKEN")]
+    if not dc.get("enabled") or not all(env):
+        return None
+    from .drive import Drive
+    return Drive(*env, root=dc.get("root", "Ooz Reels"))
 
 
 def make_clients(config: dict) -> dict:
@@ -764,6 +840,16 @@ def check(runner: Runner) -> None:
             runner.note_rotated_token("tiktok", tt)
         except Exception as e:  # noqa: BLE001
             lines.append(f"TikTok: \u274c {e}")
+    if not runner.drive:
+        lines.append("Google Drive: not connected (uses the YT_* secrets with the drive permission)")
+    else:
+        try:
+            folders = runner.drive.ensure_layout()
+            n = len(runner.drive.list(folders["Inbox"], "video"))
+            lines.append(f"Google Drive: \u2705 folders ready in \u201c{runner.drive.root_name}\u201d"
+                         f" \u00b7 {n} video(s) waiting in Inbox")
+        except Exception as e:  # noqa: BLE001
+            lines.append(f"Google Drive: \u274c {e}")
     text = "\n".join(lines)
     print(text)
     runner.say(text)

@@ -52,6 +52,15 @@ redirect_uri = "https://oozstudioink-dotcom.github.io/Ooz-Commission/tiktok-call
 max_per_day = 1
 post_times = ["18:00"]
 
+[drive]
+# Google Drive inbox for raw recordings (any length, 4K, portrait or landscape).
+# Folders are created inside this root on the first `check` run:
+#   Inbox/ (drop single-drawing recordings) · Inbox/Processed/ · Longform/ · Beats/
+#   Thumbnail Style/ · Side Panels/ · Done/Shorts/ · Done/Longform/
+enabled = true
+root = "Ooz Reels"
+backup_shorts = true             # also save every variant to Done/Shorts/<character>/
+
 [ai]
 # Hooks + captions written by Google Gemini when the GEMINI_API_KEY secret is set
 # (free key: aistudio.google.com -> Get API key). Without a key the built-in hooks are used.

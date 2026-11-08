@@ -764,3 +764,180 @@ class GeminiCopyTest(unittest.TestCase):
     def test_no_key_means_templates(self):
         from reels_ai.ai import write_copy
         self.assertIsNone(write_copy(Path("x.jpg"), "Naruto", ["speedrun"], ""))
+
+
+class DriveTest(unittest.TestCase):
+    """The real Drive client + proxy maker against a local fake of Google Drive."""
+
+    def setUp(self):
+        import threading
+        from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+        from urllib.parse import parse_qs, urlparse
+
+        self.files = files = {"root": {"name": "My Drive", "folder": True, "parents": []}}
+        self.calls = calls = []
+        self.video = video = Path(os.environ.get(
+            "REELS_TEST_VIDEO", "/root/.claude/uploads/e5bed814-3c70-560e-b2aa-4d61a14a2658/"
+                                "4626688f-copy_090B8A3E-0DB0-41B2-B7D7-C69758B502D9.mov"))
+        uploads = {}
+
+        class H(BaseHTTPRequestHandler):
+            protocol_version = "HTTP/1.1"
+
+            def log_message(self, *a):
+                pass
+
+            def _send(self, obj, code=200, headers=None):
+                body = json.dumps(obj).encode()
+                self.send_response(code)
+                self.send_header("Content-Type", "application/json")
+                self.send_header("Content-Length", str(len(body)))
+                for k, v in (headers or {}).items():
+                    self.send_header(k, v)
+                self.end_headers()
+                self.wfile.write(body)
+
+            def _body(self):
+                return self.rfile.read(int(self.headers.get("Content-Length", 0) or 0))
+
+            def do_POST(self):
+                u, body = urlparse(self.path), self._body()
+                if u.path == "/token":
+                    return self._send({"access_token": "AT"})
+                assert self.headers["Authorization"] == "Bearer AT"
+                if u.path == "/drive/files":                      # create folder
+                    meta = json.loads(body)
+                    fid = f"f{len(files)}"
+                    files[fid] = {"name": meta["name"], "folder": True, "parents": meta.get("parents", ["root"])}
+                    calls.append(("mkdir", meta["name"]))
+                    return self._send({"id": fid})
+                if u.path == "/upload":                           # start resumable upload
+                    meta = json.loads(body)
+                    sid = f"s{len(uploads)}"
+                    uploads[sid] = {"meta": meta, "data": b"", "size": int(self.headers["X-Upload-Content-Length"])}
+                    return self._send({}, headers={"Location": f"http://127.0.0.1:{srv.server_port}/session/{sid}"})
+                self._send({"error": {"message": "?"}}, 404)
+
+            def do_PUT(self):
+                sid = self.path.rsplit("/", 1)[-1]
+                up = uploads[sid]
+                up["data"] += self._body()
+                calls.append(("chunk", self.headers["Content-Range"]))
+                if len(up["data"]) < up["size"]:
+                    self.send_response(308)
+                    self.send_header("Content-Length", "0")
+                    self.end_headers()
+                    return
+                fid = f"f{len(files)}"
+                files[fid] = {"name": up["meta"]["name"], "folder": False, "parents": up["meta"]["parents"],
+                              "size": len(up["data"])}
+                self._send({"id": fid, "webViewLink": f"https://drive/{fid}"})
+
+            def do_PATCH(self):
+                u = urlparse(self.path)
+                q = parse_qs(u.query)
+                fid = u.path.rsplit("/", 1)[-1]
+                self._body()
+                files[fid]["parents"] = [q["addParents"][0]]
+                calls.append(("move", files[fid]["name"], q["addParents"][0]))
+                self._send({"id": fid})
+
+            def do_GET(self):
+                u = urlparse(self.path)
+                q = parse_qs(u.query)
+                if self.headers.get("Authorization") != "Bearer AT":
+                    return self._send({"error": {"message": "no auth"}}, 401)
+                if u.path.startswith("/drive/files/") and q.get("alt") == ["media"]:
+                    data = video.read_bytes()
+                    rng = self.headers.get("Range")
+                    start, end = 0, len(data) - 1
+                    if rng:
+                        a, b = rng.split("=")[1].split("-")
+                        start, end = int(a), (int(b) if b else len(data) - 1)
+                    self.send_response(206 if rng else 200)
+                    self.send_header("Content-Type", "video/quicktime")
+                    self.send_header("Accept-Ranges", "bytes")
+                    self.send_header("Content-Length", str(end - start + 1))
+                    if rng:
+                        self.send_header("Content-Range", f"bytes {start}-{end}/{len(data)}")
+                    self.end_headers()
+                    self.wfile.write(data[start:end + 1])
+                    return
+                if u.path == "/drive/files":
+                    query = q["q"][0]
+                    import re as _re
+                    parent = _re.search(r"'([^']+)' in parents", query).group(1)
+                    name = _re.search(r"name = '([^']+)'", query)
+                    out = [{"id": k, "name": v["name"], "mimeType": "application/vnd.google-apps.folder"
+                            if v["folder"] else "video/quicktime", "size": str(v.get("size", 0)),
+                            "videoMediaMetadata": {"durationMillis": "36500"}}
+                           for k, v in files.items() if k != "root" and parent in v["parents"]
+                           and (not name or v["name"] == name.group(1))
+                           and (("mimeType = 'application/vnd.google-apps.folder'" in query) == v["folder"]
+                                or "mimeType" not in query)]
+                    return self._send({"files": out})
+                self._send({"error": {"message": "nope"}}, 404)
+
+        srv = ThreadingHTTPServer(("127.0.0.1", 0), H)
+        threading.Thread(target=srv.serve_forever, daemon=True).start()
+        self.addCleanup(srv.shutdown)
+        os.environ["NO_PROXY"] = os.environ["no_proxy"] = "127.0.0.1"
+        from reels_ai import drive as dmod
+        self.dmod = dmod
+        self.d = dmod.Drive(" cid ", "sec", " rt ")
+        base = f"http://127.0.0.1:{srv.server_port}"
+        self.d.token_url, self.d.api, self.d.upload_url = f"{base}/token", f"{base}/drive", f"{base}/upload"
+
+    def test_layout_is_created_once(self):
+        ids = self.d.ensure_layout()
+        self.assertEqual(set(ids), set(self.dmod.LAYOUT))
+        made = [c[1] for c in self.calls if c[0] == "mkdir"]
+        self.assertEqual(made.count("Ooz Reels"), 1)
+        self.assertEqual(made.count("Inbox"), 1)
+        self.assertIn("Processed", made)
+        fresh = self.dmod.Drive("cid", "sec", "rt")
+        fresh.token_url, fresh.api = self.d.token_url, self.d.api
+        self.assertEqual(fresh.folder("Inbox/Processed"), ids["Inbox/Processed"])   # found, not re-made
+
+    def test_chunked_upload_and_move(self):
+        self.dmod.CHUNK = 256 * 1024
+        folder = self.d.folder("Done/Shorts/Naruto")
+        f = Path(tempfile.mkdtemp()) / "v.mp4"
+        f.write_bytes(os.urandom(256 * 1024 * 2 + 1000))
+        res = self.d.upload(f, folder, "Naruto - Speedrun.mp4")
+        self.assertEqual(self.files[res["id"]]["size"], f.stat().st_size)
+        chunks = [c[1] for c in self.calls if c[0] == "chunk"]
+        self.assertEqual(chunks, ["bytes 0-262143/525288", "bytes 262144-524287/525288",
+                                  "bytes 524288-525287/525288"])
+        self.d.move(res["id"], self.d.folder("Inbox"), folder)
+        self.assertEqual(self.files[res["id"]]["parents"], [self.d.folder("Inbox")])
+
+    @unittest.skipUnless(shutil.which("ffmpeg"), "needs ffmpeg")
+    def test_proxy_streams_with_auth_both_modes(self):
+        out = Path(tempfile.mkdtemp())
+        url = self.d.media_url("raw1")
+        long_ = self.dmod.make_proxy(url, self.d.token(), out / "k.mp4", duration_s=40 * 60)   # keyframes
+        short = self.dmod.make_proxy(url, self.d.token(), out / "s.mp4", duration_s=36.5)       # sampled
+        from reels_ai.media import probe
+        k, s = probe(long_), probe(short)
+        self.assertAlmostEqual(k["duration"], 40 / 30, delta=0.2)     # 40 keyframes at 30 fps
+        self.assertGreater(s["duration"], 30)                         # ~1:1 for a short clip
+        with self.assertRaises(self.dmod.DriveError):
+            bad = self.dmod.Drive("c", "s", "r")
+            bad.token_url, bad.api = self.d.token_url, self.d.api
+            self.dmod.make_proxy(url, "WRONG", out / "x.mp4", duration_s=60)
+
+    def test_bot_picks_up_inbox_once(self):
+        inbox = self.d.folder("Inbox")
+        self.files["raw1"] = {"name": "Naruto 2.MOV", "folder": False, "parents": [inbox]}
+        bot, state = FakeBot(), fresh_state()
+        state["owner_chat_id"] = OWNER
+        cfg = load_config()
+        cfg["timezone"] = "UTC"
+        r = Runner(bot, state, cfg, clock=lambda: datetime(2026, 11, 8, 9, tzinfo=timezone.utc), drive=self.d)
+        self.assertTrue(r.poll())
+        self.assertTrue(r.poll())
+        drawings = list(state["drawings"].values())
+        self.assertEqual(len(drawings), 1)                            # not picked up twice
+        self.assertEqual((drawings[0]["subject"], drawings[0]["duration"]), ("Naruto", 36.5))
+        self.assertEqual(sum("new recording" in t for t in bot.texts()), 1)

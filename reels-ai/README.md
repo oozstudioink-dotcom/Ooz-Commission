@@ -53,6 +53,21 @@ drawing back-to-back when avoidable, prefers a new style, spreads drawings evenl
 for you to post with a trending sound. Nothing is auto-posted. Switch `[delivery] mode = "platforms"`
 to use the per-platform schedules and API posting below.
 
+## Google Drive inbox (raw recordings)
+
+Drop raw recordings of any length (4K, portrait or landscape) into Drive › `Ooz Reels/Inbox/`.
+Name files after the character (`Naruto.MOV`, `Shinobi Undercover 2.MOV`) to fill in the subject.
+Each run:
+- picks up new files once and streams them from Drive: they're never downloaded whole.
+  Recordings of 15 min or more use keyframes only (iPhone: about 1 per second, so 30 min becomes
+  a ~60 s timelapse); shorter ones are sampled evenly.
+- **Landscape** recordings get a full-height vertical crop centred on the new ink.
+- Makes the usual variants. Then it moves the raw file to `Inbox/Processed/` and backs the
+  variants up to `Done/Shorts/<character>/`. It never deletes your files.
+
+Needs the Drive API enabled in the Google project and a `YT_REFRESH_TOKEN` that includes the
+`https://www.googleapis.com/auth/drive` scope. `Run workflow → check` creates the folders.
+
 ## Extras
 
 - **Page compilations:** `/compile [title]` stitches every drawing since the last compilation into a
