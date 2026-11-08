@@ -32,7 +32,7 @@ MAX_BOT_DOWNLOAD = 20 * 1024 * 1024   # Telegram bots can only download files up
 HELP = (
     "Send me a drawing timelapse (as a video) and I'll make variants for you to approve.\n"
     "Add the character name as the video's caption, e.g. Naruto.\n\n"
-    "/status  overview\n/compile [title]  stitch the drawings since the last compilation into one page video\n/report  stats report now (also sent every Sunday)\n/music  your music library (send me audio files to add tracks)\n/nomusic, /musicon  silence or re-enable music\n/queue  your video bank and how many days it covers\n/pause  stop all posting\n/resume  start posting again\n/help  this message"
+    "/status  overview\n/compile [title]  stitch the drawings since the last compilation into one page video\n/report  stats report now (also sent every Sunday)\n/queue  your video bank and how many days it covers\n/pause  stop all posting\n/resume  start posting again\n/help  this message"
 )
 
 
@@ -113,9 +113,6 @@ class Runner:
             return
 
         doc = m.get("document") or {}
-        audio = m.get("audio") or (doc if str(doc.get("mime_type", "")).startswith("audio/") else None)
-        if audio:
-            return self.add_music(audio, (m.get("caption") or "").strip())
         video = m.get("video") or (doc if str(doc.get("mime_type", "")).startswith("video/") else None)
         if video:
             return self.intake(video, (m.get("caption") or "").strip())
@@ -147,17 +144,6 @@ class Runner:
         elif cmd == "/report":
             self.state["report_request"] = True
             self.send_report()
-        elif cmd == "/music":
-            self.say(self.music_text())
-        elif cmd == "/nomusic":
-            self.state["music_off"] = True
-            self.say("\U0001f507 New variants will be silent. /musicon to turn the library back on.")
-        elif cmd == "/musicon":
-            self.state["music_off"] = False
-            self.say("\U0001f3b5 Music library is on again.")
-        elif cmd == "/clearmusic":
-            self.state["music"] = []
-            self.say("\U0001f5d1 Music library emptied.")
         elif text and self.state["awaiting_caption"]:
             vid = self.state["awaiting_caption"]
             self.state["awaiting_caption"] = None
@@ -208,7 +194,7 @@ class Runner:
             try:
                 sources = [(self.bot.download(d["file_id"], tmp / f"{did}.mp4"), d.get("subject"))
                            for did, d in pending]
-                res = make_compilation(sources, tmp / "out", title, audio=self.pick_track(tmp))
+                res = make_compilation(sources, tmp / "out", title)
             except Exception as e:  # noqa: BLE001
                 self.say(f"\u26a0\ufe0f Couldn't make the page compilation: {str(e)[:200]}")
                 return
@@ -251,43 +237,6 @@ class Runner:
         if copy and not d.get("subject") and copy.get("subject"):
             d["subject"] = copy["subject"]          # Gemini recognised the character
         return copy
-
-    # ------------------------------------------------------------------ music
-    def add_music(self, audio: dict, title: str) -> None:
-        if (audio.get("file_size") or 0) > MAX_BOT_DOWNLOAD:
-            self.say("\u26a0\ufe0f That audio file is over 20 MB. Send a shorter clip or an mp3.")
-            return
-        lib = self.state.setdefault("music", [])
-        if any(t["unique_id"] == audio.get("file_unique_id") for t in lib):
-            self.say("\U0001f501 That track is already in your library.")
-            return
-        name = title or audio.get("title") or audio.get("file_name") or f"Track {len(lib) + 1}"
-        lib.append({"file_id": audio["file_id"], "unique_id": audio.get("file_unique_id"),
-                    "title": name[:60], "uses": 0})
-        self.say(f"\U0001f3b5 Added \u201c{name[:60]}\u201d. Your library has {len(lib)} track(s); "
-                 "new variants will use them in rotation.")
-
-    def music_text(self) -> str:
-        lib = self.state.get("music", [])
-        if not lib:
-            return ("\U0001f3b5 No music yet. Send me audio files (royalty-free tracks or your own pen-sound "
-                    "recordings) and I'll lay them under new variants.")
-        state = "off (/musicon)" if self.state.get("music_off") else "on (/nomusic to silence)"
-        rows = [f"{i + 1}. {t['title']} \u00b7 used {t['uses']}x" for i, t in enumerate(lib)]
-        return f"\U0001f3b5 Music library, {state}\n" + "\n".join(rows)
-
-    def pick_track(self, tmp: Path) -> Path | None:
-        lib = self.state.get("music", [])
-        if not lib or self.state.get("music_off"):
-            return None
-        t = min(lib, key=lambda t: t["uses"])
-        try:
-            path = self.bot.download(t["file_id"], tmp / "track.audio")
-        except Exception as e:  # noqa: BLE001 - music is optional; never block a render on it
-            print(f"warn: music download failed: {e}")
-            return None
-        t["uses"] += 1
-        return path
 
     def intake(self, video: dict, subject: str) -> None:
         size = video.get("file_size") or 0
@@ -595,7 +544,7 @@ class Runner:
                     copy = self.ai_copy(src, d, styles, tmp)
                     out_dir, results = make_variants(src, tmp / "out", styles,
                                                      seed=int(did[1:]), subject=d["subject"],
-                                                     audio=self.pick_track(tmp), review_page=False,
+                                                     review_page=False,
                                                      copy=copy)
                 except Exception as e:  # noqa: BLE001 - report any failure to the owner
                     d["status"] = "failed"

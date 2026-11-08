@@ -55,9 +55,6 @@ to use the per-platform schedules and API posting below.
 
 ## Extras
 
-- **Music library:** send the bot audio files (royalty-free tracks or your own pen-sound recordings).
-  New variants get one in rotation, faded in and out. `/music` lists them; `/nomusic` and `/musicon`
-  turn music off and on; `/clearmusic` empties the library.
 - **Page compilations:** `/compile [title]` stitches every drawing since the last compilation into a
   ~55 s Short (flash of every finished drawing, each drawing's sketch-to-ink, pull-back to the whole
   page; added to the drops bank) plus a long full-length version for YouTube (sent to you).
