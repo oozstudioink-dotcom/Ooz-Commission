@@ -69,6 +69,7 @@ resolution = "4k"                # "4k" (3840x2160) or "1080p"
 art_panel_name = "YT_Longform_Finished_Art_Panel"   # optional image in the project folder for the thumbnail
 youtube_upload = true            # upload automatically (private until Google's audit; flip to Public)
 privacy = "public"
+music_source = "YouTube Audio Library"   # credited with the track list in each description
 
 [panels]
 # Side panels beside vertical recordings in LongDraws. The right panel rotates every

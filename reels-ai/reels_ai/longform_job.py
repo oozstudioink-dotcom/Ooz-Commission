@@ -5,6 +5,7 @@ episode number comes from Drive (Done/Longform/"EP 03 - ..." folders).
 from __future__ import annotations
 
 import os
+import re
 import shutil
 import tempfile
 import time
@@ -66,8 +67,11 @@ def run(project: str) -> None:
     work = Path(tempfile.mkdtemp(dir=os.environ.get("LONGFORM_WORK", None)))
     try:
         beats = []
-        for b in drive.list(drive.folder("Beats"), "audio"):
-            beats.append(drive.download(b["id"], work / f"beat_{len(beats)}{Path(b['name']).suffix}"))
+        beat_dir = work / "beats"
+        beat_dir.mkdir()
+        for b in drive.list(drive.folder("Beats"), "audio"):     # keep names: they become the credits
+            safe = re.sub(r'[\\/:*?"<>|]', "_", b["name"]) or f"beat_{len(beats)}.mp3"
+            beats.append(drive.download(b["id"], beat_dir / f"{len(beats):03d}_{safe}"))
         side = drive.list(drive.folder("Side Panels"), "video")
         side.sort(key=lambda f: ("commission" not in f["name"].lower(), f.get("createdTime", "")))
         advert = drive.download(side[0]["id"], work / f"advert{Path(side[0]['name']).suffix}") if side else None
@@ -90,7 +94,8 @@ def run(project: str) -> None:
         res = build(sessions, work / "out", folder["name"], episode, lcfg, beats, advert, pcfg, art,
                     log=print)
         mins = res["seconds"] / 60
-        title, desc, tags = youtube_text(folder["name"], episode, res["chapters"], pcfg, res["speed"], res["raw"])
+        title, desc, tags = youtube_text(folder["name"], episode, res["chapters"], pcfg, res["speed"],
+                                         res["raw"], res.get("tracks"), lcfg.get("music_source", "YouTube Audio Library"))
 
         ep_folder = drive.folder(f"Done/Longform/EP {episode:02d} - {folder['name']}")
         up = drive.upload(res["video"], ep_folder)

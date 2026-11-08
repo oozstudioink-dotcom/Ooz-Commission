@@ -199,8 +199,16 @@ def render_intro(out: Path, size: tuple[int, int], episode: int, project: str, s
 
 
 # ---------------------------------------------------------------- 3. audio
-def beat_tape(beats: list[Path], seconds: float, out: Path, xfade: float = 3.0, seed: int = 0) -> Path:
-    """Shuffle, loudness-match (-16 LUFS), crossfade and loop the beats to cover `seconds`."""
+def track_name(p: Path) -> str:
+    """'03_Night_Walk-Artist.mp3' -> 'Night Walk-Artist' (for the description's music credits)."""
+    stem = re.sub(r"^\d+[\s._-]+", "", Path(p).stem)
+    return re.sub(r"\s+", " ", stem.replace("_", " ")).strip() or Path(p).stem
+
+
+def beat_tape(beats: list[Path], seconds: float, out: Path, xfade: float = 3.0, seed: int = 0,
+              played: list | None = None) -> Path:
+    """Shuffle, loudness-match (-16 LUFS), crossfade and loop the beats to cover `seconds`.
+    `played` (optional list) receives the tracks that are actually heard, in order."""
     if not beats:
         _run(["ffmpeg", "-v", "error", "-y", "-f", "lavfi", "-i", "anullsrc=r=48000:cl=stereo",
               "-t", f"{seconds:.2f}", "-c:a", "aac", "-b:a", "192k", str(out)])
@@ -218,6 +226,12 @@ def beat_tape(beats: list[Path], seconds: float, out: Path, xfade: float = 3.0, 
             total += max(durs[b] - xfade, 1.0)
             if total >= seconds + xfade:
                 break
+    if played is not None:
+        start = 0.0
+        for b in order:
+            if start < seconds:
+                played.append(b)
+            start += max(durs[b] - xfade, 1.0)
     cmd = ["ffmpeg", "-v", "error", "-y"]
     for b in order:
         cmd += ["-i", str(b)]
@@ -281,7 +295,13 @@ def build(sessions: list[Session], out_dir: Path, project: str, episode: int, cf
               str(silent)])
         for p in parts:
             p.unlink(missing_ok=True)
-        audio = beat_tape(beats, clock, work / "beats.m4a", seed=episode)
+        played: list[Path] = []
+        audio = beat_tape(beats, clock, work / "beats.m4a", seed=episode, played=played)
+        tracks = []
+        for b in played:                                  # unique, in first-heard order
+            name = track_name(b)
+            if name not in tracks:
+                tracks.append(name)
         video = out_dir / f"LongDraw EP {episode:02d} - {project}.mp4"
         _run(["ffmpeg", "-v", "error", "-y", "-i", str(silent), "-i", str(audio), "-map", "0:v", "-map", "1:a",
               "-c", "copy", "-shortest", "-movflags", "+faststart", str(video)])
@@ -304,23 +324,32 @@ def build(sessions: list[Session], out_dir: Path, project: str, episode: int, cf
         (out_dir / "chapters.txt").write_text(chapter_text + "\n")
         return {"video": video, "thumbnail": thumb, "thumbnail_yt": thumb_yt, "chapters": chapter_text,
                 "seconds": clock, "speed": speed, "kept": kept,
-                "raw": sum(s.duration for s in sessions)}
+                "raw": sum(s.duration for s in sessions), "tracks": tracks}
     finally:
         shutil.rmtree(work, ignore_errors=True)
 
 
 def youtube_text(project: str, episode: int, chapters: str, panel_cfg: dict, speed: float,
-                 raw_s: float) -> tuple[str, str, list[str]]:
+                 raw_s: float, tracks: list[str] | None = None,
+                 music_source: str = "YouTube Audio Library") -> tuple[str, str, list[str]]:
     title = f"LongDraw EP. {episode:02d} | {project} | Manga Inking Timelapse"[:100]
     socials = "\n".join(f"{p}: {h}" for p, h in panel_cfg.get("socials", []))
     link = panel_cfg.get("link", "")
-    desc = (f"{project}: {raw_s / 3600:.1f} hours of pencils and ink, sped up {speed:.1f}x. "
-            f"Hand-drawn manga page by Ooz Studio Ink ✍\U0001f3fe\n\n"
-            f"Commissions are open: {link}\n\nChapters\n{chapters}\n\n{socials}\n\n"
-            "#manga #mangaart #inking #timelapse #drawing #traditionalart #oozstudioink")
+    music = ""
+    if tracks:
+        src = f" ({music_source})" if music_source else ""
+        music = f"\n\nMusic{src}:\n" + "\n".join(f"\u2022 {t}" for t in tracks)
+    tags_line = "#manga #mangaart #inking #timelapse #drawing #traditionalart #oozstudioink"
+    head = (f"{project}: {raw_s / 3600:.1f} hours of pencils and ink, sped up {speed:.1f}x. "
+            f"Hand-drawn manga page by Ooz Studio Ink \u270d\U0001f3fe\n\n"
+            f"Commissions are open: {link}\n\nChapters\n{chapters}\n\n{socials}")
+    room = 4900 - len(head) - len(tags_line) - 4               # YouTube limit: 5000 characters
+    if len(music) > room:
+        music = music[:max(0, room - 2)].rsplit("\n", 1)[0] + "\n\u2026"
+    desc = f"{head}{music}\n\n{tags_line}"
     tags = ["manga", "manga art", "inking", "timelapse", "drawing", "traditional art", "longdraw",
             "ooz studio ink", project]
-    return title, desc[:4900], tags
+    return title, desc, tags
 
 
 def subject_title(name: str, i: int) -> str:
