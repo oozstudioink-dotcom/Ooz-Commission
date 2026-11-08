@@ -259,7 +259,7 @@ def build(sessions: list[Session], out_dir: Path, project: str, episode: int, cf
         log(f"total kept {kept / 60:.1f} min -> speed {speed:.2f}x -> {kept / speed / 60:.1f} min")
 
         vw = int(round(size[1] * 9 / 16)) // 2 * 2
-        cards = panels.build_cards(size[0] - vw - (size[0] - vw) // 2, size[1], panel_cfg, advert) \
+        cards = panels.build_cards(size[0] - vw - (size[0] - vw) // 2, size[1], panel_cfg, advert, work) \
             if any(s.portrait for s in sessions) else []
         parts, chapters, clock = [], [], 0.0
         intro = work / "000_intro.mp4"

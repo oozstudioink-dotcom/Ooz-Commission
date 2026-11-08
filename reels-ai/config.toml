@@ -90,6 +90,15 @@ schedule = [                     # "MAIN TEXT | small line under it"
   "LongDraw | every Sunday",
 ]
 
+[panels.advert]
+# "generated": the bot's own sharp recreation of your commissions animation (text below)
+# "drive": use the advert video in Drive > Ooz Reels > Side Panels instead · "off": no advert card
+source = "generated"
+brand = ["OOZ", "STUDIO", "INK"]
+headline = ["COMMISSIONS", "OPEN"]
+offer = ["FIRST 10 CLIENTS", "50% OFF"]
+
+
 [ai]
 # Hooks + captions written by Google Gemini when the GEMINI_API_KEY secret is set
 # (free key: aistudio.google.com -> Get API key). Without a key the built-in hooks are used.

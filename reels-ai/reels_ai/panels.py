@@ -209,6 +209,16 @@ def render_right(path: Path, w: int, h: int, seconds: float, cards: list, start_
             for f in g[:n]:
                 wr.write(f)
             wr.write(payload, max(0, n - len(g)))
+        elif kind == "video":                        # loop a panel-sized clip
+            cap = cv2.VideoCapture(str(payload))
+            for _ in range(n):
+                ok, f = cap.read()
+                if not ok:
+                    cap.release()
+                    cap = cv2.VideoCapture(str(payload))
+                    ok, f = cap.read()
+                wr.write(f if ok else black)
+            cap.release()
         else:
             panel = black.copy()
             for i in range(n):
@@ -218,11 +228,31 @@ def render_right(path: Path, w: int, h: int, seconds: float, cards: list, start_
     return path
 
 
-def build_cards(w: int, h: int, cfg: dict, advert: Path | None) -> list:
+def _clip_to_video(frames: list[np.ndarray], w: int, h: int, out: Path) -> Path:
+    wr = _Writer(out, w, h)
+    panel = np.zeros((h, w, 3), np.uint8)
+    for c in frames:
+        wr.write(_place(panel.copy(), c))
+    wr.close()
+    return out
+
+
+def build_cards(w: int, h: int, cfg: dict, advert: Path | None, work: Path | None = None) -> list:
+    """Right-panel cards. The advert is the built-in recreation (sharp at any size, text from
+    config) unless [panels.advert] source = "drive" and a Drive advert video was found."""
+    import tempfile
+    work = Path(work or tempfile.mkdtemp())
     cards = []
-    if advert:
+    acfg = cfg.get("advert", {})
+    if acfg.get("source", "generated") == "drive" and advert:
         frames, _ = advert_clip(advert, w, h, cfg.get("allow_upscale", False))
-        cards.append(("clip", frames))
+        cards.append(("video", _clip_to_video(frames, w, h, work / "advert_panel.mp4")))
+    elif acfg.get("source", "generated") != "off":
+        from .advert import Advert
+        ad = Advert(w, h, w * 0.84, brand=tuple(acfg.get("brand", ("OOZ", "STUDIO", "INK"))),
+                    headline=tuple(acfg.get("headline", ("COMMISSIONS", "OPEN"))),
+                    offer=tuple(acfg.get("offer", ("FIRST 10 CLIENTS", "50% OFF"))))
+        cards.append(("video", ad.render(work / "advert_panel.mp4", crf=12)))
     cards.append(("still", socials_card(w, h, cfg.get("socials", []), cfg.get("link", ""))))
     sched = cfg.get("schedule", [])
     if sched:

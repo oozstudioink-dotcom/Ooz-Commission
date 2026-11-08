@@ -6,6 +6,9 @@ from __future__ import annotations
 
 import json
 import re
+
+import cv2
+import numpy as np
 import os
 import shutil
 import tempfile
@@ -1187,3 +1190,31 @@ class LongformJobTest(unittest.TestCase):
         self.assertEqual(calls["thumb"], "Y")
         self.assertIn(("p1", "id:Longform/Finished"), calls["moves"])
         self.assertEqual({f for f, _ in calls["uploads"]}, {"id:Done/Longform/EP 04 - Shinobi Page"})
+
+
+class AdvertTest(unittest.TestCase):
+    def test_loops_and_text_is_editable(self):
+        from reels_ai.advert import RED, Advert
+        a = Advert(656, 1080, 550)
+        first, last = a.frame(0), a.frame(269)
+        self.assertLess(float(np.abs(first.astype(int) - last.astype(int)).mean()), 1.0)   # seamless loop
+        self.assertEqual(a.frame(int(3.5 * 30)).max(), 0)                                  # black gap
+        offer = a.frame(int(6.3 * 30))
+        reds = ((offer[..., 2] > 150) & (offer[..., 1] < 90)).sum()
+        self.assertGreater(reds, 2000)                                                     # red offer card
+        b = Advert(656, 1080, 550, offer=("FIRST 20 CLIENTS", "30% OFF"))
+        self.assertFalse(np.array_equal(b.frame(int(6.3 * 30)), offer))
+
+    @unittest.skipUnless(shutil.which("ffmpeg"), "needs ffmpeg")
+    def test_panel_plays_generated_advert(self):
+        from reels_ai import panels
+        d = Path(tempfile.mkdtemp())
+        cards = panels.build_cards(328, 540, {"socials": [["X", "@a"]], "link": "x"}, None, d)
+        self.assertEqual([k for k, _ in cards], ["video", "still"])
+        out = panels.render_right(d / "r.mp4", 328, 540, 12.0, cards, rotate_s=6.0)
+        cap = cv2.VideoCapture(str(out))
+        n = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+        self.assertEqual(n, 360)
+        cap.set(cv2.CAP_PROP_POS_FRAMES, int(1.8 * 30))
+        ok, f = cap.read()
+        self.assertTrue(ok and ((f[..., 2] > 150) & (f[..., 1] < 90)).sum() > 10)    # red dots playing
