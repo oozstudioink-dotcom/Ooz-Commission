@@ -20,8 +20,8 @@ UPLOAD = "https://www.googleapis.com/upload/drive/v3/files"
 FOLDER = "application/vnd.google-apps.folder"
 CHUNK = 16 * 1024 * 1024          # multiple of 256 KiB, as Drive requires
 
-LAYOUT = ["Inbox", "Inbox/Processed", "Longform", "Beats", "Thumbnail Style", "Side Panels",
-          "Done", "Done/Shorts", "Done/Longform"]
+LAYOUT = ["Inbox", "Inbox/Processed", "Longform", "Longform/Finished", "Beats", "Thumbnail Style",
+          "Side Panels", "Done", "Done/Shorts", "Done/Longform"]
 
 
 class DriveError(RuntimeError):
@@ -52,6 +52,11 @@ class Drive:
         self._folders: dict[str, str] = {}
 
     # ------------------------------------------------------------------ transport
+    def fresh_token(self) -> str:
+        """Force a new access token (they last ~1 h; long renders ask again per session)."""
+        self._access = None
+        return self.token()
+
     def token(self) -> str:
         if not self._access:
             body = urllib.parse.urlencode({

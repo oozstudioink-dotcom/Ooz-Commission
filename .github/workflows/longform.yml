@@ -1,0 +1,59 @@
+# Builds one LongDraw (hours of 4K) in its own job so the hourly bot is never blocked.
+# Started by the bot's /longform command, or by hand: Actions -> longform -> Run workflow.
+name: longform
+
+on:
+  workflow_dispatch:
+    inputs:
+      project:
+        description: "Folder name in Drive > Ooz Reels > Longform"
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: longform
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 340
+    defaults:
+      run:
+        working-directory: reels-ai
+    env:
+      TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+      YT_CLIENT_ID: ${{ secrets.YT_CLIENT_ID }}
+      YT_CLIENT_SECRET: ${{ secrets.YT_CLIENT_SECRET }}
+      YT_REFRESH_TOKEN: ${{ secrets.YT_REFRESH_TOKEN }}
+      PROJECT: ${{ inputs.project }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+
+      # 4K renders need room: drop preinstalled toolchains the job doesn't use.
+      - name: Free disk space
+        working-directory: /
+        run: |
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL || true
+          sudo mkdir -p /mnt/longform && sudo chown "$USER" /mnt/longform || true
+          df -h / /mnt || true
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - name: Install video tools
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq --no-install-recommends ffmpeg fonts-inter
+          pip install -q -r requirements.txt
+
+      - name: Build LongDraw
+        run: |
+          if [ -d /mnt/longform ] && [ -w /mnt/longform ]; then export LONGFORM_WORK=/mnt/longform; fi
+          python -m reels_ai longform --project "$PROJECT"

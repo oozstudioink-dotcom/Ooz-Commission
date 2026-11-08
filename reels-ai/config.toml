@@ -67,6 +67,28 @@ next_episode = 3                 # EP. number for the next upload (counts up aut
 target_minutes = [20, 30]        # speed is picked so the cut lands in this range
 resolution = "4k"                # "4k" (3840x2160) or "1080p"
 art_panel_name = "YT_Longform_Finished_Art_Panel"   # optional image in the project folder for the thumbnail
+youtube_upload = true            # upload automatically (private until Google's audit; flip to Public)
+privacy = "public"
+
+[panels]
+# Side panels beside vertical recordings in LongDraws. The right panel rotates every
+# rotate_minutes: your advert animation (Drive > Ooz Reels > Side Panels), socials, schedule.
+rotate_minutes = 5
+allow_upscale = false            # never enlarge the advert (keeps it sharp)
+link = "linktr.ee/oozstudioink"
+socials = [
+  ["Instagram", "@oozstudioink"],
+  ["TikTok", "@oozstudioink1"],
+  ["YouTube", "Ooz Studio Ink"],
+  ["X", "@OozStudioInk"],
+  ["Threads", "@oozstudioink"],
+  ["Facebook", "Ooz Studio Ink"],
+]
+schedule_title = "Upload schedule"
+schedule = [                     # "MAIN TEXT | small line under it"
+  "New Shorts | every day",
+  "LongDraw | every Sunday",
+]
 
 [ai]
 # Hooks + captions written by Google Gemini when the GEMINI_API_KEY secret is set

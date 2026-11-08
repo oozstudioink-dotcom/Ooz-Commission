@@ -5,6 +5,7 @@ Set REELS_TEST_VIDEO=/path/to/timelapse.mov to also run the real render step.
 from __future__ import annotations
 
 import json
+import re
 import os
 import shutil
 import tempfile
@@ -962,3 +963,227 @@ class ThumbnailTest(unittest.TestCase):
         jpg = youtube_jpeg(p, out / "t.jpg")
         self.assertLess(jpg.stat().st_size, 2_000_000)
         self.assertEqual(Image.open(jpg).size, (1280, 720))
+
+
+class LongformTest(unittest.TestCase):
+    def test_speed_episode_and_timestamps(self):
+        from reels_ai.longform import choose_speed, episode_from_names, fmt_ts
+        self.assertEqual(choose_speed(25 * 60, 20, 30), 1.0)          # already in range
+        self.assertEqual(choose_speed(10 * 60, 20, 30), 1.0)          # never slowed down
+        self.assertAlmostEqual(choose_speed(120 * 60, 20, 30) , 120 / 25)   # 2 h -> 25 min
+        self.assertEqual(episode_from_names([], 3), 3)
+        self.assertEqual(episode_from_names(["EP 03 - Shinobi", "EP 04 - Deku", "misc"], 3), 5)
+        self.assertEqual(episode_from_names(["EP 01 - old"], 3), 3)
+        self.assertEqual((fmt_ts(0), fmt_ts(195), fmt_ts(3725)), ("0:00", "3:15", "1:02:05"))
+
+    @unittest.skipUnless(shutil.which("ffmpeg"), "needs ffmpeg")
+    def test_beat_tape_is_level_and_exact_length(self):
+        import subprocess
+        from reels_ai.longform import beat_tape
+        d = Path(tempfile.mkdtemp())
+        quiet, loud = d / "q.mp3", d / "l.mp3"
+        subprocess.run(["ffmpeg", "-v", "error", "-y", "-f", "lavfi", "-i", "sine=f=220:d=12",
+                        "-af", "volume=-26dB", str(quiet)], check=True)
+        subprocess.run(["ffmpeg", "-v", "error", "-y", "-f", "lavfi", "-i", "anoisesrc=d=12:c=pink:a=0.7",
+                        str(loud)], check=True)
+        out = beat_tape([quiet, loud], 30.0, d / "tape.m4a")
+        dur = float(subprocess.run(["ffprobe", "-v", "error", "-show_entries", "format=duration", "-of",
+                                    "csv=p=0", str(out)], capture_output=True, text=True).stdout)
+        self.assertAlmostEqual(dur, 30.0, delta=0.15)
+        levels = []
+        for t in (3, 10, 17, 22):
+            r = subprocess.run(["ffmpeg", "-hide_banner", "-ss", str(t), "-t", "2", "-i", str(out), "-af",
+                                "ebur128", "-f", "null", "-"], capture_output=True, text=True).stderr
+            levels.append(float(re.findall(r"I:\s*(-?[\d.]+) LUFS", r)[-1]))
+        self.assertLess(max(levels) - min(levels), 3.0, levels)        # -26 dB vs loud noise, levelled
+
+    @unittest.skipUnless(shutil.which("ffmpeg"), "needs ffmpeg")
+    def test_scan_cuts_dead_time(self):
+        import subprocess
+        from reels_ai.longform import Session, scan
+        d = Path(tempfile.mkdtemp())
+        blank = d / "blank.mp4"
+        subprocess.run(["ffmpeg", "-v", "error", "-y", "-f", "lavfi", "-i", "color=c=0xd7e1e6:s=360x640:r=30:d=20",
+                        "-pix_fmt", "yuv420p", str(blank)], check=True)
+        src = Path(os.environ.get("REELS_TEST_VIDEO", "/root/.claude/uploads/e5bed814-3c70-560e-b2aa-4d61a14a2658/"
+                                                     "4626688f-copy_090B8A3E-0DB0-41B2-B7D7-C69758B502D9.mov"))
+        if not src.exists():
+            self.skipTest("no sample video")
+        mid = d / "mid.mp4"
+        subprocess.run(["ffmpeg", "-v", "error", "-y", "-i", str(src), "-an", "-vf", "scale=360:640", "-r", "30",
+                        "-pix_fmt", "yuv420p", str(mid)], check=True)
+        (d / "l.txt").write_text(f"file '{blank}'\nfile '{mid}'\n")
+        joined = d / "joined.mp4"
+        subprocess.run(["ffmpeg", "-v", "error", "-y", "-f", "concat", "-safe", "0", "-i", str(d / "l.txt"),
+                        "-c", "copy", str(joined)], check=True)
+        s = scan(Session(str(joined), "Naruto.mp4", "Naruto", 56.5), d)
+        self.assertTrue(s.portrait)
+        self.assertGreater(s.keep[0][0], 15)                           # the 20 s blank start is cut
+        self.assertLess(s.kept, 45)
+
+
+class YouTubeChunkedUploadTest(unittest.TestCase):
+    def test_resumes_from_reported_range(self):
+        import threading
+        from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+        got = {"data": b"", "ranges": []}
+
+        class H(BaseHTTPRequestHandler):
+            protocol_version = "HTTP/1.1"
+
+            def log_message(self, *a):
+                pass
+
+            def _send(self, code, obj=None, headers=None):
+                body = json.dumps(obj or {}).encode()
+                self.send_response(code)
+                for k, v in (headers or {}).items():
+                    self.send_header(k, v)
+                self.send_header("Content-Length", str(len(body)))
+                self.end_headers()
+                self.wfile.write(body)
+
+            def do_POST(self):
+                body = self.rfile.read(int(self.headers.get("Content-Length", 0)))
+                if self.path.startswith("/token"):
+                    return self._send(200, {"access_token": "AT"})
+                if self.path.startswith("/thumb"):
+                    got["thumb"] = (self.headers["Content-Type"], len(body))
+                    return self._send(200, {})
+                got["meta"] = json.loads(body)
+                self._send(200, headers={"Location": f"http://127.0.0.1:{srv.server_port}/sess"})
+
+            def do_PUT(self):
+                body = self.rfile.read(int(self.headers["Content-Length"]))
+                got["ranges"].append(self.headers["Content-Range"])
+                start = int(self.headers["Content-Range"].split()[1].split("-")[0])
+                keep = body[: len(body) // 2] if len(got["ranges"]) == 1 else body    # first chunk: half stored
+                got["data"] = got["data"][:start] + keep
+                total = int(self.headers["Content-Range"].split("/")[1])
+                if len(got["data"]) < total:
+                    return self._send(308, headers={"Range": f"bytes=0-{len(got['data']) - 1}"})
+                self._send(200, {"id": "LD3", "status": {"privacyStatus": "private"}})
+
+        srv = ThreadingHTTPServer(("127.0.0.1", 0), H)
+        threading.Thread(target=srv.serve_forever, daemon=True).start()
+        self.addCleanup(srv.shutdown)
+        os.environ["NO_PROXY"] = os.environ["no_proxy"] = "127.0.0.1"
+        from reels_ai.youtube import YouTube
+        yt = YouTube("c", "s", "r")
+        base = f"http://127.0.0.1:{srv.server_port}"
+        yt.token_url, yt.upload_url = f"{base}/token", f"{base}/up/videos"
+        f = Path(tempfile.mkdtemp()) / "big.mp4"
+        payload = os.urandom(1000)
+        f.write_bytes(payload)
+        res = yt.upload_file(f, "LongDraw EP. 03 | Test", "desc", ["manga"], chunk=400)
+        self.assertEqual(got["data"], payload)                         # resumed at the right byte
+        self.assertEqual(got["ranges"][:2], ["bytes 0-399/1000", "bytes 200-599/1000"])
+        self.assertEqual(res["id"], "LD3")
+        self.assertIn("PRIVATE", res["note"])
+        self.assertEqual(got["meta"]["snippet"]["title"], "LongDraw EP. 03 | Test")
+        yt.upload_url = f"{base}/thumb/videos"
+        jpg = f.with_suffix(".jpg")
+        jpg.write_bytes(b"\xff\xd8" + b"0" * 50)
+        yt.set_thumbnail("LD3", jpg)
+        self.assertEqual(got["thumb"], ("image/jpeg", 52))
+
+
+class LongformJobTest(unittest.TestCase):
+    def test_job_glue(self):
+        from reels_ai import longform_job as job
+
+        tmp = Path(tempfile.mkdtemp())
+        calls = {"uploads": [], "moves": [], "yt": None, "thumb": None, "built": None}
+
+        class FakeDrive:
+            def __init__(self, *a, **k):
+                self.root_name = "Ooz Reels"
+
+            def folder(self, path=""):
+                return "id:" + path
+
+            def list(self, fid, kind="video"):
+                data = {
+                    "id:Longform": [{"id": "p1", "name": "Shinobi Page", "mimeType": "folder"},
+                                    {"id": "fin", "name": "Finished", "mimeType": "folder"}],
+                    "p1": [{"id": "s2", "name": "Deku.MOV", "mimeType": "video/quicktime",
+                            "createdTime": "2026-11-02", "videoMediaMetadata": {"durationMillis": "1800000"}},
+                           {"id": "s1", "name": "Naruto.MOV", "mimeType": "video/quicktime",
+                            "createdTime": "2026-11-01", "videoMediaMetadata": {"durationMillis": "3600000"}},
+                           {"id": "a1", "name": "YT_Longform_Finished_Art_Panel.jpg", "mimeType": "image/jpeg"}],
+                    "id:Done/Longform": [{"id": "e3", "name": "EP 03 - Old page", "mimeType": "folder"}],
+                    "id:Beats": [{"id": "b1", "name": "lofi.mp3", "mimeType": "audio/mpeg"}],
+                    "id:Side Panels": [{"id": "x", "name": "other.mov", "mimeType": "video/quicktime",
+                                        "createdTime": "1"},
+                                       {"id": "ad", "name": "Commissions_Advert.mov", "mimeType": "video/quicktime",
+                                        "createdTime": "2"}],
+                }[fid]
+                if kind == "folder":
+                    return [f for f in data if f["mimeType"] == "folder"]
+                return [f for f in data if not kind or f["mimeType"].startswith(kind)]
+
+            def token(self):
+                return "AT"
+
+            fresh_token = token
+
+            def media_url(self, fid):
+                return f"https://drive/{fid}"
+
+            def download(self, fid, dst):
+                Path(dst).write_bytes(b"x")
+                return Path(dst)
+
+            def upload(self, path, folder, name=None, mime="video/mp4"):
+                calls["uploads"].append((folder, name or Path(path).name))
+                return {"id": "u", "webViewLink": "https://drive/u"}
+
+            def move(self, fid, to, frm):
+                calls["moves"].append((fid, to))
+
+        def fake_build(sessions, out_dir, project, episode, cfg, beats, advert, pcfg, art, log=print):
+            calls["built"] = ([s.title for s in sessions], [s.src for s in sessions], episode, advert.name,
+                              art.name, len(beats), sessions[0].hdrs())
+            out_dir.mkdir(parents=True, exist_ok=True)
+            for n in ("v.mp4", "t.png", "t.jpg"):
+                (out_dir / n).write_bytes(b"x")
+            return {"video": out_dir / "v.mp4", "thumbnail": out_dir / "t.png", "thumbnail_yt": out_dir / "t.jpg",
+                    "chapters": "0:00 Intro\n0:03 Naruto\n12:40 Deku", "seconds": 1500, "speed": 3.6,
+                    "kept": 5400, "raw": 5400}
+
+        class FakeYT:
+            def __init__(self, *a):
+                pass
+
+            def upload_file(self, path, title, desc, tags, privacy):
+                calls["yt"] = (title, desc)
+                return {"id": "Y", "permalink": "https://youtu.be/Y", "note": "PRIVATE until audit"}
+
+            def set_thumbnail(self, vid, jpg):
+                calls["thumb"] = vid
+
+        import reels_ai.youtube as ytmod
+        orig = (job.Drive, job.build, ytmod.YouTube, job.load_state)
+        job.Drive, job.build, ytmod.YouTube = FakeDrive, fake_build, FakeYT
+        job.load_state = lambda: {"owner_chat_id": None}
+        os.environ.update(YT_CLIENT_ID="c", YT_CLIENT_SECRET="s", YT_REFRESH_TOKEN="r", LONGFORM_WORK=str(tmp))
+        try:
+            job.run("shinobi page")                                   # case-insensitive
+        finally:
+            job.Drive, job.build, ytmod.YouTube, job.load_state = orig
+            for k in ("YT_CLIENT_ID", "YT_CLIENT_SECRET", "YT_REFRESH_TOKEN", "LONGFORM_WORK"):
+                os.environ.pop(k, None)
+        titles, srcs, episode, advert, art, nbeats, hdrs = calls["built"]
+        self.assertEqual(titles, ["Naruto", "Deku"])                  # recording order
+        self.assertEqual(srcs, ["https://drive/s1", "https://drive/s2"])
+        self.assertEqual(episode, 4)                                  # after EP 03 in Done
+        self.assertEqual(advert, "advert.mov")
+        self.assertTrue(art.startswith("art"))
+        self.assertEqual(nbeats, 1)
+        self.assertEqual(hdrs, ["-headers", "Authorization: Bearer AT\r\n"])
+        self.assertTrue(calls["yt"][0].startswith("LongDraw EP. 04 | Shinobi Page"))
+        self.assertIn("0:03 Naruto", calls["yt"][1])
+        self.assertIn("linktr.ee/oozstudioink", calls["yt"][1])
+        self.assertEqual(calls["thumb"], "Y")
+        self.assertIn(("p1", "id:Longform/Finished"), calls["moves"])
+        self.assertEqual({f for f, _ in calls["uploads"]}, {"id:Done/Longform/EP 04 - Shinobi Page"})

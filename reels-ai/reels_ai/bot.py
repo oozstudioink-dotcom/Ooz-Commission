@@ -32,7 +32,7 @@ MAX_BOT_DOWNLOAD = 20 * 1024 * 1024   # Telegram bots can only download files up
 HELP = (
     "Send me a drawing timelapse (as a video) and I'll make variants for you to approve.\n"
     "Add the character name as the video's caption, e.g. Naruto.\n\n"
-    "/status  overview\n/compile [title]  stitch the drawings since the last compilation into one page video\n/report  stats report now (also sent every Sunday)\n/queue  your video bank and how many days it covers\n/pause  stop all posting\n/resume  start posting again\n/help  this message"
+    "/status  overview\n/longform [project]  build a LongDraw from Drive \u203a Longform (no name = list projects)\n/compile [title]  stitch the drawings since the last compilation into one page video\n/report  stats report now (also sent every Sunday)\n/queue  your video bank and how many days it covers\n/pause  stop all posting\n/resume  start posting again\n/help  this message"
 )
 
 
@@ -142,6 +142,8 @@ class Runner:
                 title = text.split(maxsplit=1)[1].strip() if len(text.split(maxsplit=1)) > 1 else ""
                 self.state["compile_request"] = {"title": title, "at": iso(self.clock())}
                 self.say(f"\U0001f3ac Compiling {len(pending)} drawings into a page video on the next run.")
+        elif cmd == "/longform":
+            self.longform_command(text.split(maxsplit=1)[1].strip() if len(text.split(maxsplit=1)) > 1 else "")
         elif cmd == "/id":
             self.say(f"Your chat ID: {chat['id']}\n(For the commission-alerts script's TELEGRAM_CHAT_ID.)")
         elif cmd == "/report":
@@ -215,6 +217,30 @@ class Runner:
                 self.drive.upload(out_dir / r["file"], folder, f"{name} - {STYLE_LABELS.get(r['name'], r['name'])}.mp4")
         except Exception as e:  # noqa: BLE001
             print(f"warn: Drive backup failed: {e}")
+
+    # ------------------------------------------------------------------ LongDraw
+    def longform_command(self, project: str) -> None:
+        if not self.drive:
+            self.say("LongDraw needs Google Drive connected (the drive scope on YT_REFRESH_TOKEN).")
+            return
+        try:
+            folders = [f["name"] for f in self.drive.list(self.drive.folder("Longform"), "folder")
+                       if f["name"] != "Finished"]
+        except Exception as e:  # noqa: BLE001
+            return self.drive_problem(e)
+        match = next((n for n in folders if n.lower() == project.lower()), None) if project else None
+        if not match:
+            listing = "\n".join(f"\u2022 {n}" for n in folders) or "(none yet: make a folder in Drive \u203a Ooz Reels \u203a Longform)"
+            hint = f"No project called \u201c{project}\u201d. " if project else ""
+            self.say(f"{hint}Projects ready in Drive \u203a Longform:\n{listing}\n\nSend /longform <name> to build one.")
+            return
+        try:
+            dispatch_workflow("longform.yml", {"project": match})
+            self.say(f"\U0001f680 Started LongDraw for \u201c{match}\u201d. I'll message you when it's ready "
+                     "(roughly 1 to 3 hours for 4K).")
+        except Exception as e:  # noqa: BLE001
+            self.say(f"\u26a0\ufe0f Couldn't start the LongDraw job: {str(e)[:200]}\n"
+                     f"Start it by hand: GitHub \u203a Actions \u203a longform \u203a Run workflow, project = {match}")
 
     # ------------------------------------------------------------------ reports
     def weekly_report(self) -> None:
@@ -679,6 +705,21 @@ class Runner:
                     "posts": {}}
                 uses = self.state["style_uses"]
                 uses[r["name"]] = uses.get(r["name"], 0) + 1
+
+
+def dispatch_workflow(workflow: str, inputs: dict) -> None:
+    """Start another workflow in this repo (allowed with the job's GITHUB_TOKEN + actions: write)."""
+    import json as _json
+    import urllib.request
+    repo, token = os.environ.get("GITHUB_REPOSITORY", ""), os.environ.get("GITHUB_TOKEN", "")
+    if not (repo and token):
+        raise RuntimeError("not running in GitHub Actions (no GITHUB_TOKEN)")
+    req = urllib.request.Request(
+        f"https://api.github.com/repos/{repo}/actions/workflows/{workflow}/dispatches",
+        data=_json.dumps({"ref": os.environ.get("GITHUB_REF_NAME", "main"), "inputs": inputs}).encode(),
+        method="POST", headers={"Authorization": f"Bearer {token}", "Accept": "application/vnd.github+json",
+                                "X-GitHub-Api-Version": "2022-11-28", "Content-Type": "application/json"})
+    urllib.request.urlopen(req, timeout=30).close()
 
 
 def shrink_for_telegram(path: Path, limit: int = 49 * 1024 * 1024) -> Path | None:
