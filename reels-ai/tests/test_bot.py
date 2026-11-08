@@ -1218,3 +1218,32 @@ class AdvertTest(unittest.TestCase):
         cap.set(cv2.CAP_PROP_POS_FRAMES, int(1.8 * 30))
         ok, f = cap.read()
         self.assertTrue(ok and ((f[..., 2] > 150) & (f[..., 1] < 90)).sum() > 10)    # red dots playing
+
+
+class MusicCreditsTest(unittest.TestCase):
+    def test_track_names_and_description(self):
+        from reels_ai.longform import track_name, youtube_text
+        self.assertEqual(track_name(Path("003_Night_Walk - Jason Farnham.mp3")), "Night Walk - Jason Farnham")
+        self.assertEqual(track_name(Path("Late Night Ink.mp3")), "Late Night Ink")
+        title, desc, _ = youtube_text("Shinobi Page", 3, "0:00 Intro\n0:03 Naruto\n10:00 Deku",
+                                      {"socials": [["X", "@OozStudioInk"]], "link": "linktr.ee/oozstudioink"},
+                                      4.2, 7200, ["Night Walk - Jason Farnham", "Late Night Ink"])
+        self.assertIn("Music (YouTube Audio Library):\n• Night Walk - Jason Farnham\n• Late Night Ink", desc)
+        self.assertTrue(desc.rstrip().endswith("#oozstudioink"))
+        long_desc = youtube_text("P", 3, "0:00 Intro", {}, 1, 60, [f"Track {i:03d} " + "x" * 60 for i in range(200)])[1]
+        self.assertLessEqual(len(long_desc), 4900)
+
+    @unittest.skipUnless(shutil.which("ffmpeg"), "needs ffmpeg")
+    def test_beat_tape_reports_tracks_heard(self):
+        import subprocess
+        from reels_ai.longform import beat_tape
+        d = Path(tempfile.mkdtemp())
+        beats = []
+        for i, f in enumerate((220, 330, 440)):
+            p = d / f"{i:03d}_Beat_{i}.mp3"
+            subprocess.run(["ffmpeg", "-v", "error", "-y", "-f", "lavfi", "-i", f"sine=f={f}:d=10", str(p)], check=True)
+            beats.append(p)
+        played = []
+        beat_tape(beats, 12.0, d / "t.m4a", played=played)            # 12 s needs only 2 tracks
+        self.assertEqual(len(played), 2)
+        self.assertEqual(len(set(played)), 2)
