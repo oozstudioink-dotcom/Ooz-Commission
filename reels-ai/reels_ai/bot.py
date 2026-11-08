@@ -24,6 +24,7 @@ STYLE_LABELS = {
     "before_after": "Before / after",
     "detail_zoom": "Detail zoom",
     "ink_only": "Ink only",
+    "page_compilation": "Page compilation",
 }
 PLATFORM_LABELS = {"youtube": "YouTube Shorts", "instagram": "Instagram Reels", "tiktok": "TikTok"}
 MAX_BOT_DOWNLOAD = 20 * 1024 * 1024   # Telegram bots can only download files up to 20 MB
@@ -31,7 +32,7 @@ MAX_BOT_DOWNLOAD = 20 * 1024 * 1024   # Telegram bots can only download files up
 HELP = (
     "Send me a drawing timelapse (as a video) and I'll make variants for you to approve.\n"
     "Add the character name as the video's caption, e.g. Naruto.\n\n"
-    "/status  overview\n/queue  your video bank and how many days it covers\n/pause  stop all posting\n/resume  start posting again\n/help  this message"
+    "/status  overview\n/compile [title]  stitch the drawings since the last compilation into one page video\n/report  stats report now (also sent every Sunday)\n/queue  your video bank and how many days it covers\n/pause  stop all posting\n/resume  start posting again\n/help  this message"
 )
 
 
@@ -93,7 +94,9 @@ class Runner:
                 self.post_due()
             self.warn_low_bank()
         self.refresh_stats()
-        return any(d["status"] == "queued" for d in self.state["drawings"].values())
+        self.weekly_report()
+        return (any(d["status"] == "queued" for d in self.state["drawings"].values())
+                or bool(self.state.get("compile_request")))
 
     # ------------------------------------------------------------------ messages
     def on_message(self, m: dict) -> None:
@@ -109,7 +112,8 @@ class Runner:
             self.bot.send_message(chat["id"], "This is a private bot.")
             return
 
-        video = m.get("video") or (m.get("document") if str(m.get("document", {}).get("mime_type", "")).startswith("video/") else None)
+        doc = m.get("document") or {}
+        video = m.get("video") or (doc if str(doc.get("mime_type", "")).startswith("video/") else None)
         if video:
             return self.intake(video, (m.get("caption") or "").strip())
 
@@ -127,6 +131,19 @@ class Runner:
             self.say(self.status_text())
         elif cmd == "/queue":
             self.say(self.queue_text())
+        elif cmd == "/compile":
+            pending = self.uncompiled()
+            if len(pending) < 2:
+                self.say("\U0001f4da I need at least 2 drawings since the last compilation. Send me more timelapses first.")
+            else:
+                title = text.split(maxsplit=1)[1].strip() if len(text.split(maxsplit=1)) > 1 else ""
+                self.state["compile_request"] = {"title": title, "at": iso(self.clock())}
+                self.say(f"\U0001f3ac Compiling {len(pending)} drawings into a page video on the next run.")
+        elif cmd == "/id":
+            self.say(f"Your chat ID: {chat['id']}\n(For the commission-alerts script's TELEGRAM_CHAT_ID.)")
+        elif cmd == "/report":
+            self.state["report_request"] = True
+            self.send_report()
         elif text and self.state["awaiting_caption"]:
             vid = self.state["awaiting_caption"]
             self.state["awaiting_caption"] = None
@@ -137,6 +154,89 @@ class Runner:
                 self.say(f"✅ Caption updated for {STYLE_LABELS[v['style']]} ({vid}).{tail}")
         elif text:
             self.say("Send me a timelapse video, or /help.")
+
+    # ------------------------------------------------------------------ reports
+    def weekly_report(self) -> None:
+        """Sunday after 10 AM, once a week, when at least one platform is connected."""
+        lt = self.local(self.clock())
+        week = lt.strftime("%G-W%V")
+        if not self.clients or lt.weekday() != 6 or lt.hour < 10 or self.state.get("report_week") == week:
+            return
+        self.state["report_week"] = week
+        self.send_report()
+
+    def send_report(self) -> None:
+        from .report import build
+        if not self.clients:
+            self.say("\U0001f4ca Reports need at least one connected platform (Instagram or YouTube tokens).")
+            return
+        try:
+            self.say(build(self.state, self.clients, self.clock()))
+        except Exception as e:  # noqa: BLE001
+            self.say(f"\u26a0\ufe0f Couldn't build the report: {str(e)[:200]}")
+
+    # ------------------------------------------------------------------ compilations
+    def uncompiled(self) -> list[tuple[str, dict]]:
+        return [(did, d) for did, d in self.state["drawings"].items()
+                if d["status"] == "rendered" and not d.get("compiled")]
+
+    def render_compilation(self, work_root: Path | None = None) -> None:
+        req = self.state.pop("compile_request", None)
+        pending = self.uncompiled()
+        if not req or len(pending) < 2:
+            return
+        from .compile import make_compilation
+        n = len(pending)
+        subjects = [d.get("subject") for _, d in pending if d.get("subject")]
+        title = req.get("title") or f"One page. {n} drawings."
+        with tempfile.TemporaryDirectory(dir=work_root) as tmp:
+            tmp = Path(tmp)
+            try:
+                sources = [(self.bot.download(d["file_id"], tmp / f"{did}.mp4"), d.get("subject"))
+                           for did, d in pending]
+                res = make_compilation(sources, tmp / "out", title)
+            except Exception as e:  # noqa: BLE001
+                self.say(f"\u26a0\ufe0f Couldn't make the page compilation: {str(e)[:200]}")
+                return
+            tags = " ".join(["#mangaart", "#inking", "#animeart", "#drawingprocess", "#mangaka",
+                             "#timelapse", "#traditionalart"] +
+                            [f"#{re.sub(r'[^a-z0-9]', '', s.lower())}" for s in subjects[:3]])
+            caption = (f"One page, {n} drawings \u270d\U0001f3fe Which one is your favorite? "
+                       f"\U0001f447\U0001f3fe\n\n{tags}")
+            sent = self.bot.send_video(
+                self.owner, res["short"], width=720, height=1280, duration=round(res["short_seconds"]),
+                caption=(f"\U0001f4da Page compilation \u00b7 {res['short_seconds']:.0f}s \u00b7 added to your drops bank"))
+            vid = new_id(self.state, "v")
+            self.state["variants"][vid] = {
+                "drawing": f"page:{','.join(did for did, _ in pending)}", "style": "page_compilation",
+                "hook": title, "caption": caption, "seconds": round(res["short_seconds"], 1),
+                "file_id": sent["video"]["file_id"], "message_id": sent["message_id"],
+                "created": iso(self.clock()), "deadline": None, "status": "approved",
+                "decided_by": "auto", "decided_at": iso(self.clock()), "posts": {}}
+            long_path = shrink_for_telegram(res["long"])
+            if long_path:
+                self.bot.send_video(self.owner, long_path, width=720, height=1280,
+                                    duration=round(res["long_seconds"]),
+                                    caption=(f"\U0001f4fa Long version for YouTube \u00b7 "
+                                             f"{res['long_seconds'] / 60:.1f} min \u00b7 every drawing at full length"))
+            else:
+                self.say("\u2139\ufe0f The long version came out over Telegram's 50 MB limit, so I couldn't send it.")
+        for _, d in pending:
+            d["compiled"] = True
+
+    # ------------------------------------------------------------------ AI copy
+    def ai_copy(self, src: Path, d: dict, styles: list[str], tmp: Path) -> dict | None:
+        """Gemini-written hooks + caption when GEMINI_API_KEY is set; None -> templates."""
+        key = os.environ.get("GEMINI_API_KEY", "").strip()
+        if not key or self.cfg.get("ai", {}).get("enabled", True) is False:
+            return None
+        from .ai import DEFAULT_MODEL, final_frame, write_copy
+        frame = final_frame(src, tmp / "final.jpg")
+        copy = write_copy(frame, d.get("subject"), styles, key,
+                          model=self.cfg.get("ai", {}).get("model", DEFAULT_MODEL))
+        if copy and not d.get("subject") and copy.get("subject"):
+            d["subject"] = copy["subject"]          # Gemini recognised the character
+        return copy
 
     def intake(self, video: dict, subject: str) -> None:
         size = video.get("file_size") or 0
@@ -441,9 +541,11 @@ class Runner:
                 try:
                     src = self.bot.download(d["file_id"], tmp / f"{did}.mp4")
                     styles = self.choose_styles(did)
+                    copy = self.ai_copy(src, d, styles, tmp)
                     out_dir, results = make_variants(src, tmp / "out", styles,
                                                      seed=int(did[1:]), subject=d["subject"],
-                                                     review_page=False)
+                                                     review_page=False,
+                                                     copy=copy)
                 except Exception as e:  # noqa: BLE001 - report any failure to the owner
                     d["status"] = "failed"
                     d["error"] = str(e)[:300]
@@ -482,6 +584,10 @@ class Runner:
                     uses[r["name"]] = uses.get(r["name"], 0) + 1
                 d["status"] = "rendered"
 
+    def render_all(self, work_root: Path | None = None) -> None:
+        self.render(work_root)
+        self.render_compilation(work_root)
+
     def bank_album(self, did: str, d: dict, out_dir: Path, results: list[dict]) -> None:
         """Auto mode: send the drawing's variants as one album and add them straight to the bank."""
         subject = d.get("subject") or "your drawing"
@@ -506,6 +612,21 @@ class Runner:
                     "posts": {}}
                 uses = self.state["style_uses"]
                 uses[r["name"]] = uses.get(r["name"], 0) + 1
+
+
+def shrink_for_telegram(path: Path, limit: int = 49 * 1024 * 1024) -> Path | None:
+    """Bots can upload up to 50 MB; re-encode smaller if needed."""
+    import subprocess
+    if path.stat().st_size <= limit:
+        return path
+    for crf in (28, 32):
+        out = path.with_name(f"{path.stem}_crf{crf}.mp4")
+        subprocess.run(["ffmpeg", "-v", "error", "-y", "-i", str(path), "-c:v", "libx264", "-crf", str(crf),
+                        "-preset", "medium", "-c:a", "aac", "-b:a", "96k", "-movflags", "+faststart", str(out)],
+                       check=True)
+        if out.stat().st_size <= limit:
+            return out
+    return None
 
 
 def run(phase: str) -> None:
@@ -537,7 +658,7 @@ def run(phase: str) -> None:
         if phase in ("poll", "all"):
             needs_render = runner.poll()
         if phase == "render" or (phase == "all" and needs_render):
-            runner.render()
+            runner.render_all()
             runner.poll()              # post anything that became due, without waiting an hour
     finally:
         save_state(state)

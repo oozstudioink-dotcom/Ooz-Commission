@@ -192,12 +192,23 @@ RECIPES: dict[str, Callable] = {
 }
 
 
-def build(a: Analysis, names: list[str], seed: int, subject: str | None) -> list[Plan]:
+def build(a: Analysis, names: list[str], seed: int, subject: str | None,
+          copy: dict | None = None) -> list[Plan]:
+    """`copy` (from ai.write_copy) replaces template hooks/captions where it has them."""
     plans = []
     for name in names:
         rng = random.Random(f"{seed}-{name}")
         plan = RECIPES[name](a, rng, subject)
         plan.caption = hooks.make_caption(rng, subject)
+        ai_hook = (copy or {}).get("hooks", {}).get(name)
+        if ai_hook:
+            for card in plan.texts:
+                if card.text == plan.hook:
+                    card.text = ai_hook
+            plan.hook = ai_hook
+        if copy and copy.get("caption"):
+            tags = copy.get("hashtags") or hooks.make_caption(rng, subject).split("\n\n")[-1].split()
+            plan.caption = f"{copy['caption']}\n\n{' '.join(tags)}"
         plans.append(plan)
     return plans
 
@@ -206,7 +217,7 @@ def build(a: Analysis, names: list[str], seed: int, subject: str | None) -> list
 def render(plan: Plan, store: FrameStore, out: Path, audio: Path | None = None,
            focus: tuple[float, float, float] = (0.5, 0.5, 1.0)) -> Path:
     w, h = store.width, store.height
-    enc = Encoder(out, w, h, audio)
+    enc = Encoder(out, w, h, audio, duration=plan.seconds)
     graded: dict[int, np.ndarray] = {}
 
     def frame(i: int) -> np.ndarray:

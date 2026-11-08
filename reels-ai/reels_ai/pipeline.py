@@ -70,7 +70,8 @@ h2{{font-size:16px;margin:10px 0 4px;text-transform:capitalize}} small{{color:va
 
 def make_variants(src: Path, out_root: Path, names: list[str] | None = None, seed: int = 1,
                   subject: str | None = None, audio: Path | None = None, sheets: bool = False,
-                  keep_work: bool = False, review_page: bool = True) -> tuple[Path, list[dict]]:
+                  keep_work: bool = False, review_page: bool = True,
+                  copy: dict | None = None) -> tuple[Path, list[dict]]:
     """Analyse `src` and render the requested variants. Returns (output dir, results)."""
     src = Path(src).expanduser().resolve()
     out_dir = Path(out_root).resolve() / src.stem
@@ -87,7 +88,7 @@ def make_variants(src: Path, out_root: Path, names: list[str] | None = None, see
     print("beats (s):", a.to_dict()["seconds"])
 
     names = names or list(RECIPES)
-    plans = build(a, names, seed, subject)
+    plans = build(a, names, seed, subject, copy)
     results = []
     for plan in plans:
         dst = out_dir / "variants" / f"{plan.name}.mp4"

@@ -53,6 +53,19 @@ drawing back-to-back when avoidable, prefers a new style, spreads drawings evenl
 for you to post with a trending sound. Nothing is auto-posted. Switch `[delivery] mode = "platforms"`
 to use the per-platform schedules and API posting below.
 
+## Extras
+
+- **Page compilations:** `/compile [title]` stitches every drawing since the last compilation into a
+  ~55 s Short (flash of every finished drawing, each drawing's sketch-to-ink, pull-back to the whole
+  page; added to the drops bank) plus a long full-length version for YouTube (sent to you).
+- **Weekly report:** every Sunday (or `/report`): views, watch time and follower change from
+  Instagram/YouTube. Posts are matched to variants by caption, so styles get ranked.
+- **AI hooks and captions:** add a free Gemini key as the `GEMINI_API_KEY` secret
+  (aistudio.google.com). Gemini writes the hooks and captions, and names the character if you didn't.
+  Without a key, or if Gemini fails, the built-in hooks are used.
+- **Commission alerts:** `integrations/commission-alerts.gs` goes in the commission Google Form's
+  Apps Script and messages you on Telegram the moment someone submits. `/id` gives the chat ID it needs.
+
 ## Telegram approval bot
 
 Runs hourly on GitHub Actions (`.github/workflows/reels-bot.yml`), free.
