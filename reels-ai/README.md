@@ -62,6 +62,12 @@ send 50 MB at most), and every drop message links to its 4K file. Each run rende
 `max_render_minutes`; the rest continues on the next run. "All caught up" is sent when the queue
 is empty.
 
+## Upload once
+
+Sessions uploaded to `Longform/<project>/` are also turned into Shorts automatically and
+stay in place for the LongDraw (`[drive] shorts_from_longform`). A monthly Telegram note reports
+how much space processed raws use (`storage_alert_gb`); nothing is ever deleted by the bot.
+
 ## Google Drive inbox (raw recordings)
 
 Drop raw recordings of any length (4K, portrait or landscape) into Drive › `Ooz Reels/Inbox/`.

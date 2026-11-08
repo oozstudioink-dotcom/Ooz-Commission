@@ -96,6 +96,7 @@ class Runner:
                 self.post_due()
             self.warn_low_bank()
         self.check_drive_inbox()
+        self.storage_check()
         self.refresh_stats()
         self.weekly_report()
         return (any(d["status"] == "queued" for d in self.state["drawings"].values())
@@ -170,30 +171,73 @@ class Runner:
             self.say(f"\u26a0\ufe0f Google Drive: {msg}")
 
     def check_drive_inbox(self) -> None:
+        """New videos in Inbox, and (shorts_from_longform) in Longform project folders, become
+        Shorts. Longform sessions stay where they are so the LongDraw can use them too."""
         if not self.drive:
             return
         from .drive import subject_from_name
+        sources = []                                    # (file, folder label, keep in place?)
         try:
-            inbox = self.drive.folder("Inbox")
-            files = self.drive.list(inbox, "video")
+            for f in self.drive.list(self.drive.folder("Inbox"), "video"):
+                sources.append((f, "Inbox", False))
+            if self.cfg.get("drive", {}).get("shorts_from_longform", True):
+                for proj in self.drive.list(self.drive.folder("Longform"), "folder"):
+                    if proj["name"] == "Finished":
+                        continue
+                    for f in self.drive.list(proj["id"], "video"):
+                        sources.append((f, f"Longform \u203a {proj['name']}", True))
         except Exception as e:  # noqa: BLE001 - never let Drive break Telegram handling
             return self.drive_problem(e)
         self.state.pop("drive_error", None)
         seen = self.state.setdefault("drive_seen", [])
-        new = [f for f in files if f["id"] not in seen]
-        for f in new:
+        new = [(f, where, keep) for f, where, keep in sources if f["id"] not in seen]
+        for f, where, keep in new:
             meta = f.get("videoMediaMetadata") or {}
             did = new_id(self.state, "d")
             self.state["drawings"][did] = {
-                "source": "drive", "drive_id": f["id"], "drive_name": f["name"],
-                "subject": subject_from_name(f["name"]), "received": iso(self.clock()),
+                "source": "drive", "drive_id": f["id"], "drive_name": f["name"], "drive_where": where,
+                "keep_in_place": keep, "subject": subject_from_name(f["name"]), "received": iso(self.clock()),
                 "duration": (int(meta["durationMillis"]) / 1000) if meta.get("durationMillis") else None,
                 "size_gb": round(int(f.get("size") or 0) / 1e9, 2), "status": "queued"}
             seen.append(f["id"])
         if new:
-            names = ", ".join(f["name"] for f in new[:6]) + (" \u2026" if len(new) > 6 else "")
-            self.say(f"\U0001f4e5 Found {len(new)} new recording(s) in Drive \u203a Inbox: {names}\n"
-                     "I'll turn them into variants now. Long 4K files take a few minutes each.")
+            by_place: dict[str, list[str]] = {}
+            for f, where, _ in new:
+                by_place.setdefault(where, []).append(f["name"])
+            more = " \u2026"
+            lines = [f"\u2022 {where}: {', '.join(n[:6])}{more if len(n) > 6 else ''}"
+                     for where, n in by_place.items()]
+            self.say(f"\U0001f4e5 Found {len(new)} new recording(s) in Drive:\n" + "\n".join(lines) +
+                     "\nTurning them into 4K Shorts now (LongDraw sessions stay in their folder).")
+
+    # ------------------------------------------------------------------ storage
+    def storage_check(self) -> None:
+        """Monthly: how much space raw recordings use, and Drive's overall usage. Never deletes."""
+        if not self.drive:
+            return
+        month = self.local(self.clock()).strftime("%Y-%m")
+        if self.state.get("storage_month") == month:
+            return
+        try:
+            raw = sum(int(f.get("size") or 0) for f in self.drive.list(self.drive.folder("Inbox/Processed"), "video"))
+            fin = 0
+            for proj in self.drive.list(self.drive.folder("Longform/Finished"), "folder"):
+                fin += sum(int(f.get("size") or 0) for f in self.drive.list(proj["id"], "video"))
+            quota = self.drive.about().get("storageQuota", {})
+        except Exception as e:  # noqa: BLE001
+            print(f"warn: storage check: {e}")
+            return
+        self.state["storage_month"] = month
+        warn_gb = float(self.cfg.get("drive", {}).get("storage_alert_gb", 50))
+        if (raw + fin) / 1e9 < warn_gb:
+            return
+        used, limit = int(quota.get("usage") or 0), int(quota.get("limit") or 0)
+        total = (f"\nDrive overall: {used / 1e12:.2f} TB of {limit / 1e12:.0f} TB used." if limit else "")
+        self.say("\U0001f9f9 Monthly storage check\n"
+                 f"\u2022 Inbox \u203a Processed (raw clips already made into Shorts): {raw / 1e9:.0f} GB\n"
+                 f"\u2022 Longform \u203a Finished (sessions already in a LongDraw): {fin / 1e9:.0f} GB"
+                 f"{total}\nThese are safe to delete when you're ready; the Shorts and LongDraws are in Done. "
+                 "I never delete anything myself.")
 
     def drive_source(self, d: dict, tmp: Path) -> Path:
         """Stream a raw Drive recording into a small timelapse working copy."""
@@ -211,7 +255,8 @@ class Runner:
         Done/Shorts. Returns {style: Drive link}."""
         links: dict[str, str] = {}
         try:
-            self.drive.move(d["drive_id"], self.drive.folder("Inbox/Processed"), self.drive.folder("Inbox"))
+            if not d.get("keep_in_place"):          # LongDraw sessions stay in their project folder
+                self.drive.move(d["drive_id"], self.drive.folder("Inbox/Processed"), self.drive.folder("Inbox"))
         except Exception as e:  # noqa: BLE001
             print(f"warn: couldn't move {d.get('drive_name')}: {e}")
         if not (self.cfg.get("drive", {}).get("backup_shorts", True) or self.shorts_4k):

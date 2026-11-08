@@ -102,7 +102,9 @@ privacy.html, terms.html, tiktok-callback.html   pages on your GitHub Pages site
 
 ## 4. Walkthrough: one drawing becomes 5 Shorts
 
-You upload `Naruto.MOV` (25 min, 4K, vertical) to Drive › Ooz Reels › Inbox.
+You upload `Naruto.MOV` (25 min, 4K, vertical) to Drive › Ooz Reels › Inbox, or to a
+project folder inside Longform: sessions there become Shorts too and stay in place for the
+LongDraw (`shorts_from_longform`), so each video is uploaded once.
 
 1. **Wake-up.** cron-job.org calls GitHub at the top of the hour, and `reels-bot.yml` starts a machine.
 2. **Poll** (`bot.py → Runner.poll`). Reads new Telegram messages and button taps, then checks
@@ -236,6 +238,10 @@ python -m unittest discover -s tests                                     # all a
 | YouTube upload private | normal until Google approves the API audit; flip it to Public in Studio |
 | Thumbnail not set | channel not phone-verified (youtube.com/verify) |
 | Job ran out of time | a huge batch: renders resume next run (`max_render_minutes`), LongDraw limit is 340 min |
+
+**Storage:** once a month the bot reports how much space raw clips use in
+`Inbox/Processed` and `Longform/Finished` (when over `storage_alert_gb`), plus overall Drive usage.
+It never deletes anything.
 
 **Changing behaviour without code:** almost everything is in `config.toml` (times, resolution,
 styles per drawing, panel text, advert text, socials, episode start). Edit it on GitHub; the next
