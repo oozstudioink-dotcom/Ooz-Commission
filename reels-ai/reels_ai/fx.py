@@ -33,16 +33,28 @@ def ease(u: float) -> float:
     return u * u * (3 - 2 * u)
 
 
-def camera(img: np.ndarray, cx: float, cy: float, zoom: float) -> np.ndarray:
-    """Sub-pixel smooth zoom centred on (cx, cy) in 0..1 coords; clamps to stay on-frame."""
+def _cam_matrix(w: int, h: int, cx: float, cy: float, zoom: float) -> np.ndarray:
     if zoom <= 1.0001:
-        return img
-    h, w = img.shape[:2]
+        return np.eye(3, dtype=np.float64)
     cw, ch = w / zoom, h / zoom
     x0 = min(max(cx * w - cw / 2, 0), w - cw)
     y0 = min(max(cy * h - ch / 2, 0), h - ch)
-    m = np.float32([[zoom, 0, -x0 * zoom], [0, zoom, -y0 * zoom]])
-    return cv2.warpAffine(img, m, (w, h), flags=cv2.INTER_CUBIC, borderMode=cv2.BORDER_REFLECT)
+    return np.array([[zoom, 0, -x0 * zoom], [0, zoom, -y0 * zoom], [0, 0, 1]], np.float64)
+
+
+def camera(img: np.ndarray, cx: float, cy: float, zoom: float, *more) -> np.ndarray:
+    """Sub-pixel smooth zoom centred on (cx, cy) in 0..1 coords; clamps to stay on-frame.
+
+    Extra (cx, cy, zoom) triples are applied inside the previous view, all in one resample
+    (sharper and steadier than zooming twice)."""
+    h, w = img.shape[:2]
+    m = _cam_matrix(w, h, cx, cy, zoom)
+    for c in more:
+        m = _cam_matrix(w, h, *c) @ m
+    if abs(m[0, 0] - 1) < 1e-4 and abs(m[0, 2]) < 1e-3 and abs(m[1, 2]) < 1e-3:
+        return img
+    return cv2.warpAffine(img, m[:2].astype(np.float32), (w, h), flags=cv2.INTER_CUBIC,
+                          borderMode=cv2.BORDER_REFLECT)
 
 
 def to_view(px: float, py: float, focus: tuple[float, float, float]) -> tuple[float, float]:

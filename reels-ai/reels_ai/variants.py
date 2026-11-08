@@ -10,6 +10,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Callable
 
+import cv2
 import numpy as np
 
 from . import fx, hooks
@@ -214,28 +215,65 @@ def build(a: Analysis, names: list[str], seed: int, subject: str | None,
 
 
 # ---------------------------------------------------------------- render
+BLEND = 6      # max source frames averaged into one output frame (motion blur)
+MIN_BLEND = 3  # frames blended even at real speed
+
+
+def blend_windows(idxs: list[int], usable: list[bool] | None = None, blend: int = BLEND,
+                  min_win: int = MIN_BLEND) -> list[tuple[int, ...]]:
+    """For each output frame, the source frames it stands for.
+
+    When the edit skips ahead (a speed-up), the frames in between are averaged into the output
+    frame instead of being dropped. This is a timelapse motion blur: ink builds up smoothly and
+    the hand glides instead of jumping. Even at real speed a little trail (min_win frames) is
+    kept, which irons out the jumps a phone timelapse already has. Holds, flashbacks and long
+    cuts stay single frames, and frames where an arm blocks the page are left out of the blend.
+    """
+    out, prev = [], None
+    for i in idxs:
+        win: tuple[int, ...] = (i,)
+        if prev is not None and 0 < i - prev <= 4 * blend and blend > 1:
+            n = min(blend, max(i - prev, min_win))
+            js = [j for j in range(max(0, i - 4 * blend), i)
+                  if usable is None or j >= len(usable) or usable[j]]
+            win = tuple(js[-(n - 1):] + [i]) if n > 1 else (i,)
+        out.append(win)
+        prev = i
+    return out
+
+
+def _mix(frames: list[np.ndarray]) -> np.ndarray:
+    """Weighted average, the newest frame counting most (running uint8 blend: fast at 4K)."""
+    out, total = frames[0], 1.0
+    for k, f in enumerate(frames[1:], start=2):
+        total += k
+        out = cv2.addWeighted(out, 1 - k / total, f, k / total, 0)
+    return out
+
+
 def render(plan: Plan, store: FrameStore, out: Path, audio: Path | None = None,
-           focus: tuple[float, float, float] = (0.5, 0.5, 1.0)) -> Path:
+           focus: tuple[float, float, float] = (0.5, 0.5, 1.0), usable: list[bool] | None = None,
+           blend: int = BLEND) -> Path:
     w, h = store.width, store.height
     enc = Encoder(out, w, h, audio, duration=plan.seconds)
-    graded: dict[int, np.ndarray] = {}
+    windows = blend_windows([s.idx for s in plan.shots], usable, blend)
+    graded: dict[tuple[int, ...], np.ndarray] = {}
 
-    def frame(i: int) -> np.ndarray:
-        if i not in graded:
+    def frame(win: tuple[int, ...]) -> np.ndarray:
+        if win not in graded:
             if len(graded) > 8:
                 graded.clear()
-            graded[i] = fx.grade(store[i], plan.grade)
-        return graded[i]
+            graded[win] = fx.grade(_mix([store[j] for j in win]), plan.grade)
+        return graded[win]
 
     fade = 0.15
     try:
         for k, s in enumerate(plan.shots):
             t = k / FPS
-            img = frame(s.idx)
+            img = frame(windows[k] if s.wipe is None else (s.idx,))
             if s.wipe is not None and s.alt is not None:
-                img = fx.wipe(img, frame(s.alt), s.wipe)
-            img = fx.camera(img, *focus)            # frame this clip's drawing
-            img = fx.camera(img, *s.cam)
+                img = fx.wipe(img, frame((s.alt,)), s.wipe)
+            img = fx.camera(img, *focus, s.cam)     # frame this clip's drawing, then the shot's move
             for card in plan.texts:
                 if card.start <= t < card.end:
                     alpha = min(1.0, (t - card.start) / fade, (card.end - t) / fade)
