@@ -30,6 +30,7 @@
       "unique_id": "AgADOAkAAoUCeUc"
     }
   },
+  "drive_error": "Request had insufficient authentication scopes. (HTTP 403) - the Google token is missing the Drive permission; regenerate it with the drive scope",
   "low_bank_warned": "2026-11-06",
   "next_id": 22,
   "owner_chat_id": 5745191999,
