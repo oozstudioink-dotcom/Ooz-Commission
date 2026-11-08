@@ -25,8 +25,11 @@ def probe(path: Path) -> dict:
             "duration": float(data["format"]["duration"])}
 
 
-def normalize(src: Path, dst: Path) -> dict:
-    """Make a 9:16, 30fps, <=90s H.264 working copy. Wider inputs get a blurred backdrop."""
+def normalize(src: Path, dst: Path, keep_wide: bool = False, max_wide_h: int = 1440) -> dict:
+    """Make a 9:16, 30fps, <=90s H.264 working copy.
+
+    Wider inputs get a blurred backdrop, unless keep_wide: then they keep their shape (height
+    capped at max_wide_h) so the caller can crop a vertical frame around the drawing."""
     info = probe(src)
     # ffprobe reports pre-rotation size; ffmpeg autorotates, so decide from a decoded frame.
     cap = cv2.VideoCapture(str(src))
@@ -42,7 +45,13 @@ def normalize(src: Path, dst: Path) -> dict:
     speed = max(1.0, info["duration"] / MAX_WORK_SECONDS)
     tempo = f"setpts=PTS/{speed:.4f}," if speed > 1 else ""
 
-    if abs(w / h - 9 / 16) < 0.01:
+    if keep_wide and w / h > 9 / 16 + 0.01:
+        out_h = min(max_wide_h, h)
+        out_h -= out_h % 2
+        out_w = int(round(w * out_h / h))
+        out_w -= out_w % 2
+        vf = f"{tempo}fps={FPS},scale={out_w}:{out_h}:flags=lanczos,setsar=1"
+    elif abs(w / h - 9 / 16) < 0.01:
         vf = f"{tempo}fps={FPS},scale={out_w}:{out_h}:flags=lanczos,setsar=1"
     elif w / h < 9 / 16:  # taller than 9:16: crop top/bottom
         vf = f"{tempo}fps={FPS},scale={out_w}:-2:flags=lanczos,crop={out_w}:{out_h},setsar=1"
@@ -56,6 +65,25 @@ def normalize(src: Path, dst: Path) -> dict:
         check=True,
     )
     return {"source_duration": info["duration"], "speedup": speed, "width": out_w, "height": out_h}
+
+
+def crop_vertical(src: Path, dst: Path, center_x: float, out_w: int = 1080) -> dict:
+    """Cut a full-height 9:16 window out of a wide working copy, centred on center_x (0..1)."""
+    info = probe(src)
+    w, h = info["width"], info["height"]
+    cw = int(round(h * 9 / 16))
+    cw -= cw % 2
+    x = int(round(min(max(center_x * w - cw / 2, 0), w - cw)))
+    ow = min(out_w, max(cw, out_w))
+    ow -= ow % 2
+    oh = int(round(ow * 16 / 9))
+    oh -= oh % 2
+    subprocess.run(
+        ["ffmpeg", "-v", "error", "-y", "-i", str(src), "-an",
+         "-vf", f"crop={cw}:{h}:{x}:0,scale={ow}:{oh}:flags=lanczos,setsar=1",
+         "-c:v", "libx264", "-crf", "14", "-preset", "fast", "-pix_fmt", "yuv420p", str(dst)],
+        check=True)
+    return {"width": ow, "height": oh, "crop_x": x, "crop_w": cw}
 
 
 class FrameStore:

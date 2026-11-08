@@ -10,7 +10,7 @@ import cv2
 import numpy as np
 
 from .analyze import analyze
-from .media import FrameStore, normalize
+from .media import FrameStore, crop_vertical, normalize
 from .variants import RECIPES, build, render
 
 
@@ -80,10 +80,20 @@ def make_variants(src: Path, out_root: Path, names: list[str] | None = None, see
 
     t0 = time.time()
     work = out_dir / "work.mp4"
-    norm = normalize(src, work)
+    norm = normalize(src, work, keep_wide=True)
     print(f"normalized {src.name} -> {norm['width']}x{norm['height']} (x{norm['speedup']:.1f} speed)")
     store = FrameStore(work)
     a = analyze(store)
+    if store.width / store.height > 9 / 16 + 0.02:
+        # Landscape recording: cut a vertical frame around this clip's drawing, then re-analyse.
+        vert = out_dir / "work_vertical.mp4"
+        crop = crop_vertical(work, vert, a.work_center[0])
+        print(f"landscape -> vertical crop at x={crop['crop_x']} ({crop['crop_w']}px wide)")
+        work.unlink(missing_ok=True)
+        vert.rename(work)
+        store = FrameStore(work)
+        a = analyze(store)
+        norm.update(width=store.width, height=store.height, landscape_crop=crop)
     (out_dir / "analysis.json").write_text(json.dumps({**norm, **a.to_dict()}, indent=2))
     print("beats (s):", a.to_dict()["seconds"])
 
