@@ -52,6 +52,13 @@ redirect_uri = "https://oozstudioink-dotcom.github.io/Ooz-Commission/tiktok-call
 max_per_day = 1
 post_times = ["18:00"]
 
+[shorts]
+# "4k": recordings from the Drive inbox render at up to 2160x3840 (vertical 4K; landscape
+# recordings as large as their vertical crop allows). Full-quality files go to Drive >
+# Done > Shorts and every drop links to them; Telegram gets 1080p previews (50 MB bot limit).
+resolution = "4k"
+max_render_minutes = 40          # per hourly run; the rest continues next run
+
 [drive]
 # Google Drive inbox for raw recordings (any length, 4K, portrait or landscape).
 # Folders are created inside this root on the first `check` run:

@@ -65,7 +65,7 @@ def grade(img: np.ndarray, name: str) -> np.ndarray:
     if name == "natural":
         return img
     gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-    paper = float(np.percentile(gray, 85)) or 1.0
+    paper = float(np.percentile(gray[::4, ::4], 85)) or 1.0      # subsampled: same answer, 16x faster
     if name == "clean":       # paper pushed to white, keep a touch of colour for skin
         gain = 248.0 / paper
         out = cv2.convertScaleAbs(img, alpha=gain)
@@ -167,12 +167,31 @@ def text_layer(text: str, style: str, w: int, h: int, y_frac: float = 0.11) -> n
     return cv2.cvtColor(arr, cv2.COLOR_RGBA2BGRA)
 
 
+_BOX_CACHE: dict[int, tuple[int, int, int, int]] = {}
+
+
+def _alpha_box(layer_bgra: np.ndarray) -> tuple[int, int, int, int]:
+    key = id(layer_bgra)
+    if key not in _BOX_CACHE:
+        ys, xs = np.nonzero(layer_bgra[..., 3])
+        _BOX_CACHE[key] = ((ys.min(), ys.max() + 1, xs.min(), xs.max() + 1) if len(xs)
+                           else (0, 0, 0, 0))
+    return _BOX_CACHE[key]
+
+
 def overlay(img: np.ndarray, layer_bgra: np.ndarray, alpha: float = 1.0) -> np.ndarray:
+    """Blend only where the layer has pixels (text is a small part of a 4K frame)."""
     if alpha <= 0:
         return img
-    a = layer_bgra[..., 3:4].astype(np.float32) / 255.0 * alpha
-    out = img.astype(np.float32) * (1 - a) + layer_bgra[..., :3].astype(np.float32) * a
-    return out.astype(np.uint8)
+    y0, y1, x0, x1 = _alpha_box(layer_bgra)
+    if y1 <= y0:
+        return img
+    out = img.copy()
+    lay = layer_bgra[y0:y1, x0:x1]
+    a = lay[..., 3:4].astype(np.float32) / 255.0 * alpha
+    out[y0:y1, x0:x1] = (img[y0:y1, x0:x1].astype(np.float32) * (1 - a)
+                         + lay[..., :3].astype(np.float32) * a).astype(np.uint8)
+    return out
 
 
 # ---------------------------------------------------------------- transitions / widgets

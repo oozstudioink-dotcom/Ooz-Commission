@@ -1247,3 +1247,49 @@ class MusicCreditsTest(unittest.TestCase):
         beat_tape(beats, 12.0, d / "t.m4a", played=played)            # 12 s needs only 2 tracks
         self.assertEqual(len(played), 2)
         self.assertEqual(len(set(played)), 2)
+
+
+class Shorts4KFlowTest(FakeVariantsMixin, unittest.TestCase):
+    def test_links_done_notice_and_budget(self):
+        class D:
+            def __init__(self):
+                self.ups = []
+
+            def folder(self, p=""):
+                return "id:" + p
+
+            def move(self, *a):
+                pass
+
+            def upload(self, path, folder, name=None, mime="video/mp4"):
+                self.ups.append((folder, name))
+                return {"id": "u", "webViewLink": f"https://drive/{len(self.ups)}"}
+
+        bot, state = FakeBot(), fresh_state()
+        state["owner_chat_id"] = OWNER
+        cfg = load_config()
+        cfg["timezone"] = "UTC"
+        cfg["shorts"]["max_render_minutes"] = 0          # budget: one drawing per run
+        clock = Clock(datetime(2026, 11, 8, 9, tzinfo=timezone.utc))
+        r = Runner(bot, state, cfg, clock=clock, drive=D())
+        src = Path(tempfile.mkdtemp()) / "raw.mp4"
+        src.write_bytes(b"x")
+        r.drive_source = lambda d, tmp: src
+        for i in range(2):
+            state["drawings"][f"d{i + 1}"] = {"source": "drive", "drive_id": f"f{i}", "drive_name": f"Goku {i}.MOV",
+                                              "subject": f"Goku {i}", "status": "queued"}
+        state["next_id"] = 3
+        self.stub_render(r)
+        self.assertEqual(sum(d["status"] == "rendered" for d in state["drawings"].values()), 1)
+        self.assertTrue(any("continue on the next run" in t for t in bot.texts()))
+        self.assertTrue(all(v.get("full_link", "").startswith("https://drive/") for v in state["variants"].values()))
+        self.assertEqual(r.drive.ups[0][0], "id:Done/Shorts/Goku 0")
+        self.stub_render(r)                                # next run finishes the queue
+        self.assertTrue(any(t.startswith("✅ All caught up") for t in bot.texts()))
+        albums = [p for k, _, p in bot.sent if k == "album"]
+        self.assertTrue(all("4K files saved to Drive" in a for a in albums))
+        clock.t = clock.t.replace(hour=17, minute=5)
+        r.poll()
+        drops = [p for k, _, p in bot.sent if k == "video" and p.startswith("\U0001f3ac Drop")]
+        self.assertEqual(len(drops), 2)
+        self.assertTrue(all("4K file to post: https://drive/" in p for p in drops))

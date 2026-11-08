@@ -200,23 +200,33 @@ class Runner:
         from .drive import make_proxy
         dur = d.get("duration") or 30 * 60        # unknown -> assume long (keyframe mode)
         return make_proxy(self.drive.media_url(d["drive_id"]), self.drive.token(),
-                          tmp / f"{d['drive_id']}.mp4", dur)
+                          tmp / f"{d['drive_id']}.mp4", dur, max_side=3840 if self.shorts_4k else 2560)
 
-    def drive_after(self, did: str, d: dict, out_dir: Path, results: list[dict]) -> None:
-        """Move the raw file to Inbox/Processed and back the variants up to Done/Shorts."""
+    @property
+    def shorts_4k(self) -> bool:
+        return str(self.cfg.get("shorts", {}).get("resolution", "4k")).lower() == "4k"
+
+    def drive_after(self, did: str, d: dict, out_dir: Path, results: list[dict]) -> dict[str, str]:
+        """Move the raw file to Inbox/Processed and save the full-quality variants to
+        Done/Shorts. Returns {style: Drive link}."""
+        links: dict[str, str] = {}
         try:
             self.drive.move(d["drive_id"], self.drive.folder("Inbox/Processed"), self.drive.folder("Inbox"))
         except Exception as e:  # noqa: BLE001
             print(f"warn: couldn't move {d.get('drive_name')}: {e}")
-        if not self.cfg.get("drive", {}).get("backup_shorts", True):
-            return
+        if not (self.cfg.get("drive", {}).get("backup_shorts", True) or self.shorts_4k):
+            return links
         try:
             name = d.get("subject") or Path(d.get("drive_name") or did).stem
             folder = self.drive.folder(f"Done/Shorts/{name}")
             for r in results:
-                self.drive.upload(out_dir / r["file"], folder, f"{name} - {STYLE_LABELS.get(r['name'], r['name'])}.mp4")
+                up = self.drive.upload(out_dir / r["file"], folder,
+                                       f"{name} - {STYLE_LABELS.get(r['name'], r['name'])}.mp4")
+                if up.get("webViewLink"):
+                    links[r["name"]] = up["webViewLink"]
         except Exception as e:  # noqa: BLE001
             print(f"warn: Drive backup failed: {e}")
+        return links
 
     # ------------------------------------------------------------------ LongDraw
     def longform_command(self, project: str) -> None:
@@ -439,7 +449,8 @@ class Runner:
             f"\U0001f3ac Drop #{n}: {subject} \u00b7 {STYLE_LABELS.get(v['style'], v['style'])}"
             f" \u00b7 {v.get('seconds', '?')}s\nHook on video: \u201c{v.get('hook', '')}\u201d\n\n"
             f"Post to: {where}\n\U0001f3b5 Add a trending sound when you post.\n"
-            "Caption is in the next message."))
+            + (f"\U0001f39e 4K file to post: {v['full_link']}\n" if v.get("full_link") else "")
+            + "Caption is in the next message."))
         self.say(v["caption"])
         v["dropped_at"] = iso(self.clock())
         v["drop_no"] = n
@@ -619,11 +630,19 @@ class Runner:
     def render(self, work_root: Path | None = None) -> None:
         from .pipeline import make_variants   # heavy imports only in this phase
 
+        import time as _time
         mode = self.cfg["approval"]["mode"]
         hours = self.cfg["approval"].get("fallback_hours", 6)
+        budget = float(self.cfg.get("shorts", {}).get("max_render_minutes", 40)) * 60
+        started = _time.time()
+        done_now = 0
         for did, d in self.state["drawings"].items():
             if d["status"] != "queued":
                 continue
+            if done_now and _time.time() - started > budget:
+                left = sum(1 for x in self.state["drawings"].values() if x["status"] == "queued")
+                self.say(f"\u23f3 Rendered {done_now} drawing(s) this run; {left} more continue on the next run.")
+                return
             with tempfile.TemporaryDirectory(dir=work_root) as tmp:
                 tmp = Path(tmp)
                 try:
@@ -633,19 +652,23 @@ class Runner:
                         src = self.bot.download(d["file_id"], tmp / f"{did}.mp4")
                     styles = self.choose_styles(did)
                     copy = self.ai_copy(src, d, styles, tmp)
+                    big = self.shorts_4k and d.get("source") == "drive"
                     out_dir, results = make_variants(src, tmp / "out", styles,
                                                      seed=int(did[1:]), subject=d["subject"],
-                                                     review_page=False,
-                                                     copy=copy)
+                                                     review_page=False, copy=copy,
+                                                     max_width=2160 if big else 1080)
                 except Exception as e:  # noqa: BLE001 - report any failure to the owner
                     d["status"] = "failed"
                     d["error"] = str(e)[:300]
                     self.say(f"⚠️ Couldn't process that video ({did}): {d['error']}")
                     continue
+                links = {}
                 if d.get("source") == "drive" and self.drive:
-                    self.drive_after(did, d, out_dir, results)
+                    links = self.drive_after(did, d, out_dir, results)
+                self.telegram_copies(out_dir, results)
+                done_now += 1
                 if mode == "auto":
-                    self.bank_album(did, d, out_dir, results)
+                    self.bank_album(did, d, out_dir, results, links)
                     d["status"] = "rendered"
                     continue
                 for r in results:
@@ -660,8 +683,10 @@ class Runner:
                         note = "Waiting for your OK."
                     text = (f"\U0001f3ac {STYLE_LABELS[r['name']]} · {r['seconds']:.0f}s · {vid}\n"
                             f"Hook: “{r['hook']}”\n\n{r['caption']}\n\n{note}")
+                    if links.get(r["name"]):
+                        text += f"\n\U0001f39e Full quality: {links[r['name']]}"
                     sent = self.bot.send_video(
-                        self.owner, out_dir / r["file"], caption=text,
+                        self.owner, out_dir / r.get("tg_file", r["file"]), caption=text,
                         reply_markup=None if mode == "auto" else pending_markup(vid),
                         width=720, height=1280, duration=round(r["seconds"]))
                     self.state["variants"][vid] = {
@@ -670,18 +695,36 @@ class Runner:
                         "message_id": sent["message_id"], "created": iso(created),
                         "deadline": iso(deadline) if deadline else None,
                         "status": "approved" if mode == "auto" else "pending", "posts": {},
+                        **({"full_link": links[r["name"]]} if links.get(r["name"]) else {}),
                     }
                     if mode == "auto":
                         self.decide(self.state["variants"][vid], "approved", "auto")
                     uses = self.state["style_uses"]
                     uses[r["name"]] = uses.get(r["name"], 0) + 1
                 d["status"] = "rendered"
+        if done_now and not any(x["status"] == "queued" for x in self.state["drawings"].values()):
+            bank = self.bank().get("drops")
+            extra = f" Bank: {bank} videos \u2248 {bank // self.per_day('drops')} days of drops." if bank else ""
+            self.say(f"\u2705 All caught up: {done_now} drawing(s) rendered.{extra}")
+
+    def telegram_copies(self, out_dir: Path, results: list[dict]) -> None:
+        """1080p copies for Telegram (bots can send 50 MB at most); originals stay full quality."""
+        from .media import preview_copy
+        for r in results:
+            src = out_dir / r["file"]
+            dst = src.with_name(src.stem + "_tg.mp4")
+            try:
+                r["tg_file"] = str(preview_copy(src, dst).relative_to(out_dir))
+            except Exception as e:  # noqa: BLE001 - fall back to the original file
+                print(f"warn: preview copy failed for {src.name}: {e}")
+                r["tg_file"] = r["file"]
 
     def render_all(self, work_root: Path | None = None) -> None:
         self.render(work_root)
         self.render_compilation(work_root)
 
-    def bank_album(self, did: str, d: dict, out_dir: Path, results: list[dict]) -> None:
+    def bank_album(self, did: str, d: dict, out_dir: Path, results: list[dict],
+                   links: dict | None = None) -> None:
         """Auto mode: send the drawing's variants as one album and add them straight to the bank."""
         subject = d.get("subject") or "your drawing"
         for start in range(0, len(results), 10):
@@ -692,9 +735,12 @@ class Runner:
                 tail = (f"\nBank: {bank_after} videos \u2248 {bank_after // self.per_day('drops')} days"
                         if bank_after is not None else "")
                 caption = f"\U0001f3a8 {subject}: {len(results)} variants added ({styles}){tail}"
+                if links:
+                    caption += "\n\U0001f39e 4K files saved to Drive \u203a Done \u203a Shorts (links come with each drop)"
             else:
                 caption = ""
-            msgs = self.bot.send_media_group(self.owner, [out_dir / r["file"] for r in chunk], caption)
+            msgs = self.bot.send_media_group(self.owner, [out_dir / r.get("tg_file", r["file"]) for r in chunk],
+                                             caption)
             for r, m in zip(chunk, msgs):
                 vid = new_id(self.state, "v")
                 self.state["variants"][vid] = {
@@ -702,7 +748,7 @@ class Runner:
                     "seconds": round(r["seconds"], 1), "file_id": m["video"]["file_id"],
                     "message_id": m["message_id"], "created": iso(self.clock()), "deadline": None,
                     "status": "approved", "decided_by": "auto", "decided_at": iso(self.clock()),
-                    "posts": {}}
+                    "posts": {}, **({"full_link": links[r["name"]]} if (links or {}).get(r["name"]) else {})}
                 uses = self.state["style_uses"]
                 uses[r["name"]] = uses.get(r["name"], 0) + 1
 

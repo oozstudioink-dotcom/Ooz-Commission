@@ -53,6 +53,15 @@ drawing back-to-back when avoidable, prefers a new style, spreads drawings evenl
 for you to post with a trending sound. Nothing is auto-posted. Switch `[delivery] mode = "platforms"`
 to use the per-platform schedules and API posting below.
 
+## 4K Shorts
+
+`[shorts] resolution = "4k"`: recordings from the Drive inbox render at up to 2160x3840.
+Landscape recordings render as large as their vertical crop allows, and nothing is ever enlarged.
+Full-quality files go to `Done/Shorts/<character>/`. Telegram gets 1080p previews (bots can
+send 50 MB at most), and every drop message links to its 4K file. Each run renders for at most
+`max_render_minutes`; the rest continues on the next run. "All caught up" is sent when the queue
+is empty.
+
 ## Google Drive inbox (raw recordings)
 
 Drop raw recordings of any length (4K, portrait or landscape) into Drive › `Ooz Reels/Inbox/`.

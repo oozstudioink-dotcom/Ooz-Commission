@@ -71,7 +71,7 @@ h2{{font-size:16px;margin:10px 0 4px;text-transform:capitalize}} small{{color:va
 def make_variants(src: Path, out_root: Path, names: list[str] | None = None, seed: int = 1,
                   subject: str | None = None, audio: Path | None = None, sheets: bool = False,
                   keep_work: bool = False, review_page: bool = True,
-                  copy: dict | None = None) -> tuple[Path, list[dict]]:
+                  copy: dict | None = None, max_width: int = 1080) -> tuple[Path, list[dict]]:
     """Analyse `src` and render the requested variants. Returns (output dir, results)."""
     src = Path(src).expanduser().resolve()
     out_dir = Path(out_root).resolve() / src.stem
@@ -80,14 +80,14 @@ def make_variants(src: Path, out_root: Path, names: list[str] | None = None, see
 
     t0 = time.time()
     work = out_dir / "work.mp4"
-    norm = normalize(src, work, keep_wide=True)
+    norm = normalize(src, work, keep_wide=True, max_wide_h=max(1440, max_width * 16 // 9), max_w=max_width)
     print(f"normalized {src.name} -> {norm['width']}x{norm['height']} (x{norm['speedup']:.1f} speed)")
     store = FrameStore(work)
     a = analyze(store)
     if store.width / store.height > 9 / 16 + 0.02:
         # Landscape recording: cut a vertical frame around this clip's drawing, then re-analyse.
         vert = out_dir / "work_vertical.mp4"
-        crop = crop_vertical(work, vert, a.work_center[0])
+        crop = crop_vertical(work, vert, a.work_center[0], out_w=max_width)
         print(f"landscape -> vertical crop at x={crop['crop_x']} ({crop['crop_w']}px wide)")
         work.unlink(missing_ok=True)
         vert.rename(work)
