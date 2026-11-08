@@ -61,6 +61,13 @@ enabled = true
 root = "Ooz Reels"
 backup_shorts = true             # also save every variant to Done/Shorts/<character>/
 
+[longform]
+# "LongDraw" YouTube videos built from Drive > Longform/<project>/ sessions.
+next_episode = 3                 # EP. number for the next upload (counts up automatically)
+target_minutes = [20, 30]        # speed is picked so the cut lands in this range
+resolution = "4k"                # "4k" (3840x2160) or "1080p"
+art_panel_name = "YT_Longform_Finished_Art_Panel"   # optional image in the project folder for the thumbnail
+
 [ai]
 # Hooks + captions written by Google Gemini when the GEMINI_API_KEY secret is set
 # (free key: aistudio.google.com -> Get API key). Without a key the built-in hooks are used.

@@ -941,3 +941,24 @@ class DriveTest(unittest.TestCase):
         self.assertEqual(len(drawings), 1)                            # not picked up twice
         self.assertEqual((drawings[0]["subject"], drawings[0]["duration"]), ("Naruto", 36.5))
         self.assertEqual(sum("new recording" in t for t in bot.texts()), 1)
+
+
+class ThumbnailTest(unittest.TestCase):
+    def test_layout_and_youtube_size(self):
+        from PIL import Image
+        from reels_ai.thumbnail import BOXES, RED, make_thumbnail, youtube_jpeg
+        out = Path(tempfile.mkdtemp())
+        art = Image.new("RGB", (900, 800), (250, 250, 250))
+        p = make_thumbnail(art, 3, out / "t.png")
+        img = Image.open(p).convert("RGB")
+        self.assertEqual(img.size, (1920, 1080))
+        sx = 1920 / 2000
+        ax0, ay0, ax1, ay1 = [int(v * sx) for v in BOXES["art"]]
+        self.assertEqual(img.getpixel(((ax0 + ax1) // 2, (ay0 + ay1) // 2)), (250, 250, 250))
+        dx0, dy0, dx1, dy1 = [int(v * sx) for v in BOXES["draw"]]
+        reds = sum(1 for x in range(dx0, dx1, 7) for y in range(dy0, dy1, 7)
+                   if img.getpixel((x, y)) == RED)
+        self.assertGreater(reds, 500)                                  # DRAW painted in red
+        jpg = youtube_jpeg(p, out / "t.jpg")
+        self.assertLess(jpg.stat().st_size, 2_000_000)
+        self.assertEqual(Image.open(jpg).size, (1280, 720))
