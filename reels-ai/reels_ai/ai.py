@@ -10,6 +10,7 @@ import base64
 import json
 import re
 import subprocess
+import time
 import urllib.error
 import urllib.request
 from pathlib import Path
@@ -81,7 +82,35 @@ def write_copy(image: Path, subject: str | None, styles: list[str], api_key: str
     return clean(out, styles)
 
 
-FALLBACK_MODELS = ["gemini-2.5-flash", "gemini-2.5-flash-lite", "gemini-2.0-flash"]
+FALLBACK_MODELS = ["gemini-flash-lite-latest"]       # always-current aliases; more come from the API
+MODELS_URL = "https://generativelanguage.googleapis.com/v1beta/models"
+_SKIP = re.compile(r"image|tts|audio|live|embed|vision|learnlm|gemma|robotics|computer", re.I)
+
+
+def available_models(api_key: str, url: str = MODELS_URL, timeout: int = 30) -> list[str]:
+    """Text 'flash' models this key can call, newest first ('-latest' aliases on top).
+    Model names change as Google retires versions, so the bot asks instead of guessing."""
+    key = re.sub(r"\s+", "", api_key or "")
+    req = urllib.request.Request(f"{url}?pageSize=200", headers={"x-goog-api-key": key})
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as r:
+            models = json.load(r).get("models") or []
+    except (urllib.error.URLError, ValueError, TimeoutError):
+        return []
+    names = [m["name"].split("/", 1)[-1] for m in models
+             if "generateContent" in (m.get("supportedGenerationMethods") or [])
+             and "flash" in m.get("name", "") and not _SKIP.search(m.get("name", ""))]
+
+    def rank(n: str):
+        ver = [int(x) for x in re.findall(r"(\d+)(?:\.(\d+))?", n)[0] if x] if re.search(r"\d", n) else [99]
+        return (not n.endswith("-latest"), "preview" in n or "exp" in n, [-v for v in ver], "lite" in n, n)
+    return sorted(dict.fromkeys(names), key=rank)
+
+
+def candidate_models(api_key: str, wanted: str, preferred: str | None = None, limit: int = 5) -> list[str]:
+    """Order to try: the model that worked last time, the configured one, then what the key offers."""
+    out = [m for m in (preferred, wanted) if m] + FALLBACK_MODELS + available_models(api_key)
+    return list(dict.fromkeys(out))[:limit]
 
 
 def ping(api_key: str, model: str = DEFAULT_MODEL, endpoint: str = ENDPOINT, timeout: int = 90,
@@ -100,6 +129,10 @@ def ping(api_key: str, model: str = DEFAULT_MODEL, endpoint: str = ENDPOINT, tim
                 with urllib.request.urlopen(req, timeout=timeout) as r:
                     data = json.load(r)
                 break
+            except urllib.error.HTTPError as e:
+                if e.code != 503 or attempt == tries - 1:
+                    raise
+                time.sleep(5)                         # "high demand": usually passes in seconds
             except TimeoutError:
                 if attempt == tries - 1:
                     raise RuntimeError(f"no answer within {timeout}s"
@@ -112,6 +145,7 @@ def ping(api_key: str, model: str = DEFAULT_MODEL, endpoint: str = ENDPOINT, tim
             msg = ""
         hint = {400: "the key looks wrong; copy it again from aistudio.google.com",
                 403: "the key isn't allowed to use Gemini; create a new one in AI Studio",
+                503: "busy (high demand) right now",
                 404: f"model {model!r} not found; check [ai] model in config.toml",
                 429: "free-tier limit reached for now; it resets on its own"}.get(e.code, "")
         raise RuntimeError(f"HTTP {e.code}: {hint or msg[:150]}") from None

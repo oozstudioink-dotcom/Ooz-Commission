@@ -427,8 +427,14 @@ class Runner:
             return None
         from .ai import DEFAULT_MODEL, final_frame, write_copy
         frame = final_frame(src, tmp / "final.jpg")
-        model = self.state.get("ai_model") or self.cfg.get("ai", {}).get("model", DEFAULT_MODEL)
-        copy = write_copy(frame, d.get("subject"), styles, key, model=model)
+        from .ai import candidate_models
+        copy = None
+        wanted = self.cfg.get("ai", {}).get("model", DEFAULT_MODEL)
+        for model in candidate_models(key, wanted, self.state.get("ai_model"), limit=3):
+            copy = write_copy(frame, d.get("subject"), styles, key, model=model)
+            if copy:                              # busy/retired models fall through to the next
+                self.state["ai_model"] = model
+                break
         if copy and not d.get("subject") and copy.get("subject"):
             d["subject"] = copy["subject"]          # Gemini recognised the character
         return copy
@@ -1068,14 +1074,14 @@ def check(runner: Runner) -> None:
             lines.append(f"Google Drive: \u274c {e}")
     # Gemini: try the configured model, then a few others; remember the first that answers.
     import time as _time
-    from .ai import DEFAULT_MODEL, FALLBACK_MODELS, ping
+    from .ai import DEFAULT_MODEL, candidate_models, ping
     wanted = runner.cfg.get("ai", {}).get("model", DEFAULT_MODEL)
     key = os.environ.get("GEMINI_API_KEY", "")
     results, working = [], None
-    for model in dict.fromkeys([wanted] + FALLBACK_MODELS):
+    for model in candidate_models(key, wanted, limit=5):
         t0 = _time.time()
         try:
-            reply = ping(key, model, timeout=45, tries=1)
+            reply = ping(key, model, timeout=30, tries=2)
             results.append(f"\u2022 {model}: \u2705 \u201c{reply}\u201d in {_time.time() - t0:.0f}s")
             working = model
             break
