@@ -152,8 +152,10 @@ def analyze(store: FrameStore) -> Analysis:
     # hidden under the hand until then. We don't know when they were inked, so they say nothing
     # about this clip's timing: leave them out (unless that leaves almost nothing).
     def observed(t: np.ndarray, mask: np.ndarray) -> np.ndarray:
+        # A session that continues an already-inked page may add only a small share of the
+        # page's ink, so judge "enough seen" in pixels, not as a share of all ink on the page.
         seen = mask & (t > 0)
-        return seen if seen.sum() > 0.15 * max(1, mask.sum()) else mask
+        return seen if seen.sum() >= max(150, 0.02 * mask.sum()) else mask
 
     ink_obs = observed(ink_t, ink_map)
     ink_prog = progress(ink_t, ink_obs)
@@ -177,7 +179,7 @@ def analyze(store: FrameStore) -> Analysis:
         ink_end = min(n - 1, ink_start + FPS)
 
     # --- satisfying moment: fastest ink gain -------------------------------------------
-    gain = np.convolve(np.diff(ink_prog, prepend=0), np.ones(3) / 3, mode="same")
+    gain = np.convolve(np.diff(ink_prog, prepend=ink_prog[:1]), np.ones(3) / 3, mode="same")
     peak_idx = to_frame(int(np.argmax(gain)))
 
     # --- clean pencil sketch right before ink ----------------------------------------

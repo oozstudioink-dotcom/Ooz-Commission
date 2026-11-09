@@ -220,3 +220,46 @@ class CaptionFitTest(unittest.TestCase):
                 self.assertLessEqual(x1, w * 0.91, text)
                 self.assertGreaterEqual(y0, h * 0.12, text)
                 self.assertLessEqual(y1, h * 0.30, text)
+
+
+class HonestCopyTest(unittest.TestCase):
+    def test_claims_checked_against_the_session(self):
+        from reels_ai.hooks import honest
+        self.assertFalse(honest("Real time inking session", True))
+        self.assertFalse(honest("Pure ink, no pencil sketches", True))
+        self.assertTrue(honest("Pure ink, no pencil sketches", False))
+        self.assertFalse(honest("From pencil sketch to clean ink", False))
+        self.assertTrue(honest("From pencil sketch to clean ink", True))
+        self.assertTrue(honest("Watch every line go down", True))
+
+
+class ContinuedPageTest(unittest.TestCase):
+    """A session that adds a little ink to a page that's already mostly inked."""
+
+    def test_old_ink_is_not_this_sessions_start(self):
+        import subprocess
+        import tempfile
+        from pathlib import Path
+
+        import cv2
+
+        from reels_ai.analyze import analyze
+        from reels_ai.media import FrameStore
+        tmp = Path(tempfile.mkdtemp())
+        w, h, n = 720, 1280, 600
+        page = np.full((h, w, 3), 232, np.uint8)
+        cv2.rectangle(page, (60, 80), (660, 700), (15, 15, 15), -1)          # last session's ink
+        vw = cv2.VideoWriter(str(tmp / "c.avi"), cv2.VideoWriter_fourcc(*"MJPG"), 30, (w, h))
+        for i in range(n):
+            if 200 < i < 560:                                                # today: small figure
+                k = (i - 200) // 4
+                y, x = 800 + (k % 30) * 12, 150 + (k // 30) * 40
+                cv2.line(page, (x, y), (x + 30, y + 8), (20, 20, 20), 2)
+            vw.write(page)
+        vw.release()
+        subprocess.run(["ffmpeg", "-v", "error", "-y", "-i", str(tmp / "c.avi"), "-pix_fmt", "yuv420p",
+                        str(tmp / "c.mp4")], check=True)
+        a = analyze(FrameStore(tmp / "c.mp4"))
+        self.assertGreater(a.ink_start, 150, a.ink_start)
+        self.assertGreater(a.peak_idx, 150, a.peak_idx)
+        self.assertGreater(a.ink_end, 450, a.ink_end)

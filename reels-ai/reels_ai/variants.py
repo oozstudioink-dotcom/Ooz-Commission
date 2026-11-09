@@ -294,14 +294,14 @@ def build(a: Analysis, names: list[str], seed: int, subject: str | None,
             plan = RECIPES[name](a, rng, subject)
         plan.caption = hooks.make_caption(rng, subject, a.has_pencil)
         ai_hook = (copy or {}).get("hooks", {}).get(name)
-        if ai_hook and not a.has_pencil and hooks.PENCIL.search(ai_hook):
-            ai_hook = None                     # AI guessed a sketch stage this session doesn't have
+        if ai_hook and not hooks.honest(ai_hook, a.has_pencil):
+            ai_hook = None                     # AI claim that doesn't match this session
         if ai_hook:
             for card in plan.texts:
                 if card.text == plan.hook:
                     card.text = ai_hook
             plan.hook = ai_hook
-        if copy and copy.get("caption") and (a.has_pencil or not hooks.PENCIL.search(copy["caption"])):
+        if copy and copy.get("caption") and hooks.honest(copy["caption"], a.has_pencil):
             tags = copy.get("hashtags") or hooks.make_caption(rng, subject).split("\n\n")[-1].split()
             plan.caption = f"{copy['caption']}\n\n{' '.join(tags)}"
         plans.append(plan)
