@@ -55,7 +55,7 @@ class Plan:
 
 
 # ---------------------------------------------------------------- timing helpers
-MAX_SLOW = 2.0   # at most this many output frames per source frame (in-betweens are cross-fades)
+MAX_SLOW = 1.0   # never slower than the footage: no invented in-between frames (they stutter or ghost)
 
 
 def ramp(an: Analysis, a: int, b: int, dur: float, focus: int | None = None,
@@ -310,7 +310,7 @@ def build(a: Analysis, names: list[str], seed: int, subject: str | None,
 
 # ---------------------------------------------------------------- render
 BLEND = 6        # max source frames blended into one output frame (motion blur)
-MIN_SPAN = 1.5   # source frames of motion trail kept even at real speed or slower
+MIN_SPAN = 1.0   # source frames of motion trail kept at real speed (no trail when slower)
 
 
 def _snap(j: int, usable: list[bool] | None, step: int, limit: int) -> int | None:
@@ -394,26 +394,64 @@ def _no_hand(store, i: int) -> np.ndarray:
     return m
 
 
-def mix(store, win: Window) -> np.ndarray:
-    """Blend of source frames for smooth ink, without ghost arms.
+_GRAY: dict[tuple[int, int], tuple[object, np.ndarray]] = {}
 
-    Older frames only count where neither they nor the newest frame show the hand, so the page
-    blends smoothly while the hand/arm comes solid from the newest frame (an arm sweeping across
-    the page used to leave see-through copies of itself). Running masked averages in OpenCV keep
-    this fast at 4K."""
+
+def _small_gray(store, i: int) -> np.ndarray:
+    key = (id(store), i)
+    hit = _GRAY.get(key)
+    if hit is None or hit[0] is not store:
+        img = store[i]
+        g = cv2.cvtColor(cv2.resize(img, (256, max(1, round(img.shape[0] * 256 / img.shape[1])))),
+                         cv2.COLOR_BGR2GRAY).astype(np.float32)
+        if len(_GRAY) > 32:
+            _GRAY.clear()
+        _GRAY[key] = hit = (store, g)
+    return hit[1]
+
+
+def _aligned(store, i: int, ref: int) -> np.ndarray | None:
+    """Frame i shifted to line up with frame ref (the paper or phone moved a little between them).
+    None when they don't line up at all (a different view): then it isn't blended."""
+    a, b = _small_gray(store, ref), _small_gray(store, i)
+    if a.std() < 2 or b.std() < 2:                     # blank/flat: nothing to line up, nothing to double
+        return store[i]
+    win = cv2.createHanningWindow(a.shape[::-1], cv2.CV_32F)
+    (dx, dy), response = cv2.phaseCorrelate(a, b, win)
+    img = store[i]
+    if response < 0.05 or abs(dx) > 12 or abs(dy) > 12:
+        return None
+    if abs(dx) < 0.25 and abs(dy) < 0.25:
+        return img
+    s = img.shape[1] / a.shape[1]
+    m = np.float32([[1, 0, -dx * s], [0, 1, -dy * s]])
+    return cv2.warpAffine(img, m, (img.shape[1], img.shape[0]), borderMode=cv2.BORDER_REPLICATE)
+
+
+def mix(store, win: Window) -> np.ndarray:
+    """Weighted blend of source frames for smooth ink, without ghost arms or doubled drawings.
+
+    - Each frame counts by its weight (in-between frames of a slow-down really are in between).
+    - Older frames only count where neither they nor the newest frame show a hand, so the hand and
+      arm come solid from the newest frame.
+    - Each older frame is lined up with the newest first, so a paper or phone that moved a little
+      doesn't double the drawing; a frame that doesn't line up isn't blended at all."""
     if len(win) == 1:
         return store[win[0][0]]
-    order = sorted(win)                                     # oldest -> newest
-    newest = order[-1][0]
+    weights = dict(win)
+    newest = max(weights)
     acc = store[newest].astype(np.float32)
     clear = _no_hand(store, newest)
-    seen = 1.0
-    for i, wt in order[:-1]:                                # older frames, oldest first
+    total = weights[newest]
+    for i, wt in sorted(win):
+        if i == newest or wt <= 0:
+            continue
+        img = _aligned(store, i, newest)
+        if img is None:
+            continue
         mask = cv2.bitwise_and(clear, _no_hand(store, i))
-        seen += 1
-        cv2.accumulateWeighted(store[i], acc, 1.0 / seen, mask=mask)
-    # the newest frame keeps the biggest share everywhere (and all of it where the hand is)
-    cv2.accumulateWeighted(store[newest], acc, 0.45)
+        total += wt
+        cv2.accumulateWeighted(img, acc, wt / total, mask=mask)
     return cv2.convertScaleAbs(acc)
 
 

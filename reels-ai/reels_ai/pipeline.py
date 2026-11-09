@@ -12,7 +12,7 @@ import cv2
 import numpy as np
 
 from .analyze import analyze
-from .media import FPS, FrameStore, crop_vertical, normalize
+from .media import FPS, FrameStore, crop_vertical, longest_stretch, normalize, page_changes, trim
 from .variants import CUT_SECONDS, RECIPES, build, pick_moments, render
 
 FALLBACK_ORDER = ["one_take", "reveal_first", "detail_zoom", "ink_only", "speedrun", "before_after"]
@@ -135,6 +135,20 @@ def make_variants(src: Path, out_root: Path, names: list[str] | None = None, see
     norm = normalize(src, work, keep_wide=True, max_wide_h=max(1440, max_width * 16 // 9), max_w=max_width)
     print(f"normalized {src.name} -> {norm['width']}x{norm['height']} (x{norm['speedup']:.1f} speed)")
     store = FrameStore(work)
+    # several pages in one recording (a livestream flipping between pages): keep the longest
+    # stretch on one page, so frames from different pages are never blended together
+    offset = 0
+    cuts = page_changes(store)
+    if cuts:
+        first, last = longest_stretch(len(store), cuts)
+        print(f"{len(cuts)} page change(s); using frames {first}-{last} of {len(store)} (one page)")
+        part = out_dir / "work_page.mp4"
+        trim(work, part, first, last)
+        work.unlink(missing_ok=True)
+        part.rename(work)
+        store = FrameStore(work)
+        offset = first
+        norm["page_changes"] = cuts
     a = analyze(store, **how)
     wide = store.width / store.height > 9 / 16 + 0.02
     frame_filter = ""
@@ -166,7 +180,8 @@ def make_variants(src: Path, out_root: Path, names: list[str] | None = None, see
         total = raw_duration or norm["source_duration"]
         scale = total / max(norm["source_duration"], 1e-6)
         raw = raw_input or (lambda t0: ["-ss", f"{t0:.3f}", "-i", str(src)])
-        clips = process_cuts_clips(a, frame_filter, raw, lambda s: s * scale, norm["speedup"], total,
+        shift = offset / FPS * norm["speedup"]                  # trimmed to one page: back to its clock
+        clips = process_cuts_clips(a, frame_filter, raw, lambda s: (s + shift) * scale, norm["speedup"], total,
                                  out_dir, (store.width, store.height))
         if len(clips) < 4:
             names = swap_out(names, "process_cuts", a.has_pencil)

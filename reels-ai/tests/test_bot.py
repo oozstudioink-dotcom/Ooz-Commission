@@ -1402,7 +1402,8 @@ class DriveTest(unittest.TestCase):
         short = self.dmod.make_proxy(url, self.d.token(), out / "s.mp4", duration_s=36.5)       # sampled
         from reels_ai.media import probe
         k, s = probe(long_), probe(short)
-        self.assertAlmostEqual(k["duration"], 40 / 30, delta=0.2)     # 40 keyframes at 30 fps
+        # only 40 keyframes: too few, so the whole recording was sampled evenly instead
+        self.assertGreater(k["duration"], 40 / 30 + 0.2)
         self.assertGreater(s["duration"], 30)                         # ~1:1 for a short clip
         with self.assertRaises(self.dmod.DriveError):
             bad = self.dmod.Drive("c", "s", "r")

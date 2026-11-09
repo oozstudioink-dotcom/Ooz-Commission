@@ -69,6 +69,16 @@ class BlendWindowTest(unittest.TestCase):
         v = int(mix(store, ((0, 1 / 3), (1, 2 / 3)))[0, 0, 0])
         self.assertTrue(50 <= v <= 75, v)
 
+    def test_mix_lines_up_a_moved_page(self):
+        import cv2
+        page = np.full((320, 180, 3), 230, np.uint8)
+        for k in range(12):
+            cv2.line(page, (20 + k * 12, 40), (30 + k * 12, 280), (20, 20, 20), 2)
+        moved = np.roll(page, 6, axis=1)                                   # paper slid 6 px
+        out = mix([moved, page], ((0, 0.5), (1, 0.5)))
+        double = np.abs(out.astype(int) - page.astype(int))[20:300, 20:160].mean()
+        self.assertLess(double, 4)                                         # not two offset drawings
+
     def test_mix_leaves_no_ghost_arm(self):
         import cv2
         paper = np.full((320, 180, 3), 230, np.uint8)
@@ -277,6 +287,8 @@ class NamingTest(unittest.TestCase):
         self.assertEqual(parse_name("Luffy - blah.MOV")[1], {"unknown": ["blah"]})
         self.assertEqual(parse_name("3 - Kakashi - ink only.MOV"), ("Kakashi", {"pencil": False}))
         self.assertEqual(parse_name("3 - ink only.MOV"), (None, {"pencil": False}))
+        self.assertEqual(parse_name("Lets+Go+LIVE!+2026-11-09.mp4"), (None, {}))       # stream title
+        self.assertEqual(parse_name("Naruto%20Page.mov")[0], "Naruto Page")
         self.assertEqual(describe_hints({"pencil": False, "continued": True}), "ink only · continued page")
 
     def test_longdraw_parts_in_number_order(self):
@@ -429,3 +441,49 @@ class ResilienceTest(unittest.TestCase):
                          ["one_take", "speedrun", "reveal_first"])
         self.assertNotIn("before_after", swap_out(["before_after", "one_take", "reveal_first", "detail_zoom",
                                                    "ink_only", "speedrun"], "before_after", pencil=False))
+
+
+class PageChangeTest(unittest.TestCase):
+    """A livestream flipping between pages: Shorts use one page, never a blend of two."""
+
+    def test_flips_found_hand_moves_ignored(self):
+        import subprocess
+        import tempfile
+        from pathlib import Path
+
+        import cv2
+
+        from reels_ai.media import FrameStore, longest_stretch, page_changes
+        tmp = Path(tempfile.mkdtemp())
+        w, h = 360, 640
+        rng = np.random.default_rng(3)
+        pages = [np.full((h, w, 3), 232, np.uint8) for _ in range(2)]
+        for pg in pages:
+            for _ in range(40):
+                x, y = int(rng.integers(30, 300)), int(rng.integers(50, 550))
+                cv2.line(pg, (x, y), (x + int(rng.integers(10, 45)), y + int(rng.integers(-15, 15))),
+                         (20, 20, 20), 2)
+        vw = cv2.VideoWriter(str(tmp / "f.avi"), cv2.VideoWriter_fourcc(*"MJPG"), 30, (w, h))
+        seq = [0] * 120 + [1] * 80 + [0] * 220
+        for i, p in enumerate(seq):
+            img = pages[p].copy()
+            cv2.ellipse(img, (150 + int(60 * np.sin(i / 5)), 450), (30, 50), 20, 0, 360, (95, 130, 185), -1)
+            vw.write(img)
+        vw.release()
+        subprocess.run(["ffmpeg", "-v", "error", "-y", "-i", str(tmp / "f.avi"), "-pix_fmt", "yuv420p",
+                        str(tmp / "f.mp4")], check=True)
+        store = FrameStore(tmp / "f.mp4")
+        cuts = page_changes(store)
+        self.assertEqual(len(cuts), 2, cuts)
+        self.assertTrue(abs(cuts[0] - 120) <= 4 and abs(cuts[1] - 200) <= 4, cuts)
+        self.assertEqual(longest_stretch(len(store), cuts)[1], len(store) - 1)   # the 220-frame stretch
+        # one page with a hand moving over it: no page change
+        vw = cv2.VideoWriter(str(tmp / "g.avi"), cv2.VideoWriter_fourcc(*"MJPG"), 30, (w, h))
+        for i in range(300):
+            img = pages[0].copy()
+            cv2.ellipse(img, (60 + (i * 3) % 260, 120 + (i * 7) % 400), (40, 70), 20, 0, 360, (95, 130, 185), -1)
+            vw.write(img)
+        vw.release()
+        subprocess.run(["ffmpeg", "-v", "error", "-y", "-i", str(tmp / "g.avi"), "-pix_fmt", "yuv420p",
+                        str(tmp / "g.mp4")], check=True)
+        self.assertEqual(page_changes(FrameStore(tmp / "g.mp4")), [])
