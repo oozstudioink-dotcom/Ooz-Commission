@@ -12,7 +12,9 @@
       "drive_id": "1WlV-eBowuwEzkurywSgVcK268gVSo6IZ",
       "drive_name": "Naruto_3.MOV",
       "duration": 731.218,
+      "keep_in_place": true,
       "received": "2026-11-08T22:00:28+00:00",
+      "redo": true,
       "size_gb": 4.17,
       "source": "drive",
       "status": "rendered",
@@ -44,7 +46,7 @@
     "1WlV-eBowuwEzkurywSgVcK268gVSo6IZ"
   ],
   "low_bank_warned": "2026-11-06",
-  "next_id": 28,
+  "next_id": 34,
   "owner_chat_id": 5745191999,
   "paused": false,
   "report_followers": {
@@ -53,14 +55,16 @@
   },
   "report_week": "2026-W45",
   "stats_at": "2026-11-08T23:00:27+00:00",
+  "storage_month": "2026-11",
   "style_uses": {
-    "before_after": 5,
-    "detail_zoom": 4,
-    "ink_only": 4,
-    "reveal_first": 4,
-    "speedrun": 5
+    "before_after": 6,
+    "detail_zoom": 5,
+    "ink_only": 5,
+    "process_cuts": 1,
+    "reveal_first": 5,
+    "speedrun": 6
   },
-  "update_offset": 116973154,
+  "update_offset": 116973155,
   "variants": {
     "v10": {
       "caption": "Brush pen on paper, no tablet. Drop a character for the next one 👇🏾\n\n#drawingprocess #naruto #mangadrawing #mangaart #mangaka #drawing #ink #narutofanart #inking #animeart",
@@ -278,7 +282,7 @@
       "message_id": 62,
       "posts": {},
       "seconds": 10.2,
-      "status": "approved",
+      "status": "replaced",
       "style": "detail_zoom"
     },
     "v24": {
@@ -294,7 +298,7 @@
       "message_id": 63,
       "posts": {},
       "seconds": 9.6,
-      "status": "approved",
+      "status": "replaced",
       "style": "reveal_first"
     },
     "v25": {
@@ -310,7 +314,7 @@
       "message_id": 64,
       "posts": {},
       "seconds": 9.4,
-      "status": "approved",
+      "status": "replaced",
       "style": "ink_only"
     },
     "v26": {
@@ -326,7 +330,7 @@
       "message_id": 65,
       "posts": {},
       "seconds": 10.6,
-      "status": "approved",
+      "status": "replaced",
       "style": "before_after"
     },
     "v27": {
@@ -342,8 +346,38 @@
       "message_id": 66,
       "posts": {},
       "seconds": 5.8,
-      "status": "approved",
+      "status": "replaced",
       "style": "speedrun"
+    },
+    "v28": {
+      "caption": "Brush pen on paper, no tablet. Drop a character for the next one 👇🏾\n\n#timelapse #ink #traditionalart #animeart #drawingprocess #mangaart #narutofanart #artprocess #mangadrawing #naruto",
+      "created": "2026-11-09T04:12:09+00:00",
+      "deadline": null,
+      "decided_at": "2026-11-09T04:12:09+00:00",
+      "decided_by": "auto",
+      "drawing": "d22",
+      "file_id": "BAACAgEAAxUHavFIF5_kQZ6NG5z2FY4usqlS5RYAAjQJAAJTcYhHuNBCHeWzeL49BA",
+      "hook": "Zoom in on this linework",
+      "message_id": 70,
+      "posts": {},
+      "seconds": 10.2,
+      "status": "approved",
+      "style": "detail_zoom"
+    },
+    "v29": {
+      "caption": "Inking Naruto by hand ✍🏾 Who should I draw next? 👇🏾\n\n#naruto #fanart #narutofanart #drawing #mangaka #ink #timelapse #drawingprocess #traditionalart #animeart",
+      "created": "2026-11-09T04:12:09+00:00",
+      "deadline": null,
+      "decided_at": "2026-11-09T04:12:09+00:00",
+      "decided_by": "auto",
+      "drawing": "d22",
+      "file_id": "BAACAgEAAxUHavFIGAhX2jb-KsuDpwj2ZMVdnKMAAjYJAAJTcYhH8NsiY9az3No9BA",
+      "hook": "From a blank page to this",
+      "message_id": 71,
+      "posts": {},
+      "seconds": 9.6,
+      "status": "approved",
+      "style": "reveal_first"
     },
     "v3": {
       "caption": "Inking Shinobi Undercover Manga by hand ✍🏾 Who should I draw next? 👇🏾\n\n#artprocess #shinobiundercovermanga #timelapse #shinobiundercovermangafanart #inking #ink #mangaart #fanart #mangaka #drawing",
@@ -359,6 +393,66 @@
       "seconds": 8.7,
       "status": "approved",
       "style": "speedrun"
+    },
+    "v30": {
+      "caption": "Brush pen on paper, no tablet. Drop a character for the next one 👇🏾\n\n#mangadrawing #ink #narutofanart #drawing #mangaka #naruto #inking #traditionalart #mangaart #drawingprocess",
+      "created": "2026-11-09T04:12:09+00:00",
+      "deadline": null,
+      "decided_at": "2026-11-09T04:12:09+00:00",
+      "decided_by": "auto",
+      "drawing": "d22",
+      "file_id": "BAACAgEAAxUHavFIGN0VUYSrCeK-xPdXQBCbo5sAAjcJAAJTcYhHGmX9El-IZuE9BA",
+      "hook": "The most satisfying part",
+      "message_id": 72,
+      "posts": {},
+      "seconds": 9.4,
+      "status": "approved",
+      "style": "ink_only"
+    },
+    "v31": {
+      "caption": "Inking Naruto by hand ✍🏾 Who should I draw next? 👇🏾\n\n#inking #narutofanart #drawingprocess #drawing #fanart #naruto #traditionalart #ink #animeart #mangadrawing",
+      "created": "2026-11-09T04:12:09+00:00",
+      "deadline": null,
+      "decided_at": "2026-11-09T04:12:09+00:00",
+      "decided_by": "auto",
+      "drawing": "d22",
+      "file_id": "BAACAgEAAxUHavFIF_TyFZdzYQ8ELPiltR_ol_IAAjUJAAJTcYhHZ3ol-qaCYTg9BA",
+      "hook": "Pencil vs. ink. Which is better?",
+      "message_id": 73,
+      "posts": {},
+      "seconds": 10.6,
+      "status": "approved",
+      "style": "before_after"
+    },
+    "v32": {
+      "caption": "Inking Naruto by hand ✍🏾 Who should I draw next? 👇🏾\n\n#ink #naruto #mangaart #drawing #fanart #mangaka #drawingprocess #timelapse #mangadrawing #traditionalart",
+      "created": "2026-11-09T04:12:09+00:00",
+      "deadline": null,
+      "decided_at": "2026-11-09T04:12:09+00:00",
+      "decided_by": "auto",
+      "drawing": "d22",
+      "file_id": "BAACAgEAAxUHavFIF6_wuK1XNFFIJ0wUnAycpIEAAjMJAAJTcYhH3pHDqWrNT149BA",
+      "hook": "Blink and you'll miss it",
+      "message_id": 74,
+      "posts": {},
+      "seconds": 5.8,
+      "status": "approved",
+      "style": "speedrun"
+    },
+    "v33": {
+      "caption": "Brush pen on paper, no tablet. Drop a character for the next one 👇🏾\n\n#narutofanart #drawing #naruto #mangadrawing #mangaart #timelapse #mangaka #drawingprocess #animeart #traditionalart",
+      "created": "2026-11-09T04:12:09+00:00",
+      "deadline": null,
+      "decided_at": "2026-11-09T04:12:09+00:00",
+      "decided_by": "auto",
+      "drawing": "d22",
+      "file_id": "BAACAgEAAxUHavFIGGdLJvnt2c214wicsJQ5Kr0AAjgJAAJTcYhH1R5Y5OU-fPE9BA",
+      "hook": "Watch the pen work",
+      "message_id": 75,
+      "posts": {},
+      "seconds": 10.7,
+      "status": "approved",
+      "style": "process_cuts"
     },
     "v7": {
       "caption": "Pencil to ink, start to finish. Which stage do you like more?\n\n#drawing #fanart #timelapse #mangaka #narutofanart #animeart #mangaart #artprocess #inking #ink",
