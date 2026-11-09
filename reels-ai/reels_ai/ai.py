@@ -53,7 +53,7 @@ def final_frame(video: Path, dst: Path) -> Path | None:
 
 
 def write_copy(image: Path, subject: str | None, styles: list[str], api_key: str,
-               model: str = DEFAULT_MODEL, endpoint: str = ENDPOINT, timeout: int = 60) -> dict | None:
+               model: str = DEFAULT_MODEL, endpoint: str = ENDPOINT, timeout: int = 120) -> dict | None:
     key = re.sub(r"\s+", "", api_key or "")
     if not key or not image:
         return None
@@ -81,7 +81,8 @@ def write_copy(image: Path, subject: str | None, styles: list[str], api_key: str
     return clean(out, styles)
 
 
-def ping(api_key: str, model: str = DEFAULT_MODEL, endpoint: str = ENDPOINT, timeout: int = 30) -> str:
+def ping(api_key: str, model: str = DEFAULT_MODEL, endpoint: str = ENDPOINT, timeout: int = 90,
+         tries: int = 2) -> str:
     """Connection test: a one-word request. Returns the reply; raises RuntimeError with a
     plain-language reason (bad key, quota, model name) otherwise."""
     key = re.sub(r"\s+", "", api_key or "")
@@ -91,8 +92,15 @@ def ping(api_key: str, model: str = DEFAULT_MODEL, endpoint: str = ENDPOINT, tim
     req = urllib.request.Request(endpoint.format(model=model), data=json.dumps(body).encode(),
                                  headers={"Content-Type": "application/json", "x-goog-api-key": key})
     try:
-        with urllib.request.urlopen(req, timeout=timeout) as r:
-            data = json.load(r)
+        for attempt in range(tries):                  # the first call of the day can be slow
+            try:
+                with urllib.request.urlopen(req, timeout=timeout) as r:
+                    data = json.load(r)
+                break
+            except TimeoutError:
+                if attempt == tries - 1:
+                    raise RuntimeError(f"no answer within {timeout}s (twice); Gemini may be busy, "
+                                       "run the check again later") from None
         return data["candidates"][0]["content"]["parts"][0]["text"].strip()[:40]
     except urllib.error.HTTPError as e:
         try:
