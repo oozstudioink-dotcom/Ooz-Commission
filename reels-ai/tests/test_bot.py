@@ -634,6 +634,29 @@ class IdeasTest(unittest.TestCase):
         self.assertEqual(state["owner_ideas"]["hooks"], [])
 
 
+class NoGuessedNamesTest(unittest.TestCase):
+    def test_unlabelled_drawings_never_get_a_character_name(self):
+        from reels_ai.bot import strip_guessed_names
+        copy = {"subject": "Naruto Uzumaki", "caption": "Naruto in pure ink. Who next?",
+                "hooks": {"speedrun": "Naruto in 9 seconds", "one_take": "Wait for the last line"},
+                "hashtags": ["#naruto", "#mangaart", "#narutouzumaki", "#inking"]}
+        out = strip_guessed_names(copy)
+        self.assertEqual(out["subject"], "")
+        self.assertEqual(out["hooks"], {"one_take": "Wait for the last line"})
+        self.assertEqual(out["caption"], "")
+        self.assertEqual(out["hashtags"], ["#mangaart", "#inking"])
+
+    def test_subject_comes_only_from_your_labels(self):
+        r = Runner(FakeBot(), fresh_state(), load_config())
+        self.assertIsNone(r.labelled_subject({"source": "drive", "drive_name": "IMG_0157.mov",
+                                              "drive_where": "Inbox", "subject": "Naruto"}))   # old AI guess
+        self.assertEqual(r.labelled_subject({"source": "drive", "drive_name": "3 - Sasuke.MOV",
+                                             "drive_where": "Longform \u203a Naruto Page"}), "Sasuke")
+        self.assertEqual(r.labelled_subject({"source": "drive", "drive_name": "4.MOV",
+                                             "drive_where": "Longform \u203a Naruto Page"}), "Naruto Page")
+        self.assertEqual(r.labelled_subject({"subject": "Goku"}), "Goku")                   # Telegram caption
+
+
 class StyleLearningTest(unittest.TestCase):
     def test_winning_styles_come_round_more_and_weakest_is_skipped(self):
         cfg = load_config()
@@ -1675,7 +1698,7 @@ class Shorts4KFlowTest(FakeVariantsMixin, unittest.TestCase):
         self.assertEqual(sum(d["status"] == "rendered" for d in state["drawings"].values()), 1)
         self.assertTrue(any("continue on the next run" in t for t in bot.texts()))
         self.assertTrue(all(v.get("full_link", "").startswith("https://drive/") for v in state["variants"].values()))
-        self.assertEqual(r.drive.ups[0][0], "id:Done/Shorts/Goku 0")
+        self.assertEqual(r.drive.ups[0][0], "id:Done/Shorts/Goku")
         self.stub_render(r)                                # next run finishes the queue
         self.assertTrue(any(t.startswith("✅ All caught up") for t in bot.texts()))
         albums = [p for k, _, p in bot.sent if k == "album"]

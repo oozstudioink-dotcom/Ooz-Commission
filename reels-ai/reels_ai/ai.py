@@ -32,7 +32,7 @@ PROMPT = """You write short-form video copy for Ooz Studio Ink, a traditional ma
 The image is the finished drawing from a timelapse video{subject_line}.
 
 Write:
-1. "subject": the character / series name if you recognise it, else "" (never guess wildly).
+1. "subject": {subject_rule}
 2. "hooks": one on-screen hook per video style below. 2-6 words each, punchy, curiosity-driven,
    no hashtags, no emojis, never clickbait lies. Facts to respect: every video is a sped-up
    timelapse (never say "real time" or "no speed-up"); {pencil_fact}; if a hook names a
@@ -67,6 +67,10 @@ def write_copy(image: Path, subject: str | None, styles: list[str], api_key: str
                      "the artist went straight to ink with no pencil sketch" if pencil is False else
                      "don't say whether a pencil sketch was used"),
         subject_line=f" of {subject}" if subject else "",
+        subject_rule=(f'"{subject}" (the artist named it; use exactly this name).' if subject else
+                      '"" always. The artist did not name the character: do NOT identify or name any '
+                      "character or series anywhere (hooks, caption, hashtags); keep everything generic "
+                      "about the drawing and the inking."),
         styles="\n".join(f"   - {s}: {STYLE_BRIEFS[s]}" for s in styles))
     body = {
         "contents": [{"parts": [

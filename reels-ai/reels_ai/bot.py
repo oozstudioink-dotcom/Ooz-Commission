@@ -506,9 +506,21 @@ class Runner:
             if copy:                              # busy/retired models fall through to the next
                 self.state["ai_model"] = model
                 break
-        if copy and not d.get("subject") and copy.get("subject"):
-            d["subject"] = copy["subject"]          # Gemini recognised the character
+        if copy and not d.get("subject"):
+            copy = strip_guessed_names(copy)        # unlabelled: never name a character
         return copy
+
+    def labelled_subject(self, d: dict) -> str | None:
+        """The character only YOU named: file name, page folder or Telegram caption. Never a guess
+        (Gemini once called a Sasuke drawing 'Naruto' on several videos)."""
+        if d.get("source") != "drive":
+            return d.get("subject") if d.get("subject_by") != "ai" else None
+        from .drive import parse_name
+        subject = parse_name(d.get("drive_name") or "")[0]
+        where = d.get("drive_where") or ""
+        if not subject and "\u203a" in where:
+            subject = parse_name(where.split("\u203a", 1)[1].strip())[0]
+        return subject
 
     def intake(self, video: dict, subject: str) -> None:
         size = video.get("file_size") or 0
@@ -923,6 +935,7 @@ class Runner:
                     else:
                         src = self.bot.download(d["file_id"], tmp / f"{did}.mp4")
                     styles = d.pop("redo_styles", None) or self.choose_styles(did)
+                    d["subject"] = self.labelled_subject(d)     # drop any old AI guess
                     copy = self.with_owner_ideas(self.ai_copy(src, d, styles, tmp), styles, did)
                     big = self.shorts_4k and d.get("source") == "drive"
                     raw = self.drive_raw(d) if d.get("source") == "drive" else {}
@@ -1061,6 +1074,23 @@ class Runner:
                     "posts": {}, **({"full_link": links[r["name"]]} if (links or {}).get(r["name"]) else {})}
                 uses = self.state["style_uses"]
                 uses[r["name"]] = uses.get(r["name"], 0) + 1
+
+
+def strip_guessed_names(copy: dict) -> dict:
+    """For an unlabelled drawing: drop Gemini's character guess from the hooks, caption and hashtags."""
+    guess = (copy.get("subject") or "").strip()
+    out = {**copy, "subject": ""}
+    if not guess:
+        return out
+    words = [w for w in re.findall(r"[A-Za-z]{3,}", guess)]
+    bad = re.compile("|".join(re.escape(w) for w in words), re.I) if words else None
+    if bad is None:
+        return out
+    out["hooks"] = {k: v for k, v in (copy.get("hooks") or {}).items() if not bad.search(v)}
+    if copy.get("caption") and bad.search(copy["caption"]):
+        out["caption"] = ""
+    out["hashtags"] = [t for t in copy.get("hashtags") or [] if not bad.search(t)]
+    return out
 
 
 ALBUM_BYTES = 40 * 1024 * 1024        # bots may upload ~50 MB per request; albums go up as one

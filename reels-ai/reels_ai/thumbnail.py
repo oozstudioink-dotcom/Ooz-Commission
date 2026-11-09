@@ -57,73 +57,31 @@ def _big_word(draw: ImageDraw.ImageDraw, word: str, box, color) -> None:
     draw.text((x0 - l, y0 - t), word, font=f, fill=color)
 
 
-def crop_art(frame_bgr: np.ndarray, aspect: float | None = None) -> Image.Image:
-    """Crop a final frame to the finished drawing so it fills the thumbnail's art panel.
-
-    Finds the paper (largest bright, low-colour region), then the ink on it (ignoring a thin
-    border, where spiral binding and page edges sit), and frames the ink with a little margin at
-    the art panel's shape. A bit of paper or table at the edges is fine; the drawing leads."""
+def crop_art(frame_bgr: np.ndarray) -> Image.Image:
+    """The whole sheet of paper from a final frame, like a scanned comic page: every drawing on
+    the page stays in, the table around it goes (largest bright, low-colour region)."""
     from .fx import grade
-    if aspect is None:
-        x0, y0, x1, y1 = BOXES["art"]
-        aspect = (x1 - x0) / (y1 - y0)
     frame_bgr = grade(frame_bgr, "clean")                # white paper, true blacks
-    H, W = frame_bgr.shape[:2]
-    sw = 480
-    small = cv2.resize(frame_bgr, (sw, int(sw * H / W)))
-    s = W / sw
+    small = cv2.resize(frame_bgr, (480, int(480 * frame_bgr.shape[0] / frame_bgr.shape[1])))
     hsv = cv2.cvtColor(small, cv2.COLOR_BGR2HSV)
     paper = ((hsv[..., 2] > 150) & (hsv[..., 1] < 60)).astype(np.uint8)
     paper = cv2.morphologyEx(paper, cv2.MORPH_CLOSE, np.ones((15, 15), np.uint8))
     n, labels, stats, _ = cv2.connectedComponentsWithStats(paper)
-    px, py, pw, ph = 0, 0, small.shape[1], small.shape[0]
-    sheet = np.ones(paper.shape, bool)
     if n > 1:
         i = 1 + int(np.argmax(stats[1:, cv2.CC_STAT_AREA]))
-        if stats[i, cv2.CC_STAT_AREA] > 0.15 * small.shape[0] * small.shape[1]:
-            px, py, pw, ph = stats[i, :4]
-            # the sheet itself with the ink on it (holes filled), minus a thin border where spiral
-            # binding and page edges sit: table, hands and on-screen text are outside it
-            m = (labels == i).astype(np.uint8)
-            m = cv2.morphologyEx(m, cv2.MORPH_CLOSE, np.ones((41, 41), np.uint8))
-            cnts, _ = cv2.findContours(m, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-            filled = np.zeros_like(m)
-            cv2.drawContours(filled, cnts, -1, 1, -1)
-            sheet = cv2.erode(filled, np.ones((9, 9), np.uint8)) > 0
-    # ink on the sheet
-    gray = cv2.cvtColor(small, cv2.COLOR_BGR2GRAY).astype(np.float32)
-    local = cv2.GaussianBlur(cv2.dilate(gray, np.ones((15, 15), np.uint8)), (0, 0), 5)
-    ink = (local - gray) > 45
-    bx, by = int(pw * 0.04), int(ph * 0.02)
-    region = np.zeros_like(ink)
-    region[py + by:py + ph - by, px + bx:px + pw - bx] = True
-    ys, xs = np.nonzero(ink & region & sheet)
-    if len(xs) < 50:                                     # no clear ink: show the paper
-        x0, y0, x1, y1 = px, py, px + pw, py + ph
-    else:
-        x0, x1 = np.percentile(xs, [1, 99])
-        y0, y1 = np.percentile(ys, [1, 99])
-        mx, my = (x1 - x0) * 0.08 + 4, (y1 - y0) * 0.08 + 4
-        x0, x1, y0, y1 = x0 - mx, x1 + mx, y0 - my, y1 + my
-    # grow the short side to the panel's shape; where that runs off the frame (a tall drawing in
-    # a vertical video), pad with the thumbnail background rather than cut the drawing
-    cw, ch = x1 - x0, y1 - y0
-    if cw / ch < aspect:
-        cw = ch * aspect
-    else:
-        ch = cw / aspect
-    cx, cy = (x0 + x1) / 2, (y0 + y1) / 2
-    fw, fh = small.shape[1], small.shape[0]
-    x0 = cx - cw / 2 if cw > fw else max(0, min(cx - cw / 2, fw - cw))
-    y0 = cy - ch / 2 if ch > fh else max(0, min(cy - ch / 2, fh - ch))
-    X0, Y0, CW, CH = int(x0 * s), int(y0 * s), int(cw * s), int(ch * s)
-    pad = max(0, -X0, -Y0, X0 + CW - W, Y0 + CH - H)
-    if pad:
-        frame_bgr = cv2.copyMakeBorder(frame_bgr, pad, pad, pad, pad, cv2.BORDER_CONSTANT,
-                                       value=tuple(int(c) for c in BG[::-1]))
-        X0, Y0 = X0 + pad, Y0 + pad
-    crop = frame_bgr[Y0:Y0 + CH, X0:X0 + CW]
-    return Image.fromarray(cv2.cvtColor(crop, cv2.COLOR_BGR2RGB))
+        x, y, w, h = stats[i, :4]
+        s = frame_bgr.shape[1] / small.shape[1]
+        if w * h > 0.15 * small.shape[0] * small.shape[1]:
+            # keep only rows/columns that are mostly paper: bright bits of table, skin or sleeves
+            # touching the sheet don't stretch the crop
+            comp = labels[y:y + h, x:x + w] == i
+            rows = np.nonzero(comp.mean(axis=1) > 0.6)[0]
+            cols = np.nonzero(comp.mean(axis=0) > 0.6)[0]
+            if len(rows) > 10 and len(cols) > 10:
+                y, h = y + rows[0], rows[-1] - rows[0] + 1
+                x, w = x + cols[0], cols[-1] - cols[0] + 1
+            frame_bgr = frame_bgr[int(y * s):int((y + h) * s), int(x * s):int((x + w) * s)]
+    return Image.fromarray(cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2RGB))
 
 
 def clearest(frames: list[np.ndarray]) -> np.ndarray:
@@ -140,6 +98,15 @@ def clearest(frames: list[np.ndarray]) -> np.ndarray:
     return max(frames, key=visible_ink)
 
 
+def _fit_contain(img: Image.Image, w: int, h: int) -> Image.Image:
+    """The whole image inside w x h (nothing cut off), centred on the thumbnail background."""
+    scale = min(w / img.width, h / img.height)
+    img = img.resize((max(1, int(img.width * scale)), max(1, int(img.height * scale))), Image.LANCZOS)
+    out = Image.new("RGB", (w, h), BG)
+    out.paste(img, ((w - img.width) // 2, (h - img.height) // 2))
+    return out
+
+
 def _fit_cover(img: Image.Image, w: int, h: int) -> Image.Image:
     scale = max(w / img.width, h / img.height)
     img = img.resize((max(w, int(img.width * scale)), max(h, int(img.height * scale))), Image.LANCZOS)
@@ -152,15 +119,22 @@ def make_thumbnail(art: Image.Image, episode: int, out: Path, size: tuple[int, i
     w, h = size
     canvas = Image.new("RGB", size, BG)
 
-    # finished art panel with a soft shadow
+    # finished page: the whole sheet (every drawing on it), with a soft shadow that hugs the paper
+    # like a scanned page laid on the table
     ax0, ay0, ax1, ay1 = _box("art", w, h)
+    art = art.convert("RGB")
+    pw, ph = ax1 - ax0, ay1 - ay0
+    scale = min(pw / art.width, ph / art.height)
+    nw, nh = max(1, int(art.width * scale)), max(1, int(art.height * scale))
+    ax0, ay0 = ax0 + (pw - nw) // 2, ay0 + (ph - nh) // 2
+    ax1, ay1 = ax0 + nw, ay0 + nh
     shadow = Image.new("L", size, 0)
     sd = ImageDraw.Draw(shadow)
     off = int(w * 0.012)
     sd.rectangle((ax0 + off, ay0 + off, ax1 + off, ay1 + off), fill=200)
     shadow = shadow.filter(ImageFilter.GaussianBlur(w * 0.012))
     canvas.paste(Image.new("RGB", size, (0, 0, 0)), (0, 0), shadow)
-    canvas.paste(_fit_cover(art.convert("RGB"), ax1 - ax0, ay1 - ay0), (ax0, ay0))
+    canvas.paste(art.resize((nw, nh), Image.LANCZOS), (ax0, ay0))
 
     d = ImageDraw.Draw(canvas)
     # signature logo box
