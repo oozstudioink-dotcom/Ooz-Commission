@@ -24,6 +24,7 @@ STYLE_BRIEFS = {
     "before_after": "wipe between the pencil sketch and the final ink",
     "detail_zoom": "zooms into the face/detail while it is being inked",
     "ink_only": "only the inking stage, no pencils",
+    "one_take": "one continuous locked shot from first stroke to last, finished piece only at the end",
     "process_cuts": "short jump cuts of the pen inking at near real speed",
 }
 
@@ -84,7 +85,7 @@ def write_copy(image: Path, subject: str | None, styles: list[str], api_key: str
 
 FALLBACK_MODELS = ["gemini-flash-latest", "gemini-flash-lite-latest"]   # if Pro is busy or not on the key
 MODELS_URL = "https://generativelanguage.googleapis.com/v1beta/models"
-_SKIP = re.compile(r"image|tts|audio|live|embed|vision|learnlm|gemma|robotics|computer", re.I)
+_SKIP = re.compile(r"image|tts|audio|live|embed|vision|learnlm|gemma|robotics|computer|banana|research|lyria|veo|imagen", re.I)
 
 
 def available_models(api_key: str, url: str = MODELS_URL, timeout: int = 30) -> list[str]:

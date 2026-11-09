@@ -8,7 +8,7 @@ from __future__ import annotations
 import argparse
 from pathlib import Path
 
-STYLES = ["reveal_first", "speedrun", "before_after", "detail_zoom", "ink_only", "process_cuts"]
+STYLES = ["reveal_first", "speedrun", "before_after", "detail_zoom", "ink_only", "process_cuts", "one_take"]
 
 
 def make(args: argparse.Namespace) -> None:

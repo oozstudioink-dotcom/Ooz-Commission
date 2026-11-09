@@ -335,14 +335,16 @@ class RedoTest(DropsFeedTest):
                           if v["drawing"] == naruto and v.get("dropped_at"))
         self.bot.push(**msg(OWNER, text="/redo naru"))
         self.assertTrue(self.r.poll())                                # rendering needed
-        self.assertTrue(any("Re-making Naruto" in t and f"{6 - sent_before} styles" in t
-                            for t in self.bot.texts()))           # unsent + the style it never had
+        extra = len(self.cfg["variants"]["styles"]) - 5                 # styles it never had
+        self.assertTrue(any("Re-making Naruto" in t and f"{5 - sent_before + extra} styles" in t
+                            for t in self.bot.texts()))           # unsent + the styles it never had
         self.assertEqual(self.state["drawings"][naruto]["status"], "queued")
         self.stub_render(self.r)
         mine = [v for v in self.state["variants"].values() if v["drawing"] == naruto]
         self.assertEqual(sum(v["status"] == "replaced" for v in mine), 5 - sent_before)
-        self.assertEqual(sum(v["status"] == "approved" and not v.get("dropped_at") for v in mine), 6 - sent_before)
-        self.assertEqual(self.r.bank()["drops"], 15 - 2 + 1)          # swapped one for one, +1 new style
+        self.assertEqual(sum(v["status"] == "approved" and not v.get("dropped_at") for v in mine),
+                         5 - sent_before + extra)
+        self.assertEqual(self.r.bank()["drops"], 15 - 2 + extra)      # swapped one for one, + new styles
 
     def test_redo_unknown_name_lists_drawings(self):
         self.bot.push(**msg(OWNER, text="/redo Luffy"))

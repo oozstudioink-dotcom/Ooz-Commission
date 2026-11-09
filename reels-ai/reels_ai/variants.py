@@ -145,6 +145,27 @@ def speedrun(a: Analysis, rng, subject) -> Plan:
     return p
 
 
+def one_take(a: Analysis, rng, subject) -> Plan:
+    """Modelled on the most-watched drawing Shorts (references/library.json): the pen is already
+    drawing in the first frame, one locked view with no zooms or cuts, steady pacing so the strokes
+    read, the finished piece stays unseen until the last second, at most one short title."""
+    p = Plan("one_take", "One continuous locked shot from the first stroke to the last; the finished "
+             "piece is only seen at the very end. Minimal text.", "natural")
+    start = a.draw_start if a.has_pencil else max(a.draw_start, a.ink_start - FPS // 2)
+    # skip a blank-page lead-in: start where marks are about to appear and the hand is in frame
+    body: list[float] = []
+    if a.has_pencil:
+        body += ramp(a, start, a.ink_start, 2.5)              # pencils fast, the ink is the show
+    body += ramp(a, a.ink_start if a.has_pencil else start, a.ink_end, 12.0 - (2.5 if a.has_pencil else 0),
+                 focus=a.peak_idx, slow=1.5)
+    body += hold(a.reveal_idx, 1.1)
+    p.shots = shots(body)
+    p.hook = hooks.pick_hook("one_take", rng, subject, round(p.seconds), a.has_pencil)
+    if rng.random() < 0.5:                                    # half carry one title, half none
+        p.texts = [TextCard(p.hook, "tag", 0, p.seconds - 1.1)]
+    return p
+
+
 def before_after(a: Analysis, rng, subject) -> Plan:
     p = Plan("before_after", "Opens with a sketch-to-ink wipe comparison, then shows the inking.", "warm")
     seq: list[Shot] = []
@@ -256,6 +277,7 @@ RECIPES: dict[str, Callable] = {
     "detail_zoom": detail_zoom,
     "ink_only": ink_only,
     "process_cuts": process_cuts,
+    "one_take": one_take,
 }
 
 
