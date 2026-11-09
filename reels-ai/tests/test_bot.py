@@ -422,6 +422,32 @@ class NameTagsTest(FakeVariantsMixin, unittest.TestCase):
         self.assertEqual(seen["hints"], {"pencil": False, "continued": True})
 
 
+class AlbumSizeTest(unittest.TestCase):
+    def test_big_drawings_split_into_albums_and_fall_back_to_singles(self):
+        from reels_ai.bot import album_chunks
+        from reels_ai.telegram import TelegramError
+        out = Path(tempfile.mkdtemp())
+        (out / "variants").mkdir()
+        results = []
+        for i in range(6):
+            (out / "variants" / f"s{i}.mp4").write_bytes(b"x" * 9)
+            results.append({"name": "speedrun", "file": f"variants/s{i}.mp4", "seconds": 9.0,
+                            "hook": "h", "caption": "c"})
+        self.assertEqual([len(c) for c in album_chunks(out, results, limit=20)], [2, 2, 2])
+        self.assertEqual([len(c) for c in album_chunks(out, results, limit=10 ** 6)], [6])
+
+        bot, state = FakeBot(), fresh_state()
+        state["owner_chat_id"] = OWNER
+        r = Runner(bot, state, load_config(), clock=Clock(datetime(2026, 11, 7, tzinfo=timezone.utc)))
+
+        def refuse(*a, **k):
+            raise TelegramError("sendMediaGroup: Request Entity Too Large")
+        bot.send_media_group = refuse
+        r.bank_album("d1", {"subject": "Sasuke"}, out, results)
+        self.assertEqual(len(state["variants"]), 6)                  # all banked, sent one by one
+        self.assertEqual(sum(k == "video" for k, _, _ in bot.sent), 6)
+
+
 class StyleLearningTest(unittest.TestCase):
     def test_winning_styles_come_round_more_and_weakest_is_skipped(self):
         cfg = load_config()

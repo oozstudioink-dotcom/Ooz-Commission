@@ -850,7 +850,15 @@ class Runner:
                 self.telegram_copies(out_dir, results)
                 done_now += 1
                 if mode == "auto":
-                    self.bank_album(did, d, out_dir, results, links)
+                    try:
+                        self.bank_album(did, d, out_dir, results, links)
+                    except Exception as e:  # noqa: BLE001 - don't lose the rest of the run
+                        d["status"] = "failed"
+                        d["error"] = f"sending to Telegram: {str(e)[:250]}"
+                        self.say(f"\u26a0\ufe0f Made {d.get('subject') or did}'s videos but couldn't send them: "
+                                 f"{str(e)[:200]}. The 4K files are in Drive \u203a Done \u203a Shorts; "
+                                 f"/redo {d.get('subject') or ''} tries again.")
+                        continue
                     d["status"] = "rendered"
                     continue
                 for r in results:
@@ -924,8 +932,7 @@ class Runner:
                    links: dict | None = None) -> None:
         """Auto mode: send the drawing's variants as one album and add them straight to the bank."""
         subject = d.get("subject") or "your drawing"
-        for start in range(0, len(results), 10):
-            chunk = results[start:start + 10]
+        for start, chunk in enumerate(album_chunks(out_dir, results)):
             if start == 0:
                 styles = ", ".join(STYLE_LABELS[r["name"]] for r in results)
                 bank_after = self.bank().get("drops", 0) + len(results) if self.drops_mode else None
@@ -936,8 +943,13 @@ class Runner:
                     caption += "\n\U0001f39e 4K files saved to Drive \u203a Done \u203a Shorts (links come with each drop)"
             else:
                 caption = ""
-            msgs = self.bot.send_media_group(self.owner, [out_dir / r.get("tg_file", r["file"]) for r in chunk],
-                                             caption)
+            files = [out_dir / r.get("tg_file", r["file"]) for r in chunk]
+            try:
+                msgs = self.bot.send_media_group(self.owner, files, caption)
+            except TelegramError as e:              # e.g. too large together: send one by one
+                print(f"warn: album failed ({e}); sending the videos one at a time")
+                msgs = [self.bot.send_video(self.owner, f, caption=caption if i == 0 else "")
+                        for i, f in enumerate(files)]
             for r, m in zip(chunk, msgs):
                 vid = new_id(self.state, "v")
                 self.state["variants"][vid] = {
@@ -948,6 +960,27 @@ class Runner:
                     "posts": {}, **({"full_link": links[r["name"]]} if (links or {}).get(r["name"]) else {})}
                 uses = self.state["style_uses"]
                 uses[r["name"]] = uses.get(r["name"], 0) + 1
+
+
+ALBUM_BYTES = 40 * 1024 * 1024        # bots may upload ~50 MB per request; albums go up as one
+
+
+def album_chunks(out_dir: Path, results: list[dict], limit: int = ALBUM_BYTES) -> list[list[dict]]:
+    """Split a drawing's videos into albums of at most 10 videos and `limit` bytes together."""
+    chunks: list[list[dict]] = []
+    cur: list[dict] = []
+    size = 0
+    for r in results:
+        p = Path(out_dir) / r.get("tg_file", r["file"])
+        n = p.stat().st_size if p.exists() else 0
+        if cur and (len(cur) == 10 or size + n > limit):
+            chunks.append(cur)
+            cur, size = [], 0
+        cur.append(r)
+        size += n
+    if cur:
+        chunks.append(cur)
+    return chunks
 
 
 def dispatch_workflow(workflow: str, inputs: dict) -> None:
