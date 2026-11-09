@@ -33,6 +33,8 @@ def _clean(s: str) -> str:
 
 
 CAMERA = re.compile(r"(IMG|VID|MVI|DSC|PXL|GOPR|DJI|RPReplay|Screen ?Recording)([ _\-]|\d|$)", re.I)
+# downloaded livestreams / screen recordings are titled, not named after a character
+STREAM = re.compile(r"\b(live|livestream|stream|replay|tiktok|tik tok|go live|lets go)\b|!", re.I)
 TAGS = [   # (pattern, hint) - written after " - " in a file or folder name, any order/case
     (re.compile(r"^(ink[ -]?only|no[ -]?pencil|no[ -]?sketch|straight([ -]?to)?[ -]?ink|ink)$", re.I),
      ("pencil", False)),
@@ -52,7 +54,7 @@ def parse_name(name: str) -> tuple[str | None, dict]:
     The character is everything before the first ' - ' (camera names like IMG_1234 give None,
     a trailing take number is dropped). Tags after it tell the editor how the piece was drawn;
     unknown tags are kept in hints['unknown'] so the bot can say it didn't understand them."""
-    stem = _stem(name)
+    stem = urllib.parse.unquote_plus(_stem(name)).strip()
     parts = [p.strip() for p in re.split(r"\s+[-\u2013\u2014]\s+|\s*\[|\]\s*", stem) if p and p.strip()]
     hints: dict = {}
     number = re.compile(r"(part|pt|session|take|clip|drawing)?\s*#?\d+", re.I)
@@ -68,7 +70,7 @@ def parse_name(name: str) -> tuple[str | None, dict]:
                 hints[hit[0]] = hit[1]
             else:
                 hints.setdefault("unknown", []).append(tag.strip())
-    if not head or CAMERA.match(head) or number.fullmatch(head):
+    if not head or CAMERA.match(head) or number.fullmatch(head) or STREAM.search(head):
         return None, hints
     head = re.sub(r"[ _\-]*(\(\d+\)|\d+)$", "", head).replace("_", " ").strip()
     return (head[:60] or None), hints
@@ -310,26 +312,55 @@ class Drive:
                 offset = end + 1
 
 
-def make_proxy(url: str, token: str, dst: Path, duration_s: float, max_side: int = 2560,
+def _frames(path: Path) -> int:
+    out = subprocess.run(["ffprobe", "-v", "error", "-select_streams", "v:0", "-count_packets",
+                          "-show_entries", "stream=nb_read_packets", "-of", "csv=p=0", str(path)],
+                         capture_output=True, text=True).stdout.strip()
+    return int(out) if out.isdigit() else 0
+
+
+def remote_duration(url: str, token: str) -> float | None:
+    """Length of a recording on Drive in seconds (when Drive's metadata doesn't say)."""
+    out = subprocess.run(["ffprobe", "-v", "error", "-headers", f"Authorization: Bearer {token}\r\n",
+                          "-show_entries", "format=duration", "-of", "csv=p=0", url],
+                         capture_output=True, text=True).stdout.strip()
+    try:
+        return float(out)
+    except ValueError:
+        return None
+
+
+def make_proxy(url: str, token: str, dst: Path, duration_s: float | None, max_side: int = 2560,
                target_frames: int = 2700) -> Path:
     """Stream a raw recording and write a small 30 fps timelapse of it.
 
     Long recordings (>= 15 min) use keyframes only (iPhone: ~1 per second), so ffmpeg decodes
-    a tiny fraction of the 4K stream. Shorter ones sample evenly to ~target_frames frames.
-    """
+    a tiny fraction of the 4K stream. Shorter ones sample evenly to ~target_frames frames. Some
+    files (e.g. TikTok live downloads) have very few keyframes: if keyframes give too few frames,
+    the whole recording is sampled evenly instead."""
     scale = (f"scale='min(iw,{max_side})':'min(ih,{max_side})':force_original_aspect_ratio=decrease,"
              "scale=trunc(iw/2)*2:trunc(ih/2)*2")
-    cmd = ["ffmpeg", "-v", "error", "-y", "-headers", f"Authorization: Bearer {token}\r\n"]
-    if duration_s >= 15 * 60:
-        cmd += ["-skip_frame", "nokey", "-i", url, "-vf", f"{scale},setpts=N/30/TB"]
-    else:
-        rate = max(1.0, target_frames / max(duration_s, 1))
-        cmd += ["-i", url, "-vf", f"fps={rate:.4f},{scale},setpts=N/30/TB"]
-    cmd += ["-r", "30", "-an", "-c:v", "libx264", "-crf", "16", "-preset", "veryfast", "-pix_fmt", "yuv420p",
-            str(dst)]
-    res = subprocess.run(cmd, capture_output=True, text=True)
-    if res.returncode != 0 or not dst.exists() or dst.stat().st_size == 0:
-        raise DriveError(f"couldn't read the recording: {(res.stderr or '').strip()[-300:]}")
+
+    def run(keyframes: bool, dur: float) -> None:
+        cmd = ["ffmpeg", "-v", "error", "-y", "-headers", f"Authorization: Bearer {token}\r\n"]
+        if keyframes:
+            cmd += ["-skip_frame", "nokey", "-i", url, "-vf", f"{scale},setpts=N/30/TB"]
+        else:
+            rate = max(0.05, target_frames / max(dur, 1))
+            cmd += ["-i", url, "-vf", f"fps={rate:.4f},{scale},setpts=N/30/TB"]
+        cmd += ["-r", "30", "-an", "-c:v", "libx264", "-crf", "16", "-preset", "veryfast", "-pix_fmt",
+                "yuv420p", str(dst)]
+        res = subprocess.run(cmd, capture_output=True, text=True)
+        if res.returncode != 0 or not dst.exists() or dst.stat().st_size == 0:
+            raise DriveError(f"couldn't read the recording: {(res.stderr or '').strip()[-300:]}")
+
+    dur = duration_s or remote_duration(url, token) or 30 * 60
+    if dur >= 15 * 60:
+        run(True, dur)
+        if _frames(dst) >= min(900, target_frames // 3):
+            return dst
+        print(f"keyframes gave only {_frames(dst)} frames; sampling the whole recording instead")
+    run(False, dur)
     return dst
 
 

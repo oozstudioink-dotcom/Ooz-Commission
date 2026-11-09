@@ -73,21 +73,30 @@ def probe_duration(s: Session) -> float:
 def scan(s: Session, work: Path, idle_s: float = 8.0, pad_s: float = 1.0) -> Session:
     """Find the parts worth keeping from a small keyframe/sampled proxy of the session."""
     proxy = work / f"scan_{abs(hash(s.src)) % 10**8}.mp4"
-    long_ = s.duration >= 15 * 60
-    cmd = ["ffmpeg", "-v", "error", "-y", *s.hdrs()]
-    cmd += (["-skip_frame", "nokey"] if long_ else []) + ["-i", s.src]
-    vf = "scale=320:-2" if long_ else f"fps={max(1.0, 900 / max(s.duration, 1)):.3f},scale=320:-2"
-    _run(cmd + ["-an", "-vf", f"{vf},setpts=N/30/TB", "-r", "30", "-c:v", "libx264", "-crf", "28",
-                "-preset", "ultrafast", str(proxy)])
-    cap = cv2.VideoCapture(str(proxy))
-    frames = []
-    while True:
-        ok, f = cap.read()
-        if not ok:
-            break
-        frames.append(f)
-    cap.release()
-    proxy.unlink(missing_ok=True)
+
+    def read(keyframes: bool) -> list:
+        cmd = ["ffmpeg", "-v", "error", "-y", *s.hdrs()]
+        cmd += (["-skip_frame", "nokey"] if keyframes else []) + ["-i", s.src]
+        rate = max(0.5, min(1.0, 900 / max(s.duration, 1))) if s.duration >= 15 * 60 else \
+            max(1.0, 900 / max(s.duration, 1))
+        vf = "scale=320:-2" if keyframes else f"fps={rate:.3f},scale=320:-2"
+        _run(cmd + ["-an", "-vf", f"{vf},setpts=N/30/TB", "-r", "30", "-c:v", "libx264", "-crf", "28",
+                    "-preset", "ultrafast", str(proxy)])
+        cap = cv2.VideoCapture(str(proxy))
+        out = []
+        while True:
+            ok, f = cap.read()
+            if not ok:
+                break
+            out.append(f)
+        cap.release()
+        proxy.unlink(missing_ok=True)
+        return out
+
+    frames = read(keyframes=s.duration >= 15 * 60)
+    if s.duration >= 15 * 60 and len(frames) < s.duration / 4:
+        # few keyframes (e.g. TikTok live downloads): look at the whole session instead
+        frames = read(keyframes=False)
     if not frames:
         raise RuntimeError(f"couldn't read {s.name}")
     h, w = frames[0].shape[:2]

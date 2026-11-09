@@ -277,6 +277,8 @@ class NamingTest(unittest.TestCase):
         self.assertEqual(parse_name("Luffy - blah.MOV")[1], {"unknown": ["blah"]})
         self.assertEqual(parse_name("3 - Kakashi - ink only.MOV"), ("Kakashi", {"pencil": False}))
         self.assertEqual(parse_name("3 - ink only.MOV"), (None, {"pencil": False}))
+        self.assertEqual(parse_name("Lets+Go+LIVE!+2026-11-09.mp4"), (None, {}))       # stream title
+        self.assertEqual(parse_name("Naruto%20Page.mov")[0], "Naruto Page")
         self.assertEqual(describe_hints({"pencil": False, "continued": True}), "ink only · continued page")
 
     def test_longdraw_parts_in_number_order(self):
