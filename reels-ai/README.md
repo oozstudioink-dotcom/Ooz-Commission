@@ -86,6 +86,23 @@ Sessions uploaded to `Longform/<project>/` are also turned into Shorts automatic
 stay in place for the LongDraw (`[drive] shorts_from_longform`). A monthly Telegram note reports
 how much space processed raws use (`storage_alert_gb`); nothing is ever deleted by the bot.
 
+## The page workflow (one sketchbook page = one LongDraw, each drawing = Shorts)
+
+```
+Ooz Reels/Longform/
+  Naruto Page/            <- one sketchbook page (theme or character)
+    1 - Naruto.MOV        <- one recording per drawing, numbered in order
+    2 - Kakashi.MOV
+    3 - ink only.MOV      <- no name: the page name is used
+    ...
+```
+
+- Each drawing becomes its own set of Shorts within the hour of uploading (named after the file's
+  character, else the page). Drawings 2, 3, ... are treated as `continued` automatically (the page
+  already has ink), so only that drawing's new ink is timed and framed.
+- When the page is done, `/longform Naruto Page` joins the drawings in number order into the LongDraw;
+  chapters read `Kakashi (Part 2)` etc.
+
 ## Retiring drawings and tidying Drive
 
 - `config.toml` → `[bank] retired = ["Shinobi Undercover"]`: drawings whose name or file name contains

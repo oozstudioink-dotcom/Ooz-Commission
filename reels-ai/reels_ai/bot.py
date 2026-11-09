@@ -286,10 +286,14 @@ class Runner:
             meta = f.get("videoMediaMetadata") or {}
             did = new_id(self.state, "d")
             subject, hints = parse_name(f["name"])
-            if project:                                  # LongDraw session: the folder names the piece
+            if project:                                  # one drawing of a LongDraw page
+                from .drive import part_number
                 p_subject, p_hints = parse_name(project)
-                subject = p_subject or subject
+                subject = subject or p_subject           # '3 - Kakashi.MOV' names it, else the page does
                 hints = {**p_hints, **hints}
+                n = part_number(f["name"])
+                if n is not None and n > 1:              # drawings 2.. start on a page that has ink
+                    hints.setdefault("continued", True)
             self.state["drawings"][did] = {
                 "source": "drive", "drive_id": f["id"], "drive_name": f["name"], "drive_where": where,
                 "keep_in_place": keep, "subject": subject, "received": iso(self.clock()),

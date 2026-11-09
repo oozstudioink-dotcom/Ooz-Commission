@@ -1622,7 +1622,8 @@ class UploadOnceAndStorageTest(FakeVariantsMixin, unittest.TestCase):
                 "id:Inbox": [{"id": "i1", "name": "Goku.MOV", "mimeType": "video/quicktime", "size": "4000000000"}],
                 "id:Longform": [{"id": "p1", "name": "Shinobi Page", "mimeType": "folder"},
                                 {"id": "fin", "name": "Finished", "mimeType": "folder"}],
-                "p1": [{"id": "s1", "name": "Naruto.MOV", "mimeType": "video/quicktime", "size": "9000000000"}],
+                "p1": [{"id": "s1", "name": "Naruto.MOV", "mimeType": "video/quicktime", "size": "9000000000"},
+                       {"id": "s2", "name": "2.MOV", "mimeType": "video/quicktime", "size": "1000000000"}],
                 "id:Inbox/Processed": [{"id": "x", "name": "old.MOV", "mimeType": "video/quicktime",
                                         "size": "60000000000"}],
                 "id:Longform/Finished": [{"id": "f1", "name": "Old Page", "mimeType": "folder"}],
@@ -1655,18 +1656,21 @@ class UploadOnceAndStorageTest(FakeVariantsMixin, unittest.TestCase):
         r.poll()
         r.poll()                                                         # second poll: nothing new
         drawings = {x["drive_id"]: x for x in state["drawings"].values()}
-        self.assertEqual(set(drawings), {"i1", "s1"})                    # Finished folder ignored
+        self.assertEqual(set(drawings), {"i1", "s1", "s2"})              # Finished folder ignored
+        self.assertEqual(drawings["s2"]["subject"], "Shinobi Page")      # unnamed drawing: the page names it
+        self.assertEqual(drawings["s2"]["hints"], {"continued": True})   # 2nd drawing: page already has ink
+        self.assertNotIn("continued", drawings["s1"].get("hints", {}))
         self.assertTrue(drawings["s1"]["keep_in_place"])
         self.assertEqual(sum("new recording" in t for t in bot.texts()), 1)
         notice = [t for t in bot.texts() if "new recording" in t][0]
         self.assertIn("Longform › Shinobi Page", notice)
-        self.assertIn("Naruto.MOV → Shinobi Page", notice)                 # the folder names the piece
+        self.assertIn("Naruto.MOV → Naruto", notice)                       # a named file names the drawing
         src = Path(tempfile.mkdtemp()) / "raw.mp4"
         src.write_bytes(b"x")
         r.drive_source = lambda dd, tmp: src
         self.stub_render(r)
         self.assertEqual(d.moves, ["i1"])                                # only the Inbox file moved
-        self.assertIn("id:Done/Shorts/Shinobi Page", d.ups)
+        self.assertIn("id:Done/Shorts/Naruto", d.ups)
 
     def test_monthly_storage_note(self):
         bot, state, d = FakeBot(), fresh_state(), self.D()
