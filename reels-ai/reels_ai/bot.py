@@ -177,7 +177,7 @@ class Runner:
         leave the bank so the new ones replace them; already-dropped ones are untouched."""
         want = name.lower()
         found = [(did, d) for did, d in self.state["drawings"].items()
-                 if d["status"] in ("rendered", "failed")
+                 if d["status"] in ("rendered", "failed") and not self.retired(d)
                  and (not want or want in (d.get("subject") or "").lower()
                       or want in (d.get("drive_name") or "").lower())]
         if not found:
@@ -197,7 +197,8 @@ class Runner:
 
     def redo_all(self) -> None:
         """/redo all: every finished drawing again with the current settings."""
-        todo = [(did, d) for did, d in self.state["drawings"].items() if d["status"] in ("rendered", "failed")]
+        todo = [(did, d) for did, d in self.state["drawings"].items()
+                if d["status"] in ("rendered", "failed") and not self.retired(d)]
         if not todo:
             return self.say("\U0001f50e No finished drawings yet.")
         replaced = videos = queued = 0
@@ -561,6 +562,15 @@ class Runner:
                                      label_markup("⏱ Auto-approved: queued to post"))
 
     # ------------------------------------------------------------------ drops (manual posting)
+    def retired(self, d: dict | None) -> bool:
+        """Drawings you've used enough ([bank] retired in config.toml): no more drops or redos."""
+        names = [n.lower() for n in self.cfg.get("bank", {}).get("retired", []) if n.strip()]
+        text = f"{(d or {}).get('subject') or ''} {(d or {}).get('drive_name') or ''}".lower()
+        return any(n in text for n in names)
+
+    def retired_variant(self, v: dict) -> bool:
+        return self.retired(self.state["drawings"].get(v.get("drawing")))
+
     @property
     def drops_mode(self) -> bool:
         return self.cfg.get("delivery", {}).get("mode") == "drops"
@@ -588,7 +598,7 @@ class Runner:
         different style than last time, and draw from the drawings with the most videos left so
         one drawing's variants don't pile up at the end of the bank."""
         pool = [v for v in self.state["variants"].values()
-                if v["status"] == "approved" and not v.get("dropped_at")]
+                if v["status"] == "approved" and not v.get("dropped_at") and not self.retired_variant(v)]
         if not pool:
             return None
         sent = [v for v in self.state["variants"].values() if v.get("dropped_at")]
@@ -704,7 +714,8 @@ class Runner:
         """Approved (or still pending) videos not yet sent to each enabled platform."""
         if self.drops_mode:
             return {"drops": sum(1 for v in self.state["variants"].values()
-                                 if v["status"] in ("approved", "pending") and not v.get("dropped_at"))}
+                                 if v["status"] in ("approved", "pending") and not v.get("dropped_at")
+                                 and not self.retired_variant(v))}
         out = {}
         for p, pc in self.cfg.get("platforms", {}).items():
             if pc.get("enabled"):
@@ -818,6 +829,11 @@ class Runner:
         done_now = 0
         for did, d in self.state["drawings"].items():
             if d["status"] != "queued":
+                continue
+            if self.retired(d):                      # listed in [bank] retired: not made any more
+                d["status"] = "retired"
+                self.say(f"\U0001f4e6 Skipped {d.get('subject') or d.get('drive_name') or did}: it's on your "
+                         "retired list ([bank] retired in config.toml).")
                 continue
             if done_now and _time.time() - started > budget:
                 left = sum(1 for x in self.state["drawings"].values() if x["status"] == "queued")
@@ -1053,6 +1069,12 @@ def run(phase: str) -> None:
             check(runner)
         finally:
             save_state(state)
+        return
+    if phase == "tidy-drive":
+        from . import tidy
+        if not runner.drive:
+            raise SystemExit("Drive isn't connected")
+        runner.say(tidy.run(runner.drive, state))
         return
     try:
         needs_render = False

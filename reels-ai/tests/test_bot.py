@@ -496,6 +496,72 @@ class ReliabilityTest(FakeVariantsMixin, unittest.TestCase):
         self.assertIn("actions/runs/77", sent[0][1])
 
 
+class RetireAndTidyTest(FakeVariantsMixin, unittest.TestCase):
+    def test_retired_drawings_leave_the_bank(self):
+        bot, state = FakeBot(), fresh_state()
+        cfg = load_config()
+        cfg["timezone"] = "UTC"
+        cfg["bank"]["retired"] = []
+        clock = Clock(datetime(2026, 11, 7, 9, tzinfo=timezone.utc))
+        r = Runner(bot, state, cfg, clock=clock)
+        src = Path(tempfile.mkdtemp()) / "in.mp4"
+        src.write_bytes(b"raw")
+        bot.push(**msg(OWNER, text="hi"))
+        for i, name in enumerate(["Shinobi Undercover Manga", "Naruto"]):
+            bot.files[f"raw{i}"] = src
+            bot.push(**msg(OWNER, video={"file_id": f"raw{i}", "file_unique_id": f"u{i}", "file_size": 9},
+                           caption=name))
+        r.poll()
+        self.stub_render(r)
+        self.assertEqual(r.bank()["drops"], 10)
+        cfg["bank"]["retired"] = ["Shinobi Undercover"]
+        self.assertEqual(r.bank()["drops"], 5)
+        for day in range(4):
+            clock.t = datetime(2026, 11, 7, 20, tzinfo=timezone.utc) + timedelta(days=day)
+            r.poll()
+        dropped = [v for v in state["variants"].values() if v.get("dropped_at")]
+        self.assertTrue(dropped)
+        self.assertTrue(all(state["drawings"][v["drawing"]]["subject"] == "Naruto" for v in dropped))
+        bot.push(**msg(OWNER, text="/redo shinobi"))
+        r.poll()
+        self.assertTrue(any("No finished drawing" in t for t in bot.texts()))
+
+    def test_tidy_trashes_only_leftovers(self):
+        from reels_ai import tidy
+
+        class D:
+            def __init__(self):
+                self.trashed = []
+
+            def folder(self, path):
+                return "id:" + path
+
+            def list(self, fid, kind="video"):
+                if kind == "folder":
+                    return [{"id": "f1", "name": "Naruto"}]
+                return [
+                    {"id": "LIVE1aaaaaaa", "name": "Naruto - Speedrun (redo).mp4", "size": "100"},
+                    {"id": "CRASHaaaaaaa", "name": "Naruto - Speedrun (redo).mp4", "size": "100"},   # crashed run
+                    {"id": "OLDaaaaaaaaa", "name": "Naruto - Speedrun.mp4", "size": "100"},          # replaced
+                    {"id": "OTHERDRAWING", "name": "Naruto - One take.mp4", "size": "100"},          # unknown: keep
+                    {"id": "POSTEDaaaaaa", "name": "Naruto - Ink only.mp4", "size": "100"},
+                ]
+
+            def trash(self, fid):
+                self.trashed.append(fid)
+
+        def link(i):
+            return f"https://drive.google.com/file/d/{i}/view"
+        state = {"variants": {
+            "v1": {"status": "approved", "full_link": link("LIVE1aaaaaaa")},
+            "v2": {"status": "replaced", "full_link": link("OLDaaaaaaaaa")},
+            "v3": {"status": "posted", "full_link": link("POSTEDaaaaaa")}}}
+        d = D()
+        msg_ = tidy.run(d, state)
+        self.assertEqual(sorted(d.trashed), ["CRASHaaaaaaa", "OLDaaaaaaaaa"])
+        self.assertIn("moved 2 duplicate", msg_)
+
+
 class StyleLearningTest(unittest.TestCase):
     def test_winning_styles_come_round_more_and_weakest_is_skipped(self):
         cfg = load_config()

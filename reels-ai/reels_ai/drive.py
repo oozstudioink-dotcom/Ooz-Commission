@@ -208,6 +208,10 @@ class Drive:
         self._req("PATCH", f"{self.api}/files/{file_id}",
                   {"addParents": to_folder, "removeParents": from_folder, "fields": "id"}, body={})
 
+    def trash(self, file_id: str) -> None:
+        """Move a file to Drive's Trash (restorable for 30 days). The bot never deletes outright."""
+        self._req("PATCH", f"{self.api}/files/{file_id}", {"fields": "id"}, body={"trashed": True})
+
     def media_url(self, file_id: str) -> str:
         return f"{self.api}/files/{file_id}?alt=media"
 

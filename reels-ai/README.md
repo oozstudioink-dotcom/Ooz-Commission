@@ -86,6 +86,14 @@ Sessions uploaded to `Longform/<project>/` are also turned into Shorts automatic
 stay in place for the LongDraw (`[drive] shorts_from_longform`). A monthly Telegram note reports
 how much space processed raws use (`storage_alert_gb`); nothing is ever deleted by the bot.
 
+## Retiring drawings and tidying Drive
+
+- `config.toml` → `[bank] retired = ["Shinobi Undercover"]`: drawings whose name or file name contains
+  one of these are never dropped, re-made (`/redo`) or rendered again. Their files stay in Drive.
+- `Run workflow → tidy-drive` moves leftover duplicate Shorts in `Done/Shorts/` (old versions replaced by
+  `/redo`, copies from a crashed run) to Drive's Trash, restorable for 30 days. It goes by the bot's
+  memory, never by file name alone, and keeps every video in the bank or already posted.
+
 ## Naming your recordings
 
 The name tells the bot what you drew and how (Drive files and Telegram captions alike):
