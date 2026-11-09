@@ -92,10 +92,17 @@ jobs:
         run: |
           git config user.name "ooz-reels-bot"
           git config user.email "ooz-reels-bot@users.noreply.github.com"
-          [ -f state/state.json ] || exit 0
-          git add state/state.json
-          git diff --cached --quiet && exit 0
-          git commit -q -m "reels-bot: update state"
+          if [ -f state/.in_drive ]; then
+            # The bot's memory lives privately in Google Drive now: remove the public repo copy once.
+            git ls-files --error-unmatch state/state.json >/dev/null 2>&1 || exit 0
+            git rm -q --cached state/state.json
+            git commit -q -m "reels-bot: memory moved to Google Drive"
+          else
+            [ -f state/state.json ] || exit 0
+            git add state/state.json
+            git diff --cached --quiet && exit 0
+            git commit -q -m "reels-bot: update state"
+          fi
           # If main moved while we ran, keep this run's state (it is the newest).
           for i in 1 2 3; do
             git fetch -q origin "${{ github.event.repository.default_branch }}" &&

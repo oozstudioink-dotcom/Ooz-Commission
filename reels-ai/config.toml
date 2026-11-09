@@ -69,6 +69,7 @@ root = "Ooz Reels"
 backup_shorts = true             # also save every variant to Done/Shorts/<character>/
 shorts_from_longform = true      # sessions in Longform/<project>/ also become Shorts (upload once)
 storage_alert_gb = 50            # monthly Telegram note when processed raws exceed this (never deletes)
+memory_in_drive = true           # the bot's memory lives privately in Drive > Ooz Reels > Bot memory (not the public repo)
 
 [longform]
 # "LongDraw" YouTube videos built from Drive > Longform/<project>/ sessions.

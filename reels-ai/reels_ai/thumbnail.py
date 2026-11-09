@@ -58,7 +58,8 @@ def _big_word(draw: ImageDraw.ImageDraw, word: str, box, color) -> None:
 
 
 def crop_art(frame_bgr: np.ndarray) -> Image.Image:
-    """Best-effort crop of the paper from a final frame: largest bright, low-colour region."""
+    """The whole sheet of paper from a final frame, like a scanned comic page: every drawing on
+    the page stays in, the table around it goes (largest bright, low-colour region)."""
     from .fx import grade
     frame_bgr = grade(frame_bgr, "clean")                # white paper, true blacks
     small = cv2.resize(frame_bgr, (480, int(480 * frame_bgr.shape[0] / frame_bgr.shape[1])))
@@ -71,8 +72,39 @@ def crop_art(frame_bgr: np.ndarray) -> Image.Image:
         x, y, w, h = stats[i, :4]
         s = frame_bgr.shape[1] / small.shape[1]
         if w * h > 0.15 * small.shape[0] * small.shape[1]:
+            # keep only rows/columns that are mostly paper: bright bits of table, skin or sleeves
+            # touching the sheet don't stretch the crop
+            comp = labels[y:y + h, x:x + w] == i
+            rows = np.nonzero(comp.mean(axis=1) > 0.6)[0]
+            cols = np.nonzero(comp.mean(axis=0) > 0.6)[0]
+            if len(rows) > 10 and len(cols) > 10:
+                y, h = y + rows[0], rows[-1] - rows[0] + 1
+                x, w = x + cols[0], cols[-1] - cols[0] + 1
             frame_bgr = frame_bgr[int(y * s):int((y + h) * s), int(x * s):int((x + w) * s)]
     return Image.fromarray(cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2RGB))
+
+
+def clearest(frames: list[np.ndarray]) -> np.ndarray:
+    """The frame showing the most finished drawing: most visible ink, i.e. the latest lines with
+    no hand, arm or eraser over them."""
+    from .analyze import _skin
+
+    def visible_ink(img):
+        small = cv2.resize(img, (360, max(1, int(360 * img.shape[0] / img.shape[1]))))
+        gray = cv2.cvtColor(small, cv2.COLOR_BGR2GRAY).astype(np.float32)
+        local = cv2.GaussianBlur(cv2.dilate(gray, np.ones((15, 15), np.uint8)), (0, 0), 5)
+        ink = int(((local - gray) > 70).sum())          # dark ink only (not pencil)
+        return ink * max(0.0, 1 - 2 * float(_skin(small).mean()))
+    return max(frames, key=visible_ink)
+
+
+def _fit_contain(img: Image.Image, w: int, h: int) -> Image.Image:
+    """The whole image inside w x h (nothing cut off), centred on the thumbnail background."""
+    scale = min(w / img.width, h / img.height)
+    img = img.resize((max(1, int(img.width * scale)), max(1, int(img.height * scale))), Image.LANCZOS)
+    out = Image.new("RGB", (w, h), BG)
+    out.paste(img, ((w - img.width) // 2, (h - img.height) // 2))
+    return out
 
 
 def _fit_cover(img: Image.Image, w: int, h: int) -> Image.Image:
@@ -87,15 +119,22 @@ def make_thumbnail(art: Image.Image, episode: int, out: Path, size: tuple[int, i
     w, h = size
     canvas = Image.new("RGB", size, BG)
 
-    # finished art panel with a soft shadow
+    # finished page: the whole sheet (every drawing on it), with a soft shadow that hugs the paper
+    # like a scanned page laid on the table
     ax0, ay0, ax1, ay1 = _box("art", w, h)
+    art = art.convert("RGB")
+    pw, ph = ax1 - ax0, ay1 - ay0
+    scale = min(pw / art.width, ph / art.height)
+    nw, nh = max(1, int(art.width * scale)), max(1, int(art.height * scale))
+    ax0, ay0 = ax0 + (pw - nw) // 2, ay0 + (ph - nh) // 2
+    ax1, ay1 = ax0 + nw, ay0 + nh
     shadow = Image.new("L", size, 0)
     sd = ImageDraw.Draw(shadow)
     off = int(w * 0.012)
     sd.rectangle((ax0 + off, ay0 + off, ax1 + off, ay1 + off), fill=200)
     shadow = shadow.filter(ImageFilter.GaussianBlur(w * 0.012))
     canvas.paste(Image.new("RGB", size, (0, 0, 0)), (0, 0), shadow)
-    canvas.paste(_fit_cover(art.convert("RGB"), ax1 - ax0, ay1 - ay0), (ax0, ay0))
+    canvas.paste(art.resize((nw, nh), Image.LANCZOS), (ax0, ay0))
 
     d = ImageDraw.Draw(canvas)
     # signature logo box

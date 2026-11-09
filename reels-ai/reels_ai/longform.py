@@ -28,7 +28,7 @@ import numpy as np
 from . import panels
 from .analyze import _skin
 from .media import FPS
-from .thumbnail import CREAM, RED, _anton, crop_art, make_thumbnail, youtube_jpeg
+from .thumbnail import CREAM, RED, _anton, clearest, crop_art, make_thumbnail, youtube_jpeg
 
 SIZES = {"4k": (3840, 2160), "1080p": (1920, 1080)}
 ENC = ["-c:v", "libx264", "-preset", "veryfast", "-crf", "20", "-pix_fmt", "yuv420p", "-r", str(FPS),
@@ -307,15 +307,23 @@ def build(sessions: list[Session], out_dir: Path, project: str, episode: int, cf
               "-c", "copy", "-shortest", "-movflags", "+faststart", str(video)])
 
         # thumbnail: provided art, else a crop of the finished page from the last session
-        if art and art.exists():
-            from PIL import Image
-            art_img = Image.open(art)
-        else:
-            last = work / "last.png"
+        if art and art.exists():                         # your photo: cropped to the drawing too
+            art_img = crop_art(cv2.imread(str(art)))
+        else:                                             # the clearest of the last 20 s (least hand)
             s = sessions[-1]
-            _run(["ffmpeg", "-v", "error", "-y", *s.hdrs(),
-                  "-ss", f"{max(0.0, s.keep[-1][1] - 2):.2f}", "-i", s.src, "-frames:v", "1", str(last)])
-            art_img = crop_art(cv2.imread(str(last)))
+            end = s.keep[-1][1]
+            frames = []
+            for k in range(8):
+                f = work / f"last{k}.png"
+                try:
+                    _run(["ffmpeg", "-v", "error", "-y", *s.hdrs(),
+                          "-ss", f"{max(0.0, end - 0.5 - k * 2.5):.2f}", "-i", s.src, "-frames:v", "1", str(f)])
+                    img = cv2.imread(str(f))
+                    if img is not None:
+                        frames.append(img)
+                except Exception as e:  # noqa: BLE001
+                    print(f"warn: thumbnail frame: {e}")
+            art_img = crop_art(clearest(frames))
         thumb = make_thumbnail(art_img, episode, out_dir / f"LongDraw EP {episode:02d} - thumbnail.png")
         thumb_yt = youtube_jpeg(thumb, out_dir / f"LongDraw EP {episode:02d} - thumbnail.jpg")
         if len(chapters) < 3 or any(b[0] - a[0] < 10 for a, b in zip(chapters, chapters[1:])):

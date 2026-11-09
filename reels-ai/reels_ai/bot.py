@@ -506,9 +506,21 @@ class Runner:
             if copy:                              # busy/retired models fall through to the next
                 self.state["ai_model"] = model
                 break
-        if copy and not d.get("subject") and copy.get("subject"):
-            d["subject"] = copy["subject"]          # Gemini recognised the character
+        if copy and not d.get("subject"):
+            copy = strip_guessed_names(copy)        # unlabelled: never name a character
         return copy
+
+    def labelled_subject(self, d: dict) -> str | None:
+        """The character only YOU named: file name, page folder or Telegram caption. Never a guess
+        (Gemini once called a Sasuke drawing 'Naruto' on several videos)."""
+        if d.get("source") != "drive":
+            return d.get("subject") if d.get("subject_by") != "ai" else None
+        from .drive import parse_name
+        subject = parse_name(d.get("drive_name") or "")[0]
+        where = d.get("drive_where") or ""
+        if not subject and "\u203a" in where:
+            subject = parse_name(where.split("\u203a", 1)[1].strip())[0]
+        return subject
 
     def intake(self, video: dict, subject: str) -> None:
         size = video.get("file_size") or 0
@@ -923,6 +935,7 @@ class Runner:
                     else:
                         src = self.bot.download(d["file_id"], tmp / f"{did}.mp4")
                     styles = d.pop("redo_styles", None) or self.choose_styles(did)
+                    d["subject"] = self.labelled_subject(d)     # drop any old AI guess
                     copy = self.with_owner_ideas(self.ai_copy(src, d, styles, tmp), styles, did)
                     big = self.shorts_4k and d.get("source") == "drive"
                     raw = self.drive_raw(d) if d.get("source") == "drive" else {}
@@ -1063,6 +1076,23 @@ class Runner:
                 uses[r["name"]] = uses.get(r["name"], 0) + 1
 
 
+def strip_guessed_names(copy: dict) -> dict:
+    """For an unlabelled drawing: drop Gemini's character guess from the hooks, caption and hashtags."""
+    guess = (copy.get("subject") or "").strip()
+    out = {**copy, "subject": ""}
+    if not guess:
+        return out
+    words = [w for w in re.findall(r"[A-Za-z]{3,}", guess)]
+    bad = re.compile("|".join(re.escape(w) for w in words), re.I) if words else None
+    if bad is None:
+        return out
+    out["hooks"] = {k: v for k, v in (copy.get("hooks") or {}).items() if not bad.search(v)}
+    if copy.get("caption") and bad.search(copy["caption"]):
+        out["caption"] = ""
+    out["hashtags"] = [t for t in copy.get("hashtags") or [] if not bad.search(t)]
+    return out
+
+
 ALBUM_BYTES = 40 * 1024 * 1024        # bots may upload ~50 MB per request; albums go up as one
 
 
@@ -1124,9 +1154,16 @@ def run(phase: str) -> None:
         raise SystemExit("TELEGRAM_BOT_TOKEN doesn't look like a BotFather token "
                          "(expected digits, a colon, then ~35 letters/numbers). Re-paste it.")
     token = m.group(0)
-    state, config = load_state(), load_config()
+    config = load_config()
     if phase == "alert":                       # the workflow failed or timed out: tell the owner
+        state = load_state()
         owner = os.environ.get("TELEGRAM_OWNER_ID") or state.get("owner_chat_id")
+        if not owner:
+            from .memory import owner_chat_id
+            try:
+                owner = owner_chat_id(make_drive(config))
+            except Exception as e:  # noqa: BLE001
+                print(f"warn: {e}")
         if owner:
             url = (f"{os.environ.get('GITHUB_SERVER_URL', 'https://github.com')}/"
                    f"{os.environ.get('GITHUB_REPOSITORY', '')}/actions/runs/{os.environ.get('GITHUB_RUN_ID', '')}")
@@ -1134,19 +1171,31 @@ def run(phase: str) -> None:
             Bot(token).send_message(int(owner), f"\u26a0\ufe0f The {what} stopped with an error. Finished work is "
                                                  f"kept; anything left over is retried on the next run.\nDetails: {url}")
         return
-    runner = Runner(Bot(token), state, config, clients=make_clients(config), drive=make_drive(config),
-                    checkpoint=lambda: save_state(state))
+    drive = make_drive(config)
+    save = save_state
+    if drive is not None and config.get("drive", {}).get("memory_in_drive", True):
+        from .memory import DriveMemory, MemoryError_
+        mem = DriveMemory(drive)
+        try:
+            state = mem.load()
+        except MemoryError_ as e:
+            raise SystemExit(str(e))
+        save = mem.save
+    else:
+        state = load_state()
+    runner = Runner(Bot(token), state, config, clients=make_clients(config), drive=drive,
+                    checkpoint=lambda: save(state))
     if phase == "tiktok-connect":
         try:
             tiktok_connect(runner, config)
         finally:
-            save_state(state)
+            save(state)
         return
     if phase == "check":
         try:
             check(runner)
         finally:
-            save_state(state)
+            save(state)
         return
     if phase == "tidy-drive":
         from . import tidy
@@ -1162,7 +1211,7 @@ def run(phase: str) -> None:
             runner.render_all()
             runner.poll()              # post anything that became due, without waiting an hour
     finally:
-        save_state(state)
+        save(state)
     if phase == "poll" and (out := os.environ.get("GITHUB_OUTPUT")):
         with open(out, "a") as f:
             f.write(f"render={'true' if needs_render else 'false'}\n")

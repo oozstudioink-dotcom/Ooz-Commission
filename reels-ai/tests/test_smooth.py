@@ -313,3 +313,51 @@ class NamingTest(unittest.TestCase):
         store = FrameStore(tmp / "p.mp4")
         self.assertTrue(analyze(store, pencil=True).has_pencil)
         self.assertFalse(analyze(store, pencil=False).has_pencil)
+
+
+class DriveMemoryTest(unittest.TestCase):
+    """The bot's memory lives in Drive; the repo copy is only the first-time source."""
+
+    class FakeDrive:
+        def __init__(self, fail=False):
+            self.files, self.fail, self.writes = {}, fail, 0
+
+        def folder(self, path):
+            if self.fail:
+                raise RuntimeError("Drive is down")
+            return "id:" + path
+
+        def find_file(self, name, folder):
+            return {"id": "mem"} if "mem" in self.files else None
+
+        def read_text(self, fid):
+            return self.files[fid]
+
+        def write_text(self, name, folder, text, file_id=None):
+            self.files["mem"] = text
+            self.writes += 1
+            return "mem"
+
+    def test_migrates_then_uses_drive_and_refuses_blank_start(self):
+        import json
+        import tempfile
+        from pathlib import Path
+
+        from reels_ai import memory
+        tmp = Path(tempfile.mkdtemp())
+        local = tmp / "state.json"
+        local.write_text(json.dumps({"owner_chat_id": 7, "drawings": {"d1": {"status": "rendered"}}}))
+        d = self.FakeDrive()
+        m = memory.DriveMemory(d)
+        state = m.load(local)                                   # first run: repo copy moves to Drive
+        self.assertEqual(state["owner_chat_id"], 7)
+        self.assertEqual(json.loads(d.files["mem"])["drawings"]["d1"]["status"], "rendered")
+        self.assertTrue((tmp / ".in_drive").exists())          # marker next to the memory file
+        local.unlink()                                          # repo copy gone: Drive is the source
+        state["paused"] = True
+        m.save(state, local)
+        again = memory.DriveMemory(d).load(local)
+        self.assertTrue(again["paused"])
+        self.assertEqual(again["owner_chat_id"], 7)
+        with self.assertRaises(memory.MemoryError_):            # Drive down: stop, don't start blank
+            memory.DriveMemory(self.FakeDrive(fail=True)).load(local)
