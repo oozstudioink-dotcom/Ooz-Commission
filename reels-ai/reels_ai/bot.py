@@ -1066,6 +1066,13 @@ def check(runner: Runner) -> None:
                          f" \u00b7 {n} video(s) waiting in Inbox")
         except Exception as e:  # noqa: BLE001
             lines.append(f"Google Drive: \u274c {e}")
+    from .ai import DEFAULT_MODEL, ping
+    model = runner.cfg.get("ai", {}).get("model", DEFAULT_MODEL)
+    try:
+        reply = ping(os.environ.get("GEMINI_API_KEY", ""), model)
+        lines.append(f"Gemini: \u2705 {model} answered \u201c{reply}\u201d")
+    except RuntimeError as e:
+        lines.append(f"Gemini: \u274c {e}")
     text = "\n".join(lines)
     print(text)
     runner.say(text)
