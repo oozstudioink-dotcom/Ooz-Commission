@@ -81,6 +81,9 @@ def write_copy(image: Path, subject: str | None, styles: list[str], api_key: str
     return clean(out, styles)
 
 
+FALLBACK_MODELS = ["gemini-2.5-flash", "gemini-2.5-flash-lite", "gemini-2.0-flash"]
+
+
 def ping(api_key: str, model: str = DEFAULT_MODEL, endpoint: str = ENDPOINT, timeout: int = 90,
          tries: int = 2) -> str:
     """Connection test: a one-word request. Returns the reply; raises RuntimeError with a
@@ -99,8 +102,8 @@ def ping(api_key: str, model: str = DEFAULT_MODEL, endpoint: str = ENDPOINT, tim
                 break
             except TimeoutError:
                 if attempt == tries - 1:
-                    raise RuntimeError(f"no answer within {timeout}s (twice); Gemini may be busy, "
-                                       "run the check again later") from None
+                    raise RuntimeError(f"no answer within {timeout}s"
+                                       + (f" ({tries} tries)" if tries > 1 else "")) from None
         return data["candidates"][0]["content"]["parts"][0]["text"].strip()[:40]
     except urllib.error.HTTPError as e:
         try:
