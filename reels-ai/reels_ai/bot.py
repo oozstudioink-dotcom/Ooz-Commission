@@ -1124,9 +1124,16 @@ def run(phase: str) -> None:
         raise SystemExit("TELEGRAM_BOT_TOKEN doesn't look like a BotFather token "
                          "(expected digits, a colon, then ~35 letters/numbers). Re-paste it.")
     token = m.group(0)
-    state, config = load_state(), load_config()
+    config = load_config()
     if phase == "alert":                       # the workflow failed or timed out: tell the owner
+        state = load_state()
         owner = os.environ.get("TELEGRAM_OWNER_ID") or state.get("owner_chat_id")
+        if not owner:
+            from .memory import owner_chat_id
+            try:
+                owner = owner_chat_id(make_drive(config))
+            except Exception as e:  # noqa: BLE001
+                print(f"warn: {e}")
         if owner:
             url = (f"{os.environ.get('GITHUB_SERVER_URL', 'https://github.com')}/"
                    f"{os.environ.get('GITHUB_REPOSITORY', '')}/actions/runs/{os.environ.get('GITHUB_RUN_ID', '')}")
@@ -1134,19 +1141,31 @@ def run(phase: str) -> None:
             Bot(token).send_message(int(owner), f"\u26a0\ufe0f The {what} stopped with an error. Finished work is "
                                                  f"kept; anything left over is retried on the next run.\nDetails: {url}")
         return
-    runner = Runner(Bot(token), state, config, clients=make_clients(config), drive=make_drive(config),
-                    checkpoint=lambda: save_state(state))
+    drive = make_drive(config)
+    save = save_state
+    if drive is not None and config.get("drive", {}).get("memory_in_drive", True):
+        from .memory import DriveMemory, MemoryError_
+        mem = DriveMemory(drive)
+        try:
+            state = mem.load()
+        except MemoryError_ as e:
+            raise SystemExit(str(e))
+        save = mem.save
+    else:
+        state = load_state()
+    runner = Runner(Bot(token), state, config, clients=make_clients(config), drive=drive,
+                    checkpoint=lambda: save(state))
     if phase == "tiktok-connect":
         try:
             tiktok_connect(runner, config)
         finally:
-            save_state(state)
+            save(state)
         return
     if phase == "check":
         try:
             check(runner)
         finally:
-            save_state(state)
+            save(state)
         return
     if phase == "tidy-drive":
         from . import tidy
@@ -1162,7 +1181,7 @@ def run(phase: str) -> None:
             runner.render_all()
             runner.poll()              # post anything that became due, without waiting an hour
     finally:
-        save_state(state)
+        save(state)
     if phase == "poll" and (out := os.environ.get("GITHUB_OUTPUT")):
         with open(out, "a") as f:
             f.write(f"render={'true' if needs_render else 'false'}\n")

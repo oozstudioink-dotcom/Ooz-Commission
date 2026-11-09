@@ -212,6 +212,31 @@ class Drive:
         self._req("PATCH", f"{self.api}/files/{file_id}",
                   {"addParents": to_folder, "removeParents": from_folder, "fields": "id"}, body={})
 
+    def find_file(self, name: str, folder_id: str) -> dict | None:
+        return self._find(name, folder_id, folder=False)
+
+    def read_text(self, file_id: str) -> str:
+        r = self._req("GET", self.media_url(file_id), raw=True)
+        return r.read().decode("utf-8")
+
+    def write_text(self, name: str, folder_id: str, text: str, file_id: str | None = None,
+                   mime: str = "application/json") -> str:
+        """Create or overwrite a small text file in one request. Returns its id."""
+        boundary = "ooz-memory-boundary"
+        meta = {"name": name, "mimeType": mime, **({} if file_id else {"parents": [folder_id]})}
+        body = (f"--{boundary}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n{json.dumps(meta)}\r\n"
+                f"--{boundary}\r\nContent-Type: {mime}\r\n\r\n").encode() + text.encode("utf-8") + \
+            f"\r\n--{boundary}--".encode()
+        url = (f"{self.upload_url}/{file_id}" if file_id else self.upload_url) + "?uploadType=multipart&fields=id"
+        req = urllib.request.Request(url, data=body, method="PATCH" if file_id else "POST", headers={
+            "Authorization": f"Bearer {self.token()}",
+            "Content-Type": f"multipart/related; boundary={boundary}"})
+        try:
+            with urllib.request.urlopen(req, timeout=self.timeout) as r:
+                return json.load(r)["id"]
+        except urllib.error.HTTPError as e:
+            raise DriveError(f"couldn't save {name}: {_describe(e)}") from None
+
     def trash(self, file_id: str) -> None:
         """Move a file to Drive's Trash (restorable for 30 days). The bot never deletes outright."""
         self._req("PATCH", f"{self.api}/files/{file_id}", {"fields": "id"}, body={"trashed": True})

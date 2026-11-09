@@ -20,8 +20,26 @@ from .telegram import Bot
 IMAGE = ("image/",)
 
 
+_OWNER: list = []
+
+
+def _owner():
+    """Owner chat id, read once (from the bot's memory in Drive, or the repo copy)."""
+    if not _OWNER:
+        from .memory import owner_chat_id
+        drive = None
+        try:
+            env = [os.environ.get(k, "").strip() for k in ("YT_CLIENT_ID", "YT_CLIENT_SECRET", "YT_REFRESH_TOKEN")]
+            if all(env):
+                drive = Drive(*env, root=load_config().get("drive", {}).get("root", "Ooz Reels"))
+        except Exception as e:  # noqa: BLE001
+            print(f"warn: {e}")
+        _OWNER.append(owner_chat_id(drive))
+    return _OWNER[0]
+
+
 def _notify(text: str) -> None:
-    token, owner = os.environ.get("TELEGRAM_BOT_TOKEN", ""), load_state().get("owner_chat_id")
+    token, owner = os.environ.get("TELEGRAM_BOT_TOKEN", ""), _owner()
     print(text)
     if token.strip() and owner:
         import re

@@ -211,7 +211,9 @@ repeating a style you already posted), `/clear` (deletes recent chat messages: T
 only the last 48 h; older ones via ⋮ → Clear history, which doesn't touch the bot's memory),
 `/pause`, `/resume`, `/help`.
 The bot warns in Telegram when the bank drops below `[bank] warn_below_days`. The first person to message the bot becomes
-its owner; everyone else is ignored. Memory lives in `state/state.json` (committed by the job).
+its owner; everyone else is ignored. Memory lives privately in Drive › `Ooz Reels/Bot memory/state.json`
+(`[drive] memory_in_drive`); the first run moves the old repo copy there and deletes it from the repo.
+If Drive can't be read the run stops rather than start from a blank memory.
 
 Setup: repo secret `TELEGRAM_BOT_TOKEN` (from @BotFather). Scheduled jobs only run from the
 default branch, so this folder and the workflow must be on `main`.
