@@ -31,6 +31,10 @@ Options: `--variants reveal_first ink_only` (pick some), `--seed 2` (different h
 - **clean sketch / clean reveal**: frames with the least hand/pen on the page.
 - **detail box**: the most line-dense area (usually the face) and when it gets inked.
 - **arm sweeps**: frames where an arm covers the page are dropped from the edit.
+- **straight to ink**: sessions with no pencil sketch are spotted (no light marks under the
+  future ink); Before / after is swapped for another style and no hook or caption mentions a sketch.
+- **the end of the inking** waits for fine linework too, not just bold fills, so videos don't
+  jump to the finished piece while details are still being inked.
 
 **Smooth motion:** frames are never shown twice in a row. When a variant speeds up, the frames it
 skips are blended into the frame it shows (up to 6, newest weighted most), so ink builds up
@@ -52,7 +56,8 @@ stuttering. Holds, flashbacks and the final reveal stay razor sharp. Knobs: `BLE
 | `ink_only` | Skips pencils, straight into the ink | high-contrast B&W |
 | `process_cuts` | ~8 jump cuts of the pen actually moving (cut straight from the original recording, 2x for long sessions), finished piece first and last; the jump-cut format common in popular manga-inking Shorts | clean |
 
-Hooks, end cards and captions live in `reels_ai/hooks.py`; edit freely.
+Hooks, end cards and captions live in `reels_ai/hooks.py`; edit freely. On-screen text shrinks to fit
+(80% of the width, 2 lines) and sits below the TikTok / Reels / Shorts top bar (`fx.SAFE_TOP`).
 
 ## Drops feed (default)
 
@@ -158,4 +163,4 @@ Tests: `python -m unittest discover -s tests` (add `REELS_TEST_VIDEO=clip.mov` f
 2. ~~Telegram approval bot, hourly GitHub Actions schedule, manual posting~~
 3. YouTube: ~~Analytics stats + API upload~~ (secrets `YT_CLIENT_ID`, `YT_CLIENT_SECRET`, `YT_REFRESH_TOKEN`; uploads stay private until Google's API audit is approved)
 4. Instagram: ~~stats + Reels-tab posting~~ (set `method = "api"` after `Run workflow` → task `check` passes); trial reels once the account has 200 followers
-5. Learning: weight styles/hooks by retention and subs gained
+5. Learning: ~~styles that average more views (weekly report, 2+ matched posts) are made more often~~; hooks next

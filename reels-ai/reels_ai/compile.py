@@ -50,7 +50,7 @@ def _frame(clip: Clip, idx, cam: tuple[float, float, float] | None = None,
     return img
 
 
-def _text(img: np.ndarray, text: str, style: str, alpha: float = 1.0, y: float = 0.11) -> np.ndarray:
+def _text(img: np.ndarray, text: str, style: str, alpha: float = 1.0, y: float = fx.SAFE_TOP) -> np.ndarray:
     return fx.overlay(img, fx.text_layer(text, style, W, H, y), alpha) if text else img
 
 

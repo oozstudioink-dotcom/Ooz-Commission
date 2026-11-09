@@ -126,6 +126,11 @@ def build(state: dict, clients: dict, now: datetime, days: int = 7) -> str:
             if v:
                 style_views.setdefault(v["style"], []).append(p["views"])
     if style_views:
+        # Remembered so the bot makes more of what works (bot.choose_styles).
+        scores = state.setdefault("style_scores", {})
+        for st, views in style_views.items():
+            scores[st] = {"avg_views": round(sum(views) / len(views), 1), "posts": len(views),
+                          "at": now.isoformat(timespec="seconds")}
         ranked = sorted(style_views.items(), key=lambda kv: -sum(kv[1]) / len(kv[1]))
         lines.append("\nStyles (average views per post):")
         lines += [f"{i + 1}. {STYLE_LABELS.get(s, s)}: {int(sum(v) / len(v)):,} ({len(v)} posts)"

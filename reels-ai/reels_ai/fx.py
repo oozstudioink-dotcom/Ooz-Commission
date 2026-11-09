@@ -1,6 +1,8 @@
 """Per-frame effects: camera moves, colour grades, text cards, wipes, progress bar."""
 from __future__ import annotations
 
+import functools
+
 from functools import lru_cache
 from pathlib import Path
 
@@ -136,19 +138,36 @@ def _wrap(draw: ImageDraw.ImageDraw, text: str, f, max_w: int, gap: float) -> li
     return best
 
 
-@lru_cache(maxsize=64)
-def text_layer(text: str, style: str, w: int, h: int, y_frac: float = 0.11) -> np.ndarray:
-    """RGBA layer (as BGRA numpy) with the text placed in the top safe zone."""
+SAFE_TOP = 0.14      # below the TikTok / Reels / Shorts top bar
+TEXT_W = 0.80        # clear of the screen edges
+MAX_LINES = {"tag": 2, "box": 2}
+
+
+@functools.lru_cache(maxsize=24)
+def text_layer(text: str, style: str, w: int, h: int, y_frac: float = SAFE_TOP) -> np.ndarray:
+    """RGBA layer (as BGRA numpy) with the text placed in the top safe zone.
+
+    The font shrinks until every line fits inside TEXT_W of the width and the text takes at most
+    2 lines, so long hooks and character names never run off screen. Cached:
+    the same card is drawn on many frames."""
     layer = Image.new("RGBA", (w, h), (0, 0, 0, 0))
     d = ImageDraw.Draw(layer)
+    y_frac = max(y_frac, SAFE_TOP - 0.01)
     size = int(w * (0.078 if style != "tag" else 0.05))
-    f = font("black" if style in ("outline", "ink") else "bold", size)
-    stroke = max(2, size // 16) if style == "outline" else max(2, size // 18) if style == "ink" else 0
-    gap = d.textlength(" ", font=f) + stroke * 2
-    lines = _wrap(d, text, f, int(w * 0.82), gap)
+    max_lines = MAX_LINES.get(style, 2)
+    while True:
+        f = font("black" if style in ("outline", "ink") else "bold", size)
+        stroke = max(2, size // 16) if style == "outline" else max(2, size // 18) if style == "ink" else 0
+        gap = d.textlength(" ", font=f) + stroke * 2
+        pad = int(size * 0.35) if style in ("box", "tag") else stroke
+        lines = _wrap(d, text, f, int(w * TEXT_W) - 2 * pad, gap)
+        widest = max(sum(d.textlength(wd, font=f) for wd in ln.split()) + gap * (len(ln.split()) - 1)
+                     for ln in lines)
+        if (len(lines) <= max_lines and widest + 2 * pad <= w * TEXT_W) or size <= w * 0.03:
+            break
+        size = int(size * 0.92)
     lh = int(size * 1.12)
     y = int(h * y_frac)
-    pad = int(size * 0.35)
     for line in lines:
         words = line.split()
         tw = sum(d.textlength(wd, font=f) for wd in words) + gap * (len(words) - 1)
@@ -175,20 +194,26 @@ def text_layer(text: str, style: str, w: int, h: int, y_frac: float = 0.11) -> n
                 d.text((x, y), wd, font=f, fill=(255, 255, 255, 255))
             x += d.textlength(wd, font=f) + gap
         y += lh + (pad if style in ("box", "tag") else 0)
-    arr = np.array(layer)
-    return cv2.cvtColor(arr, cv2.COLOR_RGBA2BGRA)
+    arr = cv2.cvtColor(np.array(layer), cv2.COLOR_RGBA2BGRA)
+    arr.setflags(write=False)                   # shared through the cache
+    return arr
 
 
-_BOX_CACHE: dict[int, tuple[int, int, int, int]] = {}
+_BOX_CACHE: dict[int, tuple[np.ndarray, tuple[int, int, int, int]]] = {}
 
 
 def _alpha_box(layer_bgra: np.ndarray) -> tuple[int, int, int, int]:
+    """Bounding box of the layer's visible pixels. Cached per layer; the entry keeps the layer
+    alive so its id can't be reused by a different caption (that clipped text before)."""
     key = id(layer_bgra)
-    if key not in _BOX_CACHE:
+    hit = _BOX_CACHE.get(key)
+    if hit is None or hit[0] is not layer_bgra:
+        if len(_BOX_CACHE) > 64:
+            _BOX_CACHE.clear()
         ys, xs = np.nonzero(layer_bgra[..., 3])
-        _BOX_CACHE[key] = ((ys.min(), ys.max() + 1, xs.min(), xs.max() + 1) if len(xs)
-                           else (0, 0, 0, 0))
-    return _BOX_CACHE[key]
+        box = (ys.min(), ys.max() + 1, xs.min(), xs.max() + 1) if len(xs) else (0, 0, 0, 0)
+        _BOX_CACHE[key] = hit = (layer_bgra, box)
+    return hit[1]
 
 
 def overlay(img: np.ndarray, layer_bgra: np.ndarray, alpha: float = 1.0) -> np.ndarray:

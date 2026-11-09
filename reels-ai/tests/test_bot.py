@@ -356,6 +356,22 @@ class RedoTest(DropsFeedTest):
         self.assertTrue(any("Re-making Goku" in t for t in self.bot.texts()))
 
 
+class StyleLearningTest(unittest.TestCase):
+    def test_winning_styles_come_round_more_and_weakest_is_skipped(self):
+        cfg = load_config()
+        r = Runner(FakeBot(), fresh_state(), cfg, clock=Clock(datetime(2026, 11, 7, tzinfo=timezone.utc)))
+        self.assertEqual(len(r.choose_styles("d1")), 5)
+        r.state["style_scores"] = {"process_cuts": {"avg_views": 3000, "posts": 4},
+                                   "speedrun": {"avg_views": 200, "posts": 3},
+                                   "reveal_first": {"avg_views": 900, "posts": 2},
+                                   "ink_only": {"avg_views": 5000, "posts": 1}}     # 1 post: ignored
+        r.state["style_uses"] = {s: 4 for s in cfg["variants"]["styles"]}
+        picked = r.choose_styles("d9")
+        self.assertNotIn("speedrun", picked)
+        self.assertEqual(picked[0], "process_cuts")
+        self.assertNotIn("ink_only", r.style_weights())
+
+
 @unittest.skipUnless(os.environ.get("REELS_TEST_VIDEO"), "set REELS_TEST_VIDEO to run a real render")
 class RealRenderTest(unittest.TestCase):
     def test_real_render(self):

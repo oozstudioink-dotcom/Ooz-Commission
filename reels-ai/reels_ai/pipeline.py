@@ -143,6 +143,13 @@ def make_variants(src: Path, out_root: Path, names: list[str] | None = None, see
     print("beats (s):", a.to_dict()["seconds"])
 
     names = list(names or RECIPES)
+    if not a.has_pencil and "before_after" in names:
+        # Straight-to-ink session: no sketch to compare, so make another style instead.
+        spare = [n for n in ("process_cuts", "detail_zoom", "ink_only", "reveal_first", "speedrun")
+                 if n not in names]
+        names = [spare[0] if n == "before_after" and spare else n for n in names
+                 if n != "before_after" or spare]
+        print("no pencil stage: before_after swapped for", spare[:1] or "nothing")
     clips = None
     if "process_cuts" in names:
         total = raw_duration or norm["source_duration"]
