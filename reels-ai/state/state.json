@@ -1,4 +1,5 @@
 {
+  "ai_model": "gemini-flash-lite-latest",
   "awaiting_caption": null,
   "drawings": {
     "d1": {
