@@ -9,6 +9,20 @@ import random
 import re
 
 PENCIL = re.compile(r"sketch|pencil", re.I)    # hooks/captions that only fit sessions with pencils
+NO_PENCIL_CLAIM = re.compile(r"\bno (pencil|sketch)|without (a )?(pencil|sketch)|pencil[- ]free|straight to ink"
+                             r"|no under ?drawing", re.I)
+FALSE_ALWAYS = re.compile(r"real[- ]?time|no speed|not sped|unedited|uncut", re.I)   # videos are sped up
+
+
+def honest(text: str, pencil: bool) -> bool:
+    """False for copy that would misstate how this drawing was made."""
+    if FALSE_ALWAYS.search(text):
+        return False
+    if pencil and NO_PENCIL_CLAIM.search(text):
+        return False
+    if not pencil and PENCIL.search(text) and not NO_PENCIL_CLAIM.search(text):
+        return False
+    return True
 
 HOOKS = {
     "reveal_first": [

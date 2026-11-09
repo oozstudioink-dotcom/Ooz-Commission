@@ -358,6 +358,42 @@ class RedoTest(DropsFeedTest):
         self.assertTrue(any("Re-making Goku" in t for t in self.bot.texts()))
 
 
+class NameTagsTest(FakeVariantsMixin, unittest.TestCase):
+    def test_caption_tags_reach_the_renderer(self):
+        import reels_ai.pipeline as pipeline
+        bot, state = FakeBot(), fresh_state()
+        r = Runner(bot, state, load_config(), clock=Clock(datetime(2026, 11, 7, tzinfo=timezone.utc)))
+        src = Path(tempfile.mkdtemp()) / "in.mp4"
+        src.write_bytes(b"raw")
+        bot.files["raw0"] = src
+        bot.push(**msg(OWNER, text="hi"))
+        bot.push(**msg(OWNER, video={"file_id": "raw0", "file_unique_id": "u0", "file_size": 1000},
+                       caption="Sasuke - ink only - continued"))
+        r.poll()
+        d = next(iter(state["drawings"].values()))
+        self.assertEqual(d["subject"], "Sasuke")
+        self.assertEqual(d["hints"], {"pencil": False, "continued": True})
+        self.assertTrue(any("Sasuke \u00b7 ink only \u00b7 continued page" in t for t in bot.texts()))
+        seen = {}
+        real = pipeline.make_variants
+
+        def spy(src, out_root, names, **kw):
+            seen.update(kw)
+            out = Path(out_root) / "x"
+            (out / "variants").mkdir(parents=True)
+            res = []
+            for n in names:
+                (out / "variants" / f"{n}.mp4").write_bytes(b"fake")
+                res.append({"name": n, "file": f"variants/{n}.mp4", "seconds": 10.0, "hook": "h", "caption": "c"})
+            return out, res
+        pipeline.make_variants = spy
+        try:
+            r.render(Path(tempfile.mkdtemp()))
+        finally:
+            pipeline.make_variants = real
+        self.assertEqual(seen["hints"], {"pencil": False, "continued": True})
+
+
 class StyleLearningTest(unittest.TestCase):
     def test_winning_styles_come_round_more_and_weakest_is_skipped(self):
         cfg = load_config()
@@ -1454,13 +1490,15 @@ class UploadOnceAndStorageTest(FakeVariantsMixin, unittest.TestCase):
         self.assertEqual(set(drawings), {"i1", "s1"})                    # Finished folder ignored
         self.assertTrue(drawings["s1"]["keep_in_place"])
         self.assertEqual(sum("new recording" in t for t in bot.texts()), 1)
-        self.assertIn("Longform › Shinobi Page: Naruto.MOV", [t for t in bot.texts() if "new recording" in t][0])
+        notice = [t for t in bot.texts() if "new recording" in t][0]
+        self.assertIn("Longform › Shinobi Page", notice)
+        self.assertIn("Naruto.MOV → Shinobi Page", notice)                 # the folder names the piece
         src = Path(tempfile.mkdtemp()) / "raw.mp4"
         src.write_bytes(b"x")
         r.drive_source = lambda dd, tmp: src
         self.stub_render(r)
         self.assertEqual(d.moves, ["i1"])                                # only the Inbox file moved
-        self.assertIn("id:Done/Shorts/Naruto", d.ups)
+        self.assertIn("id:Done/Shorts/Shinobi Page", d.ups)
 
     def test_monthly_storage_note(self):
         bot, state, d = FakeBot(), fresh_state(), self.D()

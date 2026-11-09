@@ -34,7 +34,9 @@ The image is the finished drawing from a timelapse video{subject_line}.
 Write:
 1. "subject": the character / series name if you recognise it, else "" (never guess wildly).
 2. "hooks": one on-screen hook per video style below. 2-6 words each, punchy, curiosity-driven,
-   no hashtags, no emojis, never clickbait lies. Styles:
+   no hashtags, no emojis, never clickbait lies. Facts to respect: every video is a sped-up
+   timelapse (never say "real time" or "no speed-up"); {pencil_fact}; if a hook names a
+   character it must be the same one as "subject". Styles:
 {styles}
 3. "caption": one caption (max 150 characters) in a warm, confident artist voice. Use the hand
    emoji ✍\U0001f3fe once and end with a question that invites comments plus \U0001f447\U0001f3fe.
@@ -54,13 +56,16 @@ def final_frame(video: Path, dst: Path) -> Path | None:
         return None
 
 
-def write_copy(image: Path, subject: str | None, styles: list[str], api_key: str,
+def write_copy(image: Path, subject: str | None, styles: list[str], api_key: str, pencil: bool | None = None,
                model: str = DEFAULT_MODEL, endpoint: str = ENDPOINT, timeout: int = 120) -> dict | None:
     key = re.sub(r"\s+", "", api_key or "")
     if not key or not image:
         return None
     styles = [s for s in styles if s in STYLE_BRIEFS]
     prompt = PROMPT.format(
+        pencil_fact=("the artist sketched in pencil first, then inked" if pencil is True else
+                     "the artist went straight to ink with no pencil sketch" if pencil is False else
+                     "don't say whether a pencil sketch was used"),
         subject_line=f" of {subject}" if subject else "",
         styles="\n".join(f"   - {s}: {STYLE_BRIEFS[s]}" for s in styles))
     body = {

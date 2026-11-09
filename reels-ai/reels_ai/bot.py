@@ -218,37 +218,48 @@ class Runner:
         Shorts. Longform sessions stay where they are so the LongDraw can use them too."""
         if not self.drive:
             return
-        from .drive import subject_from_name
-        sources = []                                    # (file, folder label, keep in place?)
+        from .drive import describe_hints, parse_name
+        sources = []                                    # (file, folder label, keep in place, folder name)
         try:
             for f in self.drive.list(self.drive.folder("Inbox"), "video"):
-                sources.append((f, "Inbox", False))
+                sources.append((f, "Inbox", False, None))
             if self.cfg.get("drive", {}).get("shorts_from_longform", True):
                 for proj in self.drive.list(self.drive.folder("Longform"), "folder"):
                     if proj["name"] == "Finished":
                         continue
                     for f in self.drive.list(proj["id"], "video"):
-                        sources.append((f, f"Longform \u203a {proj['name']}", True))
+                        sources.append((f, f"Longform \u203a {proj['name']}", True, proj["name"]))
         except Exception as e:  # noqa: BLE001 - never let Drive break Telegram handling
             return self.drive_problem(e)
         self.state.pop("drive_error", None)
         seen = self.state.setdefault("drive_seen", [])
-        new = [(f, where, keep) for f, where, keep in sources if f["id"] not in seen]
-        for f, where, keep in new:
+        new = [src for src in sources if src[0]["id"] not in seen]
+        labels: dict[str, str] = {}
+        for f, where, keep, project in new:
             meta = f.get("videoMediaMetadata") or {}
             did = new_id(self.state, "d")
+            subject, hints = parse_name(f["name"])
+            if project:                                  # LongDraw session: the folder names the piece
+                p_subject, p_hints = parse_name(project)
+                subject = p_subject or subject
+                hints = {**p_hints, **hints}
             self.state["drawings"][did] = {
                 "source": "drive", "drive_id": f["id"], "drive_name": f["name"], "drive_where": where,
-                "keep_in_place": keep, "subject": subject_from_name(f["name"]), "received": iso(self.clock()),
+                "keep_in_place": keep, "subject": subject, "received": iso(self.clock()),
                 "duration": (int(meta["durationMillis"]) / 1000) if meta.get("durationMillis") else None,
-                "size_gb": round(int(f.get("size") or 0) / 1e9, 2), "status": "queued"}
+                "size_gb": round(int(f.get("size") or 0) / 1e9, 2), "status": "queued",
+                **({"hints": {k: v for k, v in hints.items() if k != "unknown"}} if hints else {})}
             seen.append(f["id"])
+            how = describe_hints(hints)
+            odd = f" (didn't understand: {', '.join(hints['unknown'])})" if hints.get("unknown") else ""
+            labels[f["id"]] = (f"{f['name']} \u2192 {subject or 'name unknown'}"
+                               f"{' \u00b7 ' + how if how else ''}{odd}")
         if new:
             by_place: dict[str, list[str]] = {}
-            for f, where, _ in new:
-                by_place.setdefault(where, []).append(f["name"])
+            for f, where, _, _ in new:
+                by_place.setdefault(where, []).append(labels[f["id"]])
             more = " \u2026"
-            lines = [f"\u2022 {where}: {', '.join(n[:6])}{more if len(n) > 6 else ''}"
+            lines = [f"\u2022 {where}:\n   " + "\n   ".join(n[:8]) + (more if len(n) > 8 else "")
                      for where, n in by_place.items()]
             self.say(f"\U0001f4e5 Found {len(new)} new recording(s) in Drive:\n" + "\n".join(lines) +
                      "\nTurning them into 4K Shorts now (LongDraw sessions stay in their folder).")
@@ -450,11 +461,17 @@ class Runner:
         if uid and any(d.get("unique_id") == uid for d in self.state["drawings"].values()):
             self.say("\U0001f501 I already have that video, so I'm skipping the duplicate.")
             return
+        from .drive import describe_hints, parse_name
         did = new_id(self.state, "d")
-        self.state["drawings"][did] = {"subject": subject[:60] or None, "file_id": video["file_id"],
-                                       "unique_id": uid, "received": iso(self.clock()),
-                                       "status": "queued"}
-        name = f" ({subject})" if subject else ""
+        name_subject, hints = parse_name(subject) if subject else (None, {})
+        hints.pop("unknown", None)
+        self.state["drawings"][did] = {"subject": (name_subject or subject or "")[:60] or None,
+                                       "file_id": video["file_id"], "unique_id": uid,
+                                       "received": iso(self.clock()), "status": "queued",
+                                       **({"hints": hints} if hints else {})}
+        shown = self.state["drawings"][did]["subject"]
+        how = describe_hints(hints)
+        name = f" ({shown}{' \u00b7 ' + how if how else ''})" if shown or how else ""
         self.say(f"\U0001f3a8 Got it{name}! I'll make variants on the next run (within the hour).")
 
     # ------------------------------------------------------------------ buttons
@@ -776,7 +793,8 @@ class Runner:
                     out_dir, results = make_variants(src, tmp / "out", styles,
                                                      seed=int(did[1:]), subject=d["subject"],
                                                      review_page=False, copy=copy,
-                                                     max_width=2160 if big else 1080, **raw)
+                                                     max_width=2160 if big else 1080,
+                                                     hints=d.get("hints"), **raw)
                 except Exception as e:  # noqa: BLE001 - report any failure to the owner
                     d["status"] = "failed"
                     d["error"] = str(e)[:300]

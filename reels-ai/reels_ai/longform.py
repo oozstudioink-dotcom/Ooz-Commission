@@ -353,8 +353,15 @@ def youtube_text(project: str, episode: int, chapters: str, panel_cfg: dict, spe
 
 
 def subject_title(name: str, i: int) -> str:
-    from .drive import subject_from_name
-    return subject_from_name(name) or f"Session {i + 1}"
+    """Chapter name for a session file: 'Part 3' for numbered files ('3.MOV', 'Part 3'),
+    'Sasuke (Part 3)' for 'Sasuke 3.MOV', its own name otherwise, 'Session N' for camera names."""
+    from .drive import CAMERA, _stem, parse_name, part_number
+    if CAMERA.match(_stem(name)):
+        return f"Session {i + 1}"
+    subject, n = parse_name(name)[0], part_number(name)
+    if subject:
+        return f"{subject} (Part {n})" if n is not None else subject
+    return f"Part {n}" if n is not None else f"Session {i + 1}"
 
 
 def episode_from_names(names: list[str], floor: int) -> int:
