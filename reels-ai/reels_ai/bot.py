@@ -427,8 +427,8 @@ class Runner:
             return None
         from .ai import DEFAULT_MODEL, final_frame, write_copy
         frame = final_frame(src, tmp / "final.jpg")
-        copy = write_copy(frame, d.get("subject"), styles, key,
-                          model=self.cfg.get("ai", {}).get("model", DEFAULT_MODEL))
+        model = self.state.get("ai_model") or self.cfg.get("ai", {}).get("model", DEFAULT_MODEL)
+        copy = write_copy(frame, d.get("subject"), styles, key, model=model)
         if copy and not d.get("subject") and copy.get("subject"):
             d["subject"] = copy["subject"]          # Gemini recognised the character
         return copy
@@ -1066,13 +1066,32 @@ def check(runner: Runner) -> None:
                          f" \u00b7 {n} video(s) waiting in Inbox")
         except Exception as e:  # noqa: BLE001
             lines.append(f"Google Drive: \u274c {e}")
-    from .ai import DEFAULT_MODEL, ping
-    model = runner.cfg.get("ai", {}).get("model", DEFAULT_MODEL)
-    try:
-        reply = ping(os.environ.get("GEMINI_API_KEY", ""), model)
-        lines.append(f"Gemini: \u2705 {model} answered \u201c{reply}\u201d")
-    except RuntimeError as e:
-        lines.append(f"Gemini: \u274c {e}")
+    # Gemini: try the configured model, then a few others; remember the first that answers.
+    import time as _time
+    from .ai import DEFAULT_MODEL, FALLBACK_MODELS, ping
+    wanted = runner.cfg.get("ai", {}).get("model", DEFAULT_MODEL)
+    key = os.environ.get("GEMINI_API_KEY", "")
+    results, working = [], None
+    for model in dict.fromkeys([wanted] + FALLBACK_MODELS):
+        t0 = _time.time()
+        try:
+            reply = ping(key, model, timeout=45, tries=1)
+            results.append(f"\u2022 {model}: \u2705 \u201c{reply}\u201d in {_time.time() - t0:.0f}s")
+            working = model
+            break
+        except RuntimeError as e:
+            results.append(f"\u2022 {model}: \u274c {e}")
+            if "no GEMINI_API_KEY" in str(e) or "key looks wrong" in str(e):
+                break
+    if working:
+        if working != wanted:
+            runner.state["ai_model"] = working
+        else:
+            runner.state.pop("ai_model", None)
+        lines.append(f"Gemini: \u2705 using {working}")
+    else:
+        lines.append("Gemini: \u274c no model answered")
+    lines += results
     text = "\n".join(lines)
     print(text)
     runner.say(text)
