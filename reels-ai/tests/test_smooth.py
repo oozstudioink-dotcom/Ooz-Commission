@@ -69,6 +69,16 @@ class BlendWindowTest(unittest.TestCase):
         v = int(mix(store, ((0, 1 / 3), (1, 2 / 3)))[0, 0, 0])
         self.assertTrue(50 <= v <= 75, v)
 
+    def test_mix_lines_up_a_moved_page(self):
+        import cv2
+        page = np.full((320, 180, 3), 230, np.uint8)
+        for k in range(12):
+            cv2.line(page, (20 + k * 12, 40), (30 + k * 12, 280), (20, 20, 20), 2)
+        moved = np.roll(page, 6, axis=1)                                   # paper slid 6 px
+        out = mix([moved, page], ((0, 0.5), (1, 0.5)))
+        double = np.abs(out.astype(int) - page.astype(int))[20:300, 20:160].mean()
+        self.assertLess(double, 4)                                         # not two offset drawings
+
     def test_mix_leaves_no_ghost_arm(self):
         import cv2
         paper = np.full((320, 180, 3), 230, np.uint8)
