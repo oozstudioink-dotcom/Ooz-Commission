@@ -35,7 +35,7 @@ class TextCard:
     style: str
     start: float
     end: float
-    y: float = 0.11
+    y: float = fx.SAFE_TOP
 
 
 @dataclass
@@ -119,12 +119,14 @@ def reveal_first(a: Analysis, rng, subject) -> Plan:
     open_ = hold(a.reveal_idx, 1.0)
     p.shots += shots(open_, push(len(open_), 1.12, 1.0))
     p.shots += [Shot(a.draw_start, flash=1 - k / 6) for k in range(6)]
-    p.shots += shots(ramp(a, a.draw_start, a.ink_start, 2.5))
-    p.shots += shots(ramp(a, a.ink_start, a.ink_end, 6.5, focus=a.peak_idx))
+    pre = 2.5 if a.has_pencil else 0.0
+    if pre:
+        p.shots += shots(ramp(a, a.draw_start, a.ink_start, pre))
+    p.shots += shots(ramp(a, a.ink_start, a.ink_end, 9.0 - pre, focus=a.peak_idx))
     end = hold(a.reveal_idx, 1.8)
     t_end = p.seconds
     p.shots += shots(end, push(len(end), 1.0, 1.05))
-    p.hook = hooks.pick_hook("reveal_first", rng, subject, round(p.seconds))
+    p.hook = hooks.pick_hook("reveal_first", rng, subject, round(p.seconds), a.has_pencil)
     p.texts = [TextCard(p.hook, "outline", 0, 2.4),
                TextCard(hooks.pick_end_card(rng), "box", t_end + 0.1, p.seconds)]
     return p
@@ -132,12 +134,14 @@ def reveal_first(a: Analysis, rng, subject) -> Plan:
 
 def speedrun(a: Analysis, rng, subject) -> Plan:
     p = Plan("speedrun", "Ultra-short loopable cut with a progress bar; built for replays.", "natural")
-    body = ramp(a, a.draw_start, a.ink_start, 3.0) + ramp(a, a.ink_start, a.ink_end, 4.5, focus=a.peak_idx, slow=2.5)
+    pre = 3.0 if a.has_pencil else 0.0
+    body = (ramp(a, a.draw_start, a.ink_start, pre) if pre else []) + \
+        ramp(a, a.ink_start, a.ink_end, 7.5 - pre, focus=a.peak_idx, slow=2.5)
     body += hold(a.reveal_idx, 1.2)
     total = len(body)
     p.shots = [Shot(i, bar=k / (total - 1)) for k, i in enumerate(body)]
-    p.hook = hooks.pick_hook("speedrun", rng, subject, round(p.seconds))
-    p.texts = [TextCard(p.hook, "tag", 0, p.seconds, y=0.075)]
+    p.hook = hooks.pick_hook("speedrun", rng, subject, round(p.seconds), a.has_pencil)
+    p.texts = [TextCard(p.hook, "tag", 0, p.seconds, y=fx.SAFE_TOP - 0.01)]
     return p
 
 
@@ -156,7 +160,7 @@ def before_after(a: Analysis, rng, subject) -> Plan:
     p.shots += shots(ramp(a, a.ink_start, a.ink_end, 6.5, focus=a.peak_idx))
     end = hold(a.reveal_idx, 1.3)
     p.shots += shots(end, push(len(end), 1.0, 1.04))
-    p.hook = hooks.pick_hook("before_after", rng, subject, round(p.seconds))
+    p.hook = hooks.pick_hook("before_after", rng, subject, round(p.seconds), a.has_pencil)
     p.texts = [TextCard(p.hook, "box", 0, t1),
                TextCard("Now watch the ink", "box", t1, t1 + 1.5)]
     return p
@@ -168,8 +172,10 @@ def detail_zoom(a: Analysis, rng, subject) -> Plan:
     x, y, w, h = a.detail_box
     cx, cy = fx.to_view(x + w / 2, y + h / 2, a.focus)
     dz = max(1.2, min(1.8, 2.0 / a.focus[2]))     # total zoom (focus x detail) stays <= ~2x
-    p.shots += shots(ramp(a, a.draw_start, a.ink_start, 2.0))
-    ink = ramp(a, a.ink_start, a.ink_end, 8.5, focus=a.peak_idx, slow=2.0)
+    pre = 2.0 if a.has_pencil else 0.0
+    if pre:
+        p.shots += shots(ramp(a, a.draw_start, a.ink_start, pre))
+    ink = ramp(a, a.ink_start, a.ink_end, 10.5 - pre, focus=a.peak_idx, slow=2.0)
     max_zoom_frames = int(len(ink) * 0.45)
     zoomed = 0
     z = 1.0
@@ -180,7 +186,7 @@ def detail_zoom(a: Analysis, rng, subject) -> Plan:
         p.shots.append(Shot(i, (cx, cy, z)))
     end = hold(a.reveal_idx, 1.6)
     p.shots += [Shot(i, c) for i, c in zip(end, push(len(end), max(z, 1.25), 1.0, cx, cy))]
-    p.hook = hooks.pick_hook("detail_zoom", rng, subject, round(p.seconds))
+    p.hook = hooks.pick_hook("detail_zoom", rng, subject, round(p.seconds), a.has_pencil)
     p.texts = [TextCard(p.hook, "outline", 0, 2.4)]
     return p
 
@@ -190,7 +196,7 @@ def ink_only(a: Analysis, rng, subject) -> Plan:
     p.shots += shots(ramp(a, a.ink_start, a.ink_end, 8.0, focus=a.peak_idx, slow=3.0))
     end = hold(a.reveal_idx, 1.4)
     p.shots += shots(end, push(len(end), 1.0, 1.05))
-    p.hook = hooks.pick_hook("ink_only", rng, subject, round(p.seconds))
+    p.hook = hooks.pick_hook("ink_only", rng, subject, round(p.seconds), a.has_pencil)
     p.texts = [TextCard(p.hook, "ink", 0, 2.6)]
     return p
 
@@ -237,7 +243,7 @@ def process_cuts(a: Analysis, rng, subject, clips: dict | None = None) -> Plan:
     t_end = p.seconds
     end = hold(a.reveal_idx, 1.3)
     p.shots += shots(end, push(len(end), 1.0, 1.04))
-    p.hook = hooks.pick_hook("process_cuts", rng, subject, round(p.seconds))
+    p.hook = hooks.pick_hook("process_cuts", rng, subject, round(p.seconds), a.has_pencil)
     p.texts = [TextCard(p.hook, "outline", 0, t_end),
                TextCard(hooks.pick_end_card(rng), "box", t_end + 0.1, p.seconds)]
     return p
@@ -264,14 +270,16 @@ def build(a: Analysis, names: list[str], seed: int, subject: str | None,
             plan = process_cuts(a, rng, subject, clips)
         else:
             plan = RECIPES[name](a, rng, subject)
-        plan.caption = hooks.make_caption(rng, subject)
+        plan.caption = hooks.make_caption(rng, subject, a.has_pencil)
         ai_hook = (copy or {}).get("hooks", {}).get(name)
+        if ai_hook and not a.has_pencil and hooks.PENCIL.search(ai_hook):
+            ai_hook = None                     # AI guessed a sketch stage this session doesn't have
         if ai_hook:
             for card in plan.texts:
                 if card.text == plan.hook:
                     card.text = ai_hook
             plan.hook = ai_hook
-        if copy and copy.get("caption"):
+        if copy and copy.get("caption") and (a.has_pencil or not hooks.PENCIL.search(copy["caption"])):
             tags = copy.get("hashtags") or hooks.make_caption(rng, subject).split("\n\n")[-1].split()
             plan.caption = f"{copy['caption']}\n\n{' '.join(tags)}"
         plans.append(plan)

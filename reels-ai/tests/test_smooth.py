@@ -128,3 +128,83 @@ class ProcessCutsTest(unittest.TestCase):
             self.assertTrue((out / "variants" / "process_cuts.mp4").stat().st_size > 10_000)
         finally:
             shutil.rmtree(tmp, ignore_errors=True)
+
+
+class AnalysisFixesTest(unittest.TestCase):
+    """Bold fills first, thin linework last, no pencil: the edit must cover the thin lines."""
+
+    @classmethod
+    def setUpClass(cls):
+        import subprocess
+        import tempfile
+        from pathlib import Path
+
+        import cv2
+
+        from reels_ai.analyze import analyze
+        from reels_ai.media import FrameStore
+        cls.tmp = Path(tempfile.mkdtemp())
+        w, h, n = 720, 1280, 900
+        vw = cv2.VideoWriter(str(cls.tmp / "s.avi"), cv2.VideoWriter_fourcc(*"MJPG"), 30, (w, h))
+        page = np.full((h, w, 3), 232, np.uint8)
+        rng = np.random.default_rng(0)
+        for i in range(n):
+            p, hand = i / n, None
+            if 0.05 < p < 0.45:                      # bold black shapes
+                k = int((p - 0.05) / 0.4 * 40)
+                x, y = 80 + (k % 8) * 70, 120 + (k // 8) * 70
+                cv2.rectangle(page, (x, y), (x + 50, y + 50), (15, 15, 15), -1)
+                hand = (x + 60, y + 60)
+            elif 0.5 < p < 0.95:                     # thin fine linework afterwards
+                k = int((p - 0.5) / 0.45 * 120)
+                y, x0 = 700 + (k % 60) * 7, 150 + (k // 60) * 220
+                cv2.line(page, (x0, y), (x0 + 180, y + int(rng.integers(-6, 7))), (70, 70, 70), 1, cv2.LINE_AA)
+                hand = (x0 + 190, y + 10)
+            img = page.copy()
+            if hand:
+                cv2.ellipse(img, (hand[0] + 60, hand[1] + 90), (70, 110), 30, 0, 360, (95, 130, 185), -1)
+            vw.write(img)
+        vw.release()
+        subprocess.run(["ffmpeg", "-v", "error", "-y", "-i", str(cls.tmp / "s.avi"), "-pix_fmt", "yuv420p",
+                        str(cls.tmp / "s.mp4")], check=True)
+        cls.a = analyze(FrameStore(cls.tmp / "s.mp4"))
+
+    @classmethod
+    def tearDownClass(cls):
+        import shutil
+        shutil.rmtree(cls.tmp, ignore_errors=True)
+
+    def test_ink_end_waits_for_thin_lines(self):
+        self.assertGreater(self.a.ink_end, 0.85 * 900)      # thin lines finish at ~95%
+
+    def test_straight_to_ink_detected(self):
+        self.assertFalse(self.a.has_pencil)
+
+    def test_no_pencil_wording(self):
+        import random
+
+        from reels_ai import hooks
+        from reels_ai.variants import build
+        for seed in range(20):
+            for kind in hooks.HOOKS:
+                h = hooks.pick_hook(kind, random.Random(seed), "Naruto", 9, pencil=False)
+                self.assertNotRegex(h.lower(), "(?<!no )sketch|pencil")   # "no sketch" is fine
+        plans = build(self.a, ["speedrun", "ink_only", "reveal_first"], 1, "Naruto",
+                      copy={"hooks": {"speedrun": "Sketch to ink fast"}, "caption": "Pencil first!"})
+        for p in plans:
+            self.assertNotRegex((p.hook + p.caption).lower(), "pencil|(?<!no )sketch")
+            self.assertTrue(8 <= p.seconds <= 15, (p.name, p.seconds))
+
+
+class CaptionFitTest(unittest.TestCase):
+    def test_long_text_stays_inside_safe_zone(self):
+        for w, h in ((1080, 1920), (2160, 3840)):
+            for text, style in (("Inking Shinobi Undercover Manga, no talking", "outline"),
+                                ("Supercalifragilisticexpialidocious inking", "ink"),
+                                ("My Hero Academia in 9 seconds", "tag"),
+                                ("Comment a character for next time", "box")):
+                y0, y1, x0, x1 = fx._alpha_box(fx.text_layer(text, style, w, h))
+                self.assertGreaterEqual(x0, w * 0.09, text)
+                self.assertLessEqual(x1, w * 0.91, text)
+                self.assertGreaterEqual(y0, h * 0.12, text)
+                self.assertLessEqual(y1, h * 0.30, text)

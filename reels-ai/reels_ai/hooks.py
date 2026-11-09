@@ -6,6 +6,9 @@ Templates that need a subject are skipped when none is given.
 from __future__ import annotations
 
 import random
+import re
+
+PENCIL = re.compile(r"sketch|pencil", re.I)    # hooks/captions that only fit sessions with pencils
 
 HOOKS = {
     "reveal_first": [
@@ -49,6 +52,12 @@ HOOKS = {
     ],
 }
 
+NO_PENCIL_HOOKS = [            # only for straight-to-ink sessions
+    "Straight to ink",
+    "No sketch. Just ink.",
+    "Inking {subject} with no sketch",
+]
+
 END_CARDS = [
     "Who should I ink next?",
     "Comment a character for next time",
@@ -74,8 +83,12 @@ def _fill(tpl: str, subject: str | None, secs: int) -> str | None:
                       subject_or_this=subject or "this piece").strip()
 
 
-def pick_hook(kind: str, rng: random.Random, subject: str | None, secs: int) -> str:
+def pick_hook(kind: str, rng: random.Random, subject: str | None, secs: int, pencil: bool = True) -> str:
+    """pencil=False (straight-to-ink session): never mention a sketch or pencils."""
     options = [t for t in (_fill(x, subject, secs) for x in HOOKS[kind]) if t]
+    if not pencil:
+        options = [t for t in options if not PENCIL.search(t)]
+        options += [t for t in (_fill(x, subject, secs) for x in NO_PENCIL_HOOKS) if t]
     return rng.choice(options)
 
 
@@ -83,8 +96,9 @@ def pick_end_card(rng: random.Random) -> str:
     return rng.choice(END_CARDS)
 
 
-def make_caption(rng: random.Random, subject: str | None) -> str:
-    cap = _fill(rng.choice(CAPTIONS), subject, 0)
+def make_caption(rng: random.Random, subject: str | None, pencil: bool = True) -> str:
+    caps = [c for c in CAPTIONS if pencil or not PENCIL.search(c)]
+    cap = _fill(rng.choice(caps), subject, 0)
     tags = list(BASE_TAGS)
     if subject:
         slug = "".join(ch for ch in subject.lower() if ch.isalnum())

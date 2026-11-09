@@ -7,6 +7,7 @@ render (needs ffmpeg/OpenCV):   turn newly received timelapses into variants and
 """
 from __future__ import annotations
 
+import json
 import os
 import random
 import re
@@ -720,8 +721,21 @@ class Runner:
         uses = self.state["style_uses"]
         rng = random.Random(did)
         rng.shuffle(styles)
-        styles.sort(key=lambda s: uses.get(s, 0))          # least-used first, random tie-break
+        weight = self.style_weights()
+        # least-used first, random tie-break; styles that get more views count as "used" less,
+        # so they come round more often (and the weakest gets skipped when per_drawing < styles)
+        styles.sort(key=lambda s: uses.get(s, 0) / weight.get(s, 1.0))
         return styles[: self.cfg["variants"].get("per_drawing", 2)]
+
+    def style_weights(self) -> dict[str, float]:
+        """From the weekly report: average views per style vs the average style (0.5x..2x).
+        Only styles with 2+ matched posts count, and only once 2+ styles have data."""
+        scores = {s: v["avg_views"] for s, v in self.state.get("style_scores", {}).items()
+                  if v.get("posts", 0) >= 2 and v.get("avg_views", 0) > 0}
+        if len(scores) < 2:
+            return {}
+        mean = sum(scores.values()) / len(scores)
+        return {s: min(2.0, max(0.5, v / mean)) for s, v in scores.items()}
 
     def render(self, work_root: Path | None = None) -> None:
         from .pipeline import make_variants   # heavy imports only in this phase
@@ -761,6 +775,7 @@ class Runner:
                     d["error"] = str(e)[:300]
                     self.say(f"⚠️ Couldn't process that video ({did}): {d['error']}")
                     continue
+                d["beats"] = self.beats_summary(out_dir, results)
                 links = {}
                 if d.get("source") == "drive" and self.drive:
                     links = self.drive_after(did, d, out_dir, results)
@@ -805,6 +820,21 @@ class Runner:
             bank = self.bank().get("drops")
             extra = f" Bank: {bank} videos \u2248 {bank // self.per_day('drops')} days of drops." if bank else ""
             self.say(f"\u2705 All caught up: {done_now} drawing(s) rendered.{extra}")
+
+    @staticmethod
+    def beats_summary(out_dir: Path, results: list[dict]) -> dict:
+        """What the analysis found, kept in the bot's memory (state.json) for troubleshooting."""
+        try:
+            an = json.loads((out_dir / "analysis.json").read_text())
+        except (OSError, ValueError):
+            return {}
+        prog = an.get("ink_progress") or []
+        step = max(1, len(prog) // 40)
+        return {"seconds": an.get("seconds"), "has_pencil": an.get("has_pencil"),
+                "work_seconds": round(an.get("n_frames", 0) / 30, 1), "speedup": an.get("speedup"),
+                "source_seconds": an.get("source_duration"), "occluded_frames": an.get("occluded_frames"),
+                "focus": an.get("focus"), "ink_progress": prog[::step],
+                "variant_seconds": {r["name"]: round(r["seconds"], 1) for r in results}}
 
     def telegram_copies(self, out_dir: Path, results: list[dict]) -> None:
         """1080p copies for Telegram (bots can send 50 MB at most); originals stay full quality."""

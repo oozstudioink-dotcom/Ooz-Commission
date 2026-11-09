@@ -47,6 +47,7 @@ class Analysis:
     ink_progress: list[float]       # per window, 0..1
     window_frames: int
     usable: list[bool]              # False = hand/arm covering much more of the page than usual
+    has_pencil: bool = True         # False = straight to ink (no pencil sketch stage to show)
     work_center: tuple[float, float] = (0.5, 0.5)    # centre of this clip's new pencil/ink
 
     def clean_range(self, a: int, b: int) -> list[int]:
@@ -160,8 +161,15 @@ def analyze(store: FrameStore) -> Analysis:
     def to_frame(w: int) -> int:
         return int(min(n - 1, max(0, w * win)))
 
+    # Everything drawn, fine lines included. Thin pen lines look grey at analysis size and fall
+    # under the ink threshold (which bold fills set), so inking is only done when BOTH the bold
+    # ink and all line work have settled; otherwise the edit would jump to the finished piece
+    # while small details are still being inked.
+    all_t = np.where(ink_map, ink_t, mark_t)
+    all_prog = progress(all_t, observed(all_t, mark_map))
+
     ink_start = to_frame(_first_crossing(ink_prog, 0.015))
-    ink_end = to_frame(_first_crossing(ink_prog, 0.97))
+    ink_end = to_frame(max(_first_crossing(ink_prog, 0.97), _first_crossing(all_prog, 0.97)))
     draw_start = to_frame(max(0, _first_crossing(mark_prog, 0.005) - 1))
     if ink_end <= ink_start:
         ink_end = min(n - 1, ink_start + FPS)
@@ -213,6 +221,17 @@ def analyze(store: FrameStore) -> Analysis:
     detail_start = to_frame(_first_crossing(box_prog, 0.10))
     detail_end = to_frame(_first_crossing(box_prog, 0.90))
 
+    # --- pencil or straight ink? -------------------------------------------------------
+    # Just before inking, a pencil sketch sits under where the ink will go (light marks next to
+    # the future ink). Straight-to-ink sessions have blank paper there, and their "pencil
+    # stage" (first marks -> first ink) is only a moment.
+    w_i = min(nw - 1, ink_start // win)
+    light = dark_any[w_i] & ~dark_ink[w_i] & ~w_hand[w_i]
+    near = cv2.dilate(light.astype(np.uint8), np.ones((5, 5), np.uint8)) > 0
+    pencil_frac = float((near & ink_obs).sum()) / max(1, int(ink_obs.sum()))
+    pencil_phase = ink_start - draw_start
+    has_pencil = bool(pencil_frac >= 0.12 or pencil_phase >= max(4 * FPS, 0.2 * (ink_end - draw_start)))
+
     usable = hand_score <= max(0.2, 2.5 * float(np.median(hand_score)))
     # ink_end must be a frame where the page is visible
     while ink_end > ink_start and not usable[ink_end]:
@@ -225,5 +244,5 @@ def analyze(store: FrameStore) -> Analysis:
         detail_box=(box[0] / AW, box[1] / ah, bw / AW, bh / ah), focus=focus, work_center=work_center,
         detail_start=detail_start, detail_end=max(detail_end, detail_start + FPS),
         hand_score=hand_score.round(4).tolist(), ink_progress=ink_prog.round(4).tolist(),
-        window_frames=win, usable=usable.tolist(),
+        window_frames=win, usable=usable.tolist(), has_pencil=has_pencil,
     )
