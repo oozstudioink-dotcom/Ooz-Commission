@@ -50,7 +50,7 @@ stuttering. Holds, flashbacks and the final reveal stay razor sharp. Knobs: `BLE
 | `before_after` | Sketch to ink wipe, then the inking | warm cream paper |
 | `detail_zoom` | Punches in on the face while it's inked, pulls back to reveal | clean |
 | `ink_only` | Skips pencils, straight into the ink | high-contrast B&W |
-| `process_cuts` | ~8 jump cuts of the pen actually moving (cut straight from the original recording, 2x for long sessions), finished piece first and last; modelled on manga-inking Shorts with 12k+ views | clean |
+| `process_cuts` | ~8 jump cuts of the pen actually moving (cut straight from the original recording, 2x for long sessions), finished piece first and last; the jump-cut format common in popular manga-inking Shorts | clean |
 
 Hooks, end cards and captions live in `reels_ai/hooks.py`; edit freely.
 
