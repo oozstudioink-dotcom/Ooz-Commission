@@ -761,6 +761,36 @@ class ReportTest(unittest.TestCase):
 
 
 class GeminiCopyTest(unittest.TestCase):
+    def test_ping(self):
+        import threading
+        from http.server import BaseHTTPRequestHandler, HTTPServer
+
+        class H(BaseHTTPRequestHandler):
+            def log_message(self, *a):
+                pass
+
+            def do_POST(self):
+                self.rfile.read(int(self.headers["Content-Length"]))
+                good = self.headers["x-goog-api-key"] == "GOOD"
+                body = (json.dumps({"candidates": [{"content": {"parts": [{"text": "ready"}]}}]}) if good
+                        else json.dumps({"error": {"message": "API key not valid"}})).encode()
+                self.send_response(200 if good else 400)
+                self.send_header("Content-Type", "application/json")
+                self.end_headers()
+                self.wfile.write(body)
+
+        srv = HTTPServer(("127.0.0.1", 0), H)
+        threading.Thread(target=srv.serve_forever, daemon=True).start()
+        self.addCleanup(srv.shutdown)
+        os.environ["NO_PROXY"] = os.environ["no_proxy"] = "127.0.0.1"
+        from reels_ai.ai import ping
+        url = f"http://127.0.0.1:{srv.server_port}/{{model}}"
+        self.assertEqual(ping(" GOOD\n", endpoint=url), "ready")
+        with self.assertRaisesRegex(RuntimeError, "key looks wrong"):
+            ping("BAD", endpoint=url)
+        with self.assertRaisesRegex(RuntimeError, "no GEMINI_API_KEY"):
+            ping("", endpoint=url)
+
     def test_write_copy_and_override(self):
         import threading
         from http.server import BaseHTTPRequestHandler, HTTPServer

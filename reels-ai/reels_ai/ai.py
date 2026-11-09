@@ -81,6 +81,33 @@ def write_copy(image: Path, subject: str | None, styles: list[str], api_key: str
     return clean(out, styles)
 
 
+def ping(api_key: str, model: str = DEFAULT_MODEL, endpoint: str = ENDPOINT, timeout: int = 30) -> str:
+    """Connection test: a one-word request. Returns the reply; raises RuntimeError with a
+    plain-language reason (bad key, quota, model name) otherwise."""
+    key = re.sub(r"\s+", "", api_key or "")
+    if not key:
+        raise RuntimeError("no GEMINI_API_KEY secret found")
+    body = {"contents": [{"parts": [{"text": "Reply with the single word: ready"}]}]}
+    req = urllib.request.Request(endpoint.format(model=model), data=json.dumps(body).encode(),
+                                 headers={"Content-Type": "application/json", "x-goog-api-key": key})
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as r:
+            data = json.load(r)
+        return data["candidates"][0]["content"]["parts"][0]["text"].strip()[:40]
+    except urllib.error.HTTPError as e:
+        try:
+            msg = json.loads(e.read() or b"{}").get("error", {}).get("message", "")
+        except ValueError:
+            msg = ""
+        hint = {400: "the key looks wrong; copy it again from aistudio.google.com",
+                403: "the key isn't allowed to use Gemini; create a new one in AI Studio",
+                404: f"model {model!r} not found; check [ai] model in config.toml",
+                429: "free-tier limit reached for now; it resets on its own"}.get(e.code, "")
+        raise RuntimeError(f"HTTP {e.code}: {hint or msg[:150]}") from None
+    except (urllib.error.URLError, KeyError, IndexError, ValueError, TimeoutError) as e:
+        raise RuntimeError(str(e)[:150]) from None
+
+
 def clean(out: dict, styles: list[str]) -> dict | None:
     """Keep only well-formed fields; anything odd falls back to the templates."""
     if not isinstance(out, dict):
