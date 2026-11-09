@@ -145,7 +145,7 @@ def make_variants(src: Path, out_root: Path, names: list[str] | None = None, see
     names = list(names or RECIPES)
     if not a.has_pencil and "before_after" in names:
         # Straight-to-ink session: no sketch to compare, so make another style instead.
-        spare = [n for n in ("process_cuts", "detail_zoom", "ink_only", "reveal_first", "speedrun")
+        spare = [n for n in ("one_take", "process_cuts", "detail_zoom", "ink_only", "reveal_first", "speedrun")
                  if n not in names]
         names = [spare[0] if n == "before_after" and spare else n for n in names
                  if n != "before_after" or spare]

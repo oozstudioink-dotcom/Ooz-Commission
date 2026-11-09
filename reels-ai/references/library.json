@@ -1,0 +1,23 @@
+{
+  "about": "Edit breakdowns of popular drawing Shorts, in our own words (no footage, titles or audio are reused). Source: the owner's Gemini-app analysis, 2026-11-09. Used to shape styles now, and as context for Gemini-planned edits later.",
+  "patterns": [
+    {"id": "instant_pen", "rule": "The pen is already on the paper making marks in the very first second. No intro, no branding, no blank page."},
+    {"id": "hide_result", "rule": "The finished piece stays unseen or incomplete until the last seconds, so viewers watch to the end (and the loop)."},
+    {"id": "one_locked_shot", "rule": "One static top-down view for the whole video; most use no cuts or zooms at all."},
+    {"id": "time_compression", "rule": "A long session compressed into 11-16 s (some up to ~40 s); continuous speed-up reads as satisfying, not choppy."},
+    {"id": "minimal_text", "rule": "No text, or one short title anchored at the top for the whole video."},
+    {"id": "direct_to_ink", "rule": "Going straight to ink with no pencil or erasing shows skill and is a hook in itself."},
+    {"id": "crude_to_pro", "rule": "Filming idea: start from a crude stick figure and ink a detailed character over it (curiosity gap). Needs to be drawn that way; the editor can't fake it."},
+    {"id": "requested_by_comment", "rule": "Filming/caption idea: show a real viewer comment requesting the character at the top. Only ever use genuine comments."}
+  ],
+  "references": [
+    {"name": "Quick drawing, samurai", "length_s": 37, "open": "fine-liner making the first marks", "camera": "locked top-down, no cuts", "speed": "heavy time-lapse", "text": "one title anchored top-centre all video", "reveal": "last details (sword, lower robes) only in the final seconds", "why": "ASMR-like satisfaction with popular audio"},
+    {"name": "Goku vs Frieza", "length_s": 16, "open": "rough stick figures, pen laying the first outline", "camera": "locked top-down, one take", "speed": "extreme time-lapse", "text": "none", "reveal": "crude figures become a full manga panel at the end", "why": "drastic transformation, instant payoff"},
+    {"name": "Quick sketch, ballpoint", "length_s": 15, "open": "hand with ballpoint hovering over lined paper", "camera": "slight zoom-in, pen tip is the focal point", "speed": "time-lapse", "text": "handle top, label bottom", "reveal": "anime eye and smile timed to the audio", "why": "everyday tools feel accessible; audio sync"},
+    {"name": "How to draw like manga (lesson)", "length_s": 38, "open": "dip pen about to go into the ink bottle", "camera": "constant jump cuts: bottle, finished art, artist talking, demos", "speed": "real time to slightly sped up", "text": "one-word captions mirroring the voice-over, then section titles", "reveal": "several hatching examples", "why": "actionable teaching, fast cuts hold attention"},
+    {"name": "Stick-man Goku", "length_s": 14, "open": "pen drawing a crude circle head", "camera": "locked top-down, one take", "speed": "highly sped up", "text": "none", "reveal": "detailed Goku inked over the stick figure", "why": "stickman-to-masterpiece humour and payoff"},
+    {"name": "Luffy Gear 5 by request", "length_s": 11, "open": "pencil circle, viewer comment shown at the top", "camera": "fixed overhead, one take", "speed": "highly sped up", "text": "the requesting comment, all video", "reveal": "stick figure becomes detailed Gear 5 Luffy", "why": "crude-to-pro plus the audience feels they asked for it"},
+    {"name": "Spider stick-man", "length_s": 16, "open": "pen drawing a circle", "camera": "static top-down", "speed": "extremely sped up", "text": "none", "reveal": "gritty Spider-Man inked over a stick figure", "why": "pure visual shock value, short enough to finish"},
+    {"name": "Full ink illustration, master", "length_s": 96, "open": "brush pen making one deliberate stroke", "camera": "slightly angled overhead, drifts a little", "speed": "sped up but slower than typical, strokes readable", "text": "none", "reveal": "complex freehand scene finished with ink washes", "why": "hypnotic mastery, no pencil, no erasing"}
+  ]
+}

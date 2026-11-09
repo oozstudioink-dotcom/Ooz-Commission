@@ -43,6 +43,12 @@ HOOKS = {
         "Inking {subject}, no talking",
         "Skip the sketch. Here's the ink.",
     ],
+    "one_take": [
+        "Inking {subject}",
+        "{subject}, start to finish",
+        "Wait for the last line",
+        "Watch till the last line",
+    ],
     "process_cuts": [
         "Watch every line go down",
         "How I ink {subject}",

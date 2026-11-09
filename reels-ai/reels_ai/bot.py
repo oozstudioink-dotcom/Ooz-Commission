@@ -26,6 +26,7 @@ STYLE_LABELS = {
     "detail_zoom": "Detail zoom",
     "ink_only": "Ink only",
     "process_cuts": "Process cuts",
+    "one_take": "One take",
     "page_compilation": "Page compilation",
 }
 PLATFORM_LABELS = {"youtube": "YouTube Shorts", "instagram": "Instagram Reels", "tiktok": "TikTok"}
