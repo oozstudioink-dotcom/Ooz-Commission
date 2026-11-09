@@ -15,6 +15,17 @@ from .analyze import analyze
 from .media import FPS, FrameStore, crop_vertical, normalize
 from .variants import CUT_SECONDS, RECIPES, build, pick_moments, render
 
+FALLBACK_ORDER = ["one_take", "reveal_first", "detail_zoom", "ink_only", "speedrun", "before_after"]
+
+
+def swap_out(names: list[str], style: str, pencil: bool = True) -> list[str]:
+    """Replace a style that can't be made for this drawing with one it isn't getting yet, so every
+    drawing still gets its full set of versions (one per platform)."""
+    spare = [n for n in FALLBACK_ORDER if n not in names and (pencil or n != "before_after")]
+    out = [n for n in names if n != style]
+    return out + spare[:1] if style in names else out
+
+
 RawInput = Callable[[float], list[str]]     # seek time (s) -> ffmpeg input args for the original
 
 
@@ -147,10 +158,8 @@ def make_variants(src: Path, out_root: Path, names: list[str] | None = None, see
     names = list(names or RECIPES)
     if not a.has_pencil and "before_after" in names:
         # Straight-to-ink session: no sketch to compare, so make another style instead.
-        spare = [n for n in ("one_take", "process_cuts", "detail_zoom", "ink_only", "reveal_first", "speedrun")
-                 if n not in names]
-        names = [spare[0] if n == "before_after" and spare else n for n in names
-                 if n != "before_after" or spare]
+        names = swap_out(names, "before_after", pencil=False)
+        spare = names[-1:]
         print("no pencil stage: before_after swapped for", spare[:1] or "nothing")
     clips = None
     if "process_cuts" in names:
@@ -160,8 +169,8 @@ def make_variants(src: Path, out_root: Path, names: list[str] | None = None, see
         clips = process_cuts_clips(a, frame_filter, raw, lambda s: s * scale, norm["speedup"], total,
                                  out_dir, (store.width, store.height))
         if len(clips) < 4:
-            print(f"warn: only {len(clips)} real-speed moments; skipping process_cuts")
-            names.remove("process_cuts")
+            names = swap_out(names, "process_cuts", a.has_pencil)
+            print(f"warn: only {len(clips)} real-speed moments; made {names[-1]} instead of process_cuts")
     plans = build(a, names, seed, subject, copy, clips)
     results = []
     for plan in plans:

@@ -105,6 +105,24 @@ def describe_hints(hints: dict) -> str:
     return " \u00b7 ".join(bits)
 
 
+RETRY_CODES = {429, 500, 502, 503, 504}
+
+
+def _retry(fn, tries: int = 4, wait: float = 3.0):
+    """Run fn(); on Google's transient errors (rate limit, 5xx, dropped connection) wait and retry."""
+    import time
+    for attempt in range(tries):
+        try:
+            return fn()
+        except urllib.error.HTTPError as e:
+            if e.code not in RETRY_CODES or attempt == tries - 1:
+                raise
+        except (urllib.error.URLError, ConnectionError, TimeoutError, OSError) as e:
+            if isinstance(e, urllib.error.HTTPError) or attempt == tries - 1:
+                raise
+        time.sleep(wait * (2 ** attempt))
+
+
 class Drive:
     def __init__(self, client_id: str, client_secret: str, refresh_token: str, root: str = "Ooz Reels",
                  timeout: int = 60):
@@ -145,7 +163,7 @@ class Drive:
             h["Content-Type"] = "application/json; charset=UTF-8"
         req = urllib.request.Request(url, data=data, method=method, headers=h)
         try:
-            r = urllib.request.urlopen(req, timeout=self.timeout)
+            r = _retry(lambda: urllib.request.urlopen(req, timeout=self.timeout))
         except urllib.error.HTTPError as e:
             msg = _describe(e)
             if e.code == 403 and "insufficient" in msg.lower():
@@ -233,11 +251,15 @@ class Drive:
         req = urllib.request.Request(url, data=body, method="PATCH" if file_id else "POST", headers={
             "Authorization": f"Bearer {self.token()}",
             "Content-Type": f"multipart/related; boundary={boundary}"})
-        try:
+        def send():
             with urllib.request.urlopen(req, timeout=self.timeout) as r:
                 return json.load(r)["id"]
+        try:
+            return _retry(send)
         except urllib.error.HTTPError as e:
             raise DriveError(f"couldn't save {name}: {_describe(e)}") from None
+        except OSError as e:
+            raise DriveError(f"couldn't save {name}: {e}") from None
 
     def trash(self, file_id: str) -> None:
         """Move a file to Drive's Trash (restorable for 30 days). The bot never deletes outright."""
@@ -270,12 +292,21 @@ class Drive:
                 req = urllib.request.Request(session, data=chunk, method="PUT", headers={
                     "Content-Length": str(len(chunk)),
                     "Content-Range": f"bytes {offset}-{end}/{size}" if chunk else f"bytes */{size}"})
-                try:
-                    with urllib.request.urlopen(req, timeout=600) as r:
-                        return json.load(r)             # 200/201: finished
-                except urllib.error.HTTPError as e:
-                    if e.code != 308:                   # 308 = chunk stored, send the next one
-                        raise DriveError(f"upload failed: {_describe(e)}") from None
+                for attempt in range(4):                # a dropped connection resends this chunk
+                    try:
+                        with urllib.request.urlopen(req, timeout=600) as r:
+                            return json.load(r)         # 200/201: finished
+                    except urllib.error.HTTPError as e:
+                        if e.code == 308:               # chunk stored, send the next one
+                            break
+                        if e.code not in RETRY_CODES or attempt == 3:
+                            raise DriveError(f"upload failed: {_describe(e)}") from None
+                    except (urllib.error.URLError, ConnectionError, TimeoutError, OSError) as e:
+                        if attempt == 3:
+                            raise DriveError(f"upload failed: {e}") from None
+                    import time
+                    time.sleep(3 * (2 ** attempt))
+                    req = urllib.request.Request(session, data=chunk, method="PUT", headers=dict(req.headers))
                 offset = end + 1
 
 

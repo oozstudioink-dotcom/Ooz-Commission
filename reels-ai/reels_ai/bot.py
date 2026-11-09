@@ -1047,7 +1047,8 @@ class Runner:
                     big = self.shorts_4k and d.get("source") == "drive"
                     raw = self.drive_raw(d) if d.get("source") == "drive" else {}
                     if d.get("source") == "drive" and not raw and "process_cuts" in styles:
-                        styles = [st for st in styles if st != "process_cuts"]   # needs the original
+                        from .pipeline import swap_out                      # needs the original:
+                        styles = swap_out(styles, "process_cuts")              # make another style
                     out_dir, results = make_variants(src, tmp / "out", styles,
                                                      seed=int(did[1:]), subject=d["subject"],
                                                      review_page=False, copy=copy,
