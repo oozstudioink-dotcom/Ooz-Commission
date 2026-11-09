@@ -32,7 +32,7 @@ def process_cuts_clips(a, frame_filter: str, raw_input: RawInput, src_time: Call
         dst = out_dir / f"cut{k}.mp4"
         cmd = (["ffmpeg", "-v", "error", "-y"] + raw_input(t0) +
                ["-frames:v", str(int(round(CUT_SECONDS * FPS))), "-an", "-vf",
-                f"{frame_filter}setpts=PTS/{speed},fps={FPS},scale={w}:{h}:flags=lanczos,setsar=1",
+                f"setpts=PTS/{speed},fps={FPS},{frame_filter}scale={w}:{h}:flags=lanczos,setsar=1",
                 "-c:v", "libx264", "-crf", "14", "-preset", "veryfast", "-pix_fmt", "yuv420p", str(dst)])
         res = subprocess.run(cmd, capture_output=True, text=True)
         if res.returncode != 0 or not dst.exists() or dst.stat().st_size == 0:
@@ -129,11 +129,10 @@ def make_variants(src: Path, out_root: Path, names: list[str] | None = None, see
     if wide:
         # Landscape recording: cut a vertical frame around this clip's drawing, then re-analyse.
         vert = out_dir / "work_vertical.mp4"
-        wide_w = store.width
-        crop = crop_vertical(work, vert, a.work_center[0], out_w=max_width)
-        xf, wf = crop["crop_x"] / wide_w, crop["crop_w"] / wide_w
-        frame_filter = f"crop=trunc(iw*{wf:.5f}/2)*2:ih:trunc(iw*{xf:.5f}):0,"
-        print(f"landscape -> vertical crop at x={crop['crop_x']} ({crop['crop_w']}px wide)")
+        crop = crop_vertical(work, vert, a.work_center[0], out_w=max_width, span=a.work_span)
+        frame_filter = crop["filter"]
+        print(f"landscape -> vertical crop at x={crop['crop_x']} ({crop['crop_w']}px wide"
+              f"{', whole width of the new work on a blurred backdrop' if crop['letterbox'] else ''})")
         work.unlink(missing_ok=True)
         vert.rename(work)
         store = FrameStore(work)

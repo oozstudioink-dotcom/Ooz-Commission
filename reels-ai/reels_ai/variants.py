@@ -372,16 +372,49 @@ def blend_windows(pos: list[float], usable: list[bool] | None = None, blend: int
     return out
 
 
+_HAND: dict[tuple[int, int], tuple[object, np.ndarray]] = {}
+
+
+def _no_hand(store, i: int) -> np.ndarray:
+    """uint8 mask (255 = page, 0 = hand/arm/pen) for frame i; cached, computed small."""
+    key = (id(store), i)
+    hit = _HAND.get(key)
+    m = hit[1] if hit is not None and hit[0] is store else None   # entry keeps store alive: no id reuse
+    if m is None:
+        from .analyze import _skin
+        img = store[i]
+        h, w = img.shape[:2]
+        sw = 240
+        small = cv2.resize(img, (sw, max(1, round(h * sw / w))), interpolation=cv2.INTER_AREA)
+        hand = cv2.dilate(_skin(small).astype(np.uint8), np.ones((9, 9), np.uint8))
+        m = cv2.resize(np.where(hand > 0, 0, 255).astype(np.uint8), (w, h), interpolation=cv2.INTER_NEAREST)
+        if len(_HAND) > 16:
+            _HAND.clear()
+        _HAND[key] = (store, m)
+    return m
+
+
 def mix(store, win: Window) -> np.ndarray:
-    """Weighted average of source frames (running uint8 blend: fast even at 4K)."""
+    """Blend of source frames for smooth ink, without ghost arms.
+
+    Older frames only count where neither they nor the newest frame show the hand, so the page
+    blends smoothly while the hand/arm comes solid from the newest frame (an arm sweeping across
+    the page used to leave see-through copies of itself). Running masked averages in OpenCV keep
+    this fast at 4K."""
     if len(win) == 1:
         return store[win[0][0]]
-    out, total = None, 0.0
-    for i, wt in win:
-        total += wt
-        f = store[i]
-        out = f if out is None else cv2.addWeighted(out, 1 - wt / total, f, wt / total, 0)
-    return out
+    order = sorted(win)                                     # oldest -> newest
+    newest = order[-1][0]
+    acc = store[newest].astype(np.float32)
+    clear = _no_hand(store, newest)
+    seen = 1.0
+    for i, wt in order[:-1]:                                # older frames, oldest first
+        mask = cv2.bitwise_and(clear, _no_hand(store, i))
+        seen += 1
+        cv2.accumulateWeighted(store[i], acc, 1.0 / seen, mask=mask)
+    # the newest frame keeps the biggest share everywhere (and all of it where the hand is)
+    cv2.accumulateWeighted(store[newest], acc, 0.45)
+    return cv2.convertScaleAbs(acc)
 
 
 def single(idx: float) -> Window:

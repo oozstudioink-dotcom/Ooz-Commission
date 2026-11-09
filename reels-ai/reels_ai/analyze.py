@@ -49,6 +49,7 @@ class Analysis:
     usable: list[bool]              # False = hand/arm covering much more of the page than usual
     has_pencil: bool = True         # False = straight to ink (no pencil sketch stage to show)
     work_center: tuple[float, float] = (0.5, 0.5)    # centre of this clip's new pencil/ink
+    work_span: tuple[float, float] = (0.0, 1.0)      # left/right edge of all new work (fractions)
 
     def clean_range(self, a: int, b: int) -> list[int]:
         idx = [i for i in range(a, b + 1) if self.usable[i]]
@@ -166,7 +167,8 @@ def analyze(store: FrameStore) -> Analysis:
     # ink and all line work have settled; otherwise the edit would jump to the finished piece
     # while small details are still being inked.
     all_t = np.where(ink_map, ink_t, mark_t)
-    all_prog = progress(all_t, observed(all_t, mark_map))
+    all_obs = observed(all_t, mark_map)
+    all_prog = progress(all_t, all_obs)
 
     ink_start = to_frame(_first_crossing(ink_prog, 0.015))
     ink_end = to_frame(max(_first_crossing(ink_prog, 0.97), _first_crossing(all_prog, 0.97)))
@@ -190,11 +192,16 @@ def analyze(store: FrameStore) -> Analysis:
     new_work = ink_obs if ink_obs.sum() > 200 else ink_obs | mark_obs
     focus = (0.5, 0.5, 1.0)
     work_center = (0.5, 0.5)
+    work_span = (0.0, 1.0)
     if new_work.sum() > 200:
         ys, xs = np.nonzero(new_work)
         x0, x1 = np.percentile(xs, [1, 99])
         y0, y1 = np.percentile(ys, [1, 99])
         work_center = (float((x0 + x1) / 2 / AW), float((y0 + y1) / 2 / ah))
+        # every new line, fine ones included, so a small side drawing isn't cropped off
+        _, sxs = np.nonzero(all_obs | new_work)
+        sx0, sx1 = np.percentile(sxs, [0.3, 99.7])
+        work_span = (float(sx0 / AW), float((sx1 + 1) / AW))
         fw, fh = (x1 - x0) * 1.25 + AW * 0.04, (y1 - y0) * 1.2 + ah * 0.04   # breathing room
         if fw / fh < AW / ah:
             fw = fh * AW / ah
@@ -241,7 +248,7 @@ def analyze(store: FrameStore) -> Analysis:
         n_frames=n, fps=FPS, width=store.width, height=store.height,
         draw_start=draw_start, sketch_idx=sketch_idx, ink_start=ink_start, ink_end=ink_end,
         peak_idx=peak_idx, reveal_idx=reveal_idx,
-        detail_box=(box[0] / AW, box[1] / ah, bw / AW, bh / ah), focus=focus, work_center=work_center,
+        detail_box=(box[0] / AW, box[1] / ah, bw / AW, bh / ah), focus=focus, work_center=work_center, work_span=work_span,
         detail_start=detail_start, detail_end=max(detail_end, detail_start + FPS),
         hand_score=hand_score.round(4).tolist(), ink_progress=ink_prog.round(4).tolist(),
         window_frames=win, usable=usable.tolist(), has_pencil=has_pencil,

@@ -64,9 +64,21 @@ class BlendWindowTest(unittest.TestCase):
         w = blend_windows([50.0, 50.0, 5.0, 200.0], blend=6)
         self.assertEqual(w[1:], [((50, 1.0),), ((5, 1.0),), ((200, 1.0),)])
 
-    def test_mix_weights(self):
-        store = [np.zeros((4, 4, 3), np.uint8), np.full((4, 4, 3), 90, np.uint8)]
-        self.assertEqual(int(mix(store, ((0, 1 / 3), (1, 2 / 3)))[0, 0, 0]), 60)
+    def test_mix_blends_page_newest_counts_most(self):
+        store = [np.zeros((40, 40, 3), np.uint8), np.full((40, 40, 3), 90, np.uint8)]
+        v = int(mix(store, ((0, 1 / 3), (1, 2 / 3)))[0, 0, 0])
+        self.assertTrue(50 <= v <= 75, v)
+
+    def test_mix_leaves_no_ghost_arm(self):
+        import cv2
+        paper = np.full((320, 180, 3), 230, np.uint8)
+        old = paper.copy()
+        cv2.ellipse(old, (60, 160), (40, 70), 0, 0, 360, (95, 130, 185), -1)   # arm, older frame
+        new = paper.copy()
+        cv2.ellipse(new, (130, 160), (40, 70), 0, 0, 360, (95, 130, 185), -1)  # arm moved
+        out = mix([old, old, new], ((0, 0.2), (1, 0.3), (2, 0.5)))
+        self.assertLess(np.abs(out[160, 60].astype(int) - 230).max(), 4)       # no see-through arm
+        self.assertLess(np.abs(out[160, 130].astype(int) - new[160, 130]).max(), 4)   # solid hand
 
     def test_combined_camera_matches_two_steps(self):
         img = (np.random.default_rng(1).random((320, 180, 3)) * 255).astype(np.uint8)

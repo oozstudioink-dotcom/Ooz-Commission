@@ -68,24 +68,49 @@ def normalize(src: Path, dst: Path, keep_wide: bool = False, max_wide_h: int = 1
     return {"source_duration": info["duration"], "speedup": speed, "width": out_w, "height": out_h}
 
 
-def crop_vertical(src: Path, dst: Path, center_x: float, out_w: int = 1080) -> dict:
-    """out_w is a cap: the crop is never enlarged past its own width."""
-    """Cut a full-height 9:16 window out of a wide working copy, centred on center_x (0..1)."""
+def vertical_filter(src_w: int, src_h: int, xf: float, wf: float, ow: int, oh: int) -> str:
+    """ffmpeg filter (ending in ',') that turns a wide frame into an ow x oh vertical one.
+
+    xf/wf: left edge and width of the wanted window as fractions of the source width, full
+    height. A window up to 9:16 is cropped and scaled; a wider one (drawings spread across the
+    page) is shown whole on a blurred copy of itself, so nothing new is cut off. Written in
+    iw/ih terms so it fits the raw 4K recording and the working copy alike."""
+    crop = f"crop=trunc(iw*{wf:.5f}/2)*2:ih:trunc(iw*{xf:.5f}):0"
+    if wf * src_w <= src_h * 9 / 16 + 2:
+        return f"{crop},scale={ow}:{oh}:flags=lanczos,setsar=1,"
+    return (f"split[lbA][lbB];[lbA]{crop},scale={ow}:-2:flags=lanczos[lbF];"
+            f"[lbB]{crop},scale={ow}:{oh}:force_original_aspect_ratio=increase,crop={ow}:{oh},"
+            f"boxblur=40:2,eq=brightness=-0.05[lbG];[lbG][lbF]overlay=(W-w)/2:(H-h)/2,setsar=1,")
+
+
+def crop_vertical(src: Path, dst: Path, center_x: float, out_w: int = 1080,
+                  span: tuple[float, float] | None = None) -> dict:
+    """Cut a full-height vertical window out of a wide working copy, centred on center_x (0..1).
+
+    span: left/right edge of all new work. If it doesn't fit a 9:16 window, the window widens
+    to take it all in (letterboxed on a blurred copy) instead of cutting a drawing off.
+    out_w is a cap: the picture is never enlarged past the crop's own width."""
     info = probe(src)
     w, h = info["width"], info["height"]
-    cw = int(round(h * 9 / 16))
+    base = int(round(h * 9 / 16))
+    cw = base
+    if span:
+        need = (span[1] - span[0]) * w * 1.08                  # a little breathing room
+        cw = int(min(w, max(base, need)))
+        center_x = (span[0] + span[1]) / 2 if need > base else center_x
     cw -= cw % 2
     x = int(round(min(max(center_x * w - cw / 2, 0), w - cw)))
-    ow = min(out_w, cw)
+    ow = min(out_w, base)
     ow -= ow % 2
     oh = int(round(ow * 16 / 9))
     oh -= oh % 2
+    vf = vertical_filter(w, h, x / w, cw / w, ow, oh)
     subprocess.run(
-        ["ffmpeg", "-v", "error", "-y", "-i", str(src), "-an",
-         "-vf", f"crop={cw}:{h}:{x}:0,scale={ow}:{oh}:flags=lanczos,setsar=1",
+        ["ffmpeg", "-v", "error", "-y", "-i", str(src), "-an", "-vf", vf.rstrip(","),
          "-c:v", "libx264", "-crf", "14", "-preset", "fast", "-pix_fmt", "yuv420p", str(dst)],
         check=True)
-    return {"width": ow, "height": oh, "crop_x": x, "crop_w": cw}
+    return {"width": ow, "height": oh, "crop_x": x, "crop_w": cw, "letterbox": cw > base + 2,
+            "filter": vf, "xf": x / w, "wf": cw / w}
 
 
 class FrameStore:
