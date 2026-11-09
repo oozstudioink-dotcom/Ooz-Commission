@@ -64,6 +64,10 @@ class FakeBot:
     def edit_markup(self, chat_id, message_id, reply_markup):
         self.markups[message_id] = reply_markup
 
+    def delete_messages(self, chat_id, ids):
+        self.deleted = getattr(self, "deleted", []) + list(ids)
+        return max(ids) > getattr(self, "oldest_deletable", 0)
+
     def answer_callback(self, cid, text=""):
         self.sent.append(("answer", None, text))
 
@@ -346,6 +350,30 @@ class RedoTest(DropsFeedTest):
                          5 - sent_before + extra)
         self.assertEqual(self.r.bank()["drops"], 15 - 2 + extra)      # swapped one for one, + new styles
 
+    def test_redo_all_requeues_every_drawing_once(self):
+        self.clock.t = datetime(2026, 11, 7, 20, 0, tzinfo=timezone.utc)
+        self.r.poll()                                                 # 2 drops go out
+        self.bot.push(**msg(OWNER, text="/redo all"))
+        self.assertTrue(self.r.poll())
+        self.assertTrue(all(d["status"] == "queued" for d in self.state["drawings"].values()))
+        self.assertTrue(any("Re-making 3 drawing(s)" in t for t in self.bot.texts()))
+        self.stub_render(self.r)
+        live = [v for v in self.state["variants"].values() if v["status"] == "approved" and not v.get("dropped_at")]
+        extra = len(self.cfg["variants"]["styles"]) - 5
+        self.assertEqual(len(live), 15 - 2 + 3 * extra)                # one for one + new styles
+        pairs = [(v["drawing"], v["style"]) for v in self.state["variants"].values()
+                 if v["status"] in ("approved", "posted")]
+        self.assertEqual(len(pairs), len(set(pairs)))                 # no drawing+style twice
+
+    def test_clear_deletes_back_from_the_command(self):
+        self.bot.oldest_deletable = 1000                              # older ids: past 48 h
+        self.bot.push(**msg(OWNER, text="/clear", message_id=1520))
+        self.r.poll()
+        self.assertIn(1520, self.bot.deleted)
+        self.assertIn(1001, self.bot.deleted)
+        self.assertNotIn(5, self.bot.deleted)                        # stops after refusals
+        self.assertTrue(any("Clear history" in t for t in self.bot.texts()))
+
     def test_redo_unknown_name_lists_drawings(self):
         self.bot.push(**msg(OWNER, text="/redo Luffy"))
         self.r.poll()
@@ -392,6 +420,32 @@ class NameTagsTest(FakeVariantsMixin, unittest.TestCase):
         finally:
             pipeline.make_variants = real
         self.assertEqual(seen["hints"], {"pencil": False, "continued": True})
+
+
+class AlbumSizeTest(unittest.TestCase):
+    def test_big_drawings_split_into_albums_and_fall_back_to_singles(self):
+        from reels_ai.bot import album_chunks
+        from reels_ai.telegram import TelegramError
+        out = Path(tempfile.mkdtemp())
+        (out / "variants").mkdir()
+        results = []
+        for i in range(6):
+            (out / "variants" / f"s{i}.mp4").write_bytes(b"x" * 9)
+            results.append({"name": "speedrun", "file": f"variants/s{i}.mp4", "seconds": 9.0,
+                            "hook": "h", "caption": "c"})
+        self.assertEqual([len(c) for c in album_chunks(out, results, limit=20)], [2, 2, 2])
+        self.assertEqual([len(c) for c in album_chunks(out, results, limit=10 ** 6)], [6])
+
+        bot, state = FakeBot(), fresh_state()
+        state["owner_chat_id"] = OWNER
+        r = Runner(bot, state, load_config(), clock=Clock(datetime(2026, 11, 7, tzinfo=timezone.utc)))
+
+        def refuse(*a, **k):
+            raise TelegramError("sendMediaGroup: Request Entity Too Large")
+        bot.send_media_group = refuse
+        r.bank_album("d1", {"subject": "Sasuke"}, out, results)
+        self.assertEqual(len(state["variants"]), 6)                  # all banked, sent one by one
+        self.assertEqual(sum(k == "video" for k, _, _ in bot.sent), 6)
 
 
 class StyleLearningTest(unittest.TestCase):

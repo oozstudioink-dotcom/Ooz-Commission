@@ -82,6 +82,16 @@ class Bot:
             if "not modified" not in str(e):
                 print(f"warn: {e}")
 
+    def delete_messages(self, chat_id: int, message_ids: list[int]) -> bool:
+        """Delete up to 100 messages at once. Telegram skips ids it can't find; it refuses
+        messages older than 48 hours. Returns False when Telegram refused the batch."""
+        try:
+            return bool(self._call("deleteMessages", {"chat_id": chat_id,
+                                                      "message_ids": json.dumps(message_ids[:100])}))
+        except TelegramError as e:
+            print(f"warn: delete: {e}")
+            return False
+
     def answer_callback(self, callback_id: str, text: str = "") -> None:
         try:
             self._call("answerCallbackQuery", {"callback_query_id": callback_id, "text": text})

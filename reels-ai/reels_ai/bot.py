@@ -35,7 +35,7 @@ MAX_BOT_DOWNLOAD = 20 * 1024 * 1024   # Telegram bots can only download files up
 HELP = (
     "Send me a drawing timelapse (as a video) and I'll make variants for you to approve.\n"
     "Add the character name as the video's caption, e.g. Naruto.\n\n"
-    "/status  overview\n/longform [project]  build a LongDraw from Drive \u203a Longform (no name = list projects)\n/redo [name]  re-make a drawing's Shorts with the latest editing (no name = newest)\n/compile [title]  stitch the drawings since the last compilation into one page video\n/report  stats report now (also sent every Sunday)\n/queue  your video bank and how many days it covers\n/pause  stop all posting\n/resume  start posting again\n/help  this message"
+    "/status  overview\n/longform [project]  build a LongDraw from Drive \u203a Longform (no name = list projects)\n/redo [name]  re-make a drawing's Shorts with the latest editing (no name = newest; all = every drawing)\n/clear  delete recent chat messages (Telegram allows the last 2 days)\n/compile [title]  stitch the drawings since the last compilation into one page video\n/report  stats report now (also sent every Sunday)\n/queue  your video bank and how many days it covers\n/pause  stop all posting\n/resume  start posting again\n/help  this message"
 )
 
 
@@ -149,7 +149,10 @@ class Runner:
         elif cmd == "/longform":
             self.longform_command(text.split(maxsplit=1)[1].strip() if len(text.split(maxsplit=1)) > 1 else "")
         elif cmd == "/redo":
-            self.redo(text.split(maxsplit=1)[1].strip() if len(text.split(maxsplit=1)) > 1 else "")
+            arg = text.split(maxsplit=1)[1].strip() if len(text.split(maxsplit=1)) > 1 else ""
+            self.redo_all() if arg.lower() == "all" else self.redo(arg)
+        elif cmd == "/clear":
+            self.clear_chat(int(m.get("message_id") or 0))
         elif cmd == "/id":
             self.say(f"Your chat ID: {chat['id']}\n(For the commission-alerts script's TELEGRAM_CHAT_ID.)")
         elif cmd == "/report":
@@ -183,26 +186,66 @@ class Runner:
                 self.say("Try one of: " + ", ".join(names[:20]))
             return
         did, d = max(found, key=lambda x: (x[1].get("received") or "", int(x[0][1:])))
-        old = [v for v in self.state["variants"].values() if v["drawing"] == did]
-        replaced = 0
-        unsent: list[str] = []
-        for v in old:
-            if v["status"] in ("approved", "pending") and not v.get("dropped_at"):
-                v["status"] = "replaced"
-                replaced += 1
-                unsent.append(v["style"])
-        # Styles you already posted aren't re-made (no repeats in the feed); styles this drawing
-        # never had (e.g. a new one) are added. If everything was posted, all are re-made.
-        made = {v["style"] for v in old}
-        never = [st for st in self.cfg["variants"]["styles"] if st in STYLE_LABELS and st not in made]
-        styles = [st for st in dict.fromkeys(unsent + never) if st in STYLE_LABELS]
-        styles = styles or [st for st in dict.fromkeys(v["style"] for v in old) if st in STYLE_LABELS]
-        d.update(status="queued", redo=True, keep_in_place=True, redo_styles=styles or None)
-        d.pop("error", None)
+        replaced, styles = self.requeue(did, d)
         label = d.get("subject") or d.get("drive_name") or did
-        self.say(f"🔁 Re-making {label} with the latest editing"
+        self.say(f"\U0001f501 Re-making {label} with the latest editing"
                  + (f" ({len(styles)} styles)" if styles else "") + ". It arrives within the hour"
                  + (f"; its {replaced} unsent old version(s) leave the bank." if replaced else "."))
+
+    def redo_all(self) -> None:
+        """/redo all: every finished drawing again with the current settings."""
+        todo = [(did, d) for did, d in self.state["drawings"].items() if d["status"] in ("rendered", "failed")]
+        if not todo:
+            return self.say("\U0001f50e No finished drawings yet.")
+        replaced = videos = queued = 0
+        for did, d in todo:
+            r, styles = self.requeue(did, d, repeat_if_all_sent=False)
+            replaced += r
+            videos += len(styles)
+            queued += bool(styles)
+        if not queued:
+            return self.say("\u2705 Every drawing's styles have already been posted, so there's nothing to re-make.")
+        mins = float(self.cfg.get("shorts", {}).get("max_render_minutes", 40))
+        self.say(f"\U0001f501 Re-making {queued} drawing(s) with the latest editing "
+                 f"(about {videos} videos). {replaced} unsent old videos leave the bank and are replaced "
+                 f"one for one; styles you already posted aren't repeated.\nThis runs in the background, "
+                 f"about {mins:.0f} min of rendering per hourly run, so it can take a few hours. Each drawing "
+                 "arrives as its own album, and I'll say \u201cAll caught up\u201d at the end.")
+
+    def requeue(self, did: str, d: dict, repeat_if_all_sent: bool = True) -> tuple[int, list[str]]:
+        """Queue one drawing for re-rendering. Returns (old versions replaced, styles to make);
+        no styles = nothing queued."""
+        old = [v for v in self.state["variants"].values() if v["drawing"] == did]
+        unsent = [v for v in old if v["status"] in ("approved", "pending") and not v.get("dropped_at")]
+        # Styles you already posted aren't re-made (no repeats in the feed); styles this drawing
+        # never had (e.g. a new one) are added. If everything was posted, a single /redo re-makes
+        # them all anyway (you asked for that drawing); /redo all skips it.
+        made = {v["style"] for v in old}
+        never = [st for st in self.cfg["variants"]["styles"] if st in STYLE_LABELS and st not in made]
+        styles = [st for st in dict.fromkeys([v["style"] for v in unsent] + never) if st in STYLE_LABELS]
+        if not styles and repeat_if_all_sent:
+            styles = [st for st in dict.fromkeys(v["style"] for v in old) if st in STYLE_LABELS]
+        if not styles:
+            return 0, []
+        for v in unsent:
+            v["status"] = "replaced"
+        replaced = len(unsent)
+        d.update(status="queued", redo=True, keep_in_place=True, redo_styles=styles or None)
+        d.pop("error", None)
+        return replaced, styles
+
+    def clear_chat(self, upto: int) -> None:
+        """/clear: delete this chat's messages (videos and texts, yours too) going back from the
+        newest. Telegram only lets bots delete messages from the last 48 hours; the video bank
+        is unaffected (videos are kept by Telegram file id, not by message)."""
+        misses, top = 0, upto
+        while top > 0 and misses < 3:
+            ids = list(range(top, max(0, top - 100), -1))
+            misses = 0 if self.bot.delete_messages(self.owner, ids) else misses + 1
+            top -= 100
+        self.say("\U0001f9f9 Cleared what Telegram allows (the last 2 days). Your video bank and drops "
+                 "are untouched.\nOlder messages can only be removed by you: open this chat \u2192 \u22ee "
+                 "\u2192 Clear history (that's safe too: it doesn't touch the bot's memory).")
 
     # ------------------------------------------------------------------ Google Drive inbox
     def drive_problem(self, e: Exception) -> None:
@@ -807,7 +850,15 @@ class Runner:
                 self.telegram_copies(out_dir, results)
                 done_now += 1
                 if mode == "auto":
-                    self.bank_album(did, d, out_dir, results, links)
+                    try:
+                        self.bank_album(did, d, out_dir, results, links)
+                    except Exception as e:  # noqa: BLE001 - don't lose the rest of the run
+                        d["status"] = "failed"
+                        d["error"] = f"sending to Telegram: {str(e)[:250]}"
+                        self.say(f"\u26a0\ufe0f Made {d.get('subject') or did}'s videos but couldn't send them: "
+                                 f"{str(e)[:200]}. The 4K files are in Drive \u203a Done \u203a Shorts; "
+                                 f"/redo {d.get('subject') or ''} tries again.")
+                        continue
                     d["status"] = "rendered"
                     continue
                 for r in results:
@@ -881,8 +932,7 @@ class Runner:
                    links: dict | None = None) -> None:
         """Auto mode: send the drawing's variants as one album and add them straight to the bank."""
         subject = d.get("subject") or "your drawing"
-        for start in range(0, len(results), 10):
-            chunk = results[start:start + 10]
+        for start, chunk in enumerate(album_chunks(out_dir, results)):
             if start == 0:
                 styles = ", ".join(STYLE_LABELS[r["name"]] for r in results)
                 bank_after = self.bank().get("drops", 0) + len(results) if self.drops_mode else None
@@ -893,8 +943,13 @@ class Runner:
                     caption += "\n\U0001f39e 4K files saved to Drive \u203a Done \u203a Shorts (links come with each drop)"
             else:
                 caption = ""
-            msgs = self.bot.send_media_group(self.owner, [out_dir / r.get("tg_file", r["file"]) for r in chunk],
-                                             caption)
+            files = [out_dir / r.get("tg_file", r["file"]) for r in chunk]
+            try:
+                msgs = self.bot.send_media_group(self.owner, files, caption)
+            except TelegramError as e:              # e.g. too large together: send one by one
+                print(f"warn: album failed ({e}); sending the videos one at a time")
+                msgs = [self.bot.send_video(self.owner, f, caption=caption if i == 0 else "")
+                        for i, f in enumerate(files)]
             for r, m in zip(chunk, msgs):
                 vid = new_id(self.state, "v")
                 self.state["variants"][vid] = {
@@ -905,6 +960,27 @@ class Runner:
                     "posts": {}, **({"full_link": links[r["name"]]} if (links or {}).get(r["name"]) else {})}
                 uses = self.state["style_uses"]
                 uses[r["name"]] = uses.get(r["name"], 0) + 1
+
+
+ALBUM_BYTES = 40 * 1024 * 1024        # bots may upload ~50 MB per request; albums go up as one
+
+
+def album_chunks(out_dir: Path, results: list[dict], limit: int = ALBUM_BYTES) -> list[list[dict]]:
+    """Split a drawing's videos into albums of at most 10 videos and `limit` bytes together."""
+    chunks: list[list[dict]] = []
+    cur: list[dict] = []
+    size = 0
+    for r in results:
+        p = Path(out_dir) / r.get("tg_file", r["file"])
+        n = p.stat().st_size if p.exists() else 0
+        if cur and (len(cur) == 10 or size + n > limit):
+            chunks.append(cur)
+            cur, size = [], 0
+        cur.append(r)
+        size += n
+    if cur:
+        chunks.append(cur)
+    return chunks
 
 
 def dispatch_workflow(workflow: str, inputs: dict) -> None:
