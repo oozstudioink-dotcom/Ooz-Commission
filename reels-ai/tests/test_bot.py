@@ -761,6 +761,41 @@ class ReportTest(unittest.TestCase):
 
 
 class GeminiCopyTest(unittest.TestCase):
+    def test_models_come_from_the_api_newest_first(self):
+        import threading
+        from http.server import BaseHTTPRequestHandler, HTTPServer
+        names = ["gemini-3.1-flash", "gemini-flash-latest", "gemini-3.1-flash-lite", "gemini-2.5-flash-image",
+                 "gemini-3-flash-preview", "gemini-flash-lite-latest", "text-embedding-005", "gemini-3.1-pro"]
+
+        class H(BaseHTTPRequestHandler):
+            def log_message(self, *a):
+                pass
+
+            def do_GET(self):
+                body = json.dumps({"models": [{"name": f"models/{n}", "supportedGenerationMethods":
+                                               ["embedContent"] if "embedding" in n else ["generateContent"]}
+                                              for n in names]}).encode()
+                self.send_response(200)
+                self.end_headers()
+                self.wfile.write(body)
+
+        srv = HTTPServer(("127.0.0.1", 0), H)
+        threading.Thread(target=srv.serve_forever, daemon=True).start()
+        self.addCleanup(srv.shutdown)
+        os.environ["NO_PROXY"] = os.environ["no_proxy"] = "127.0.0.1"
+        from reels_ai import ai
+        url = f"http://127.0.0.1:{srv.server_port}/models"
+        got = ai.available_models("K", url=url)
+        self.assertEqual(got, ["gemini-flash-latest", "gemini-flash-lite-latest", "gemini-3.1-flash",
+                               "gemini-3.1-flash-lite", "gemini-3-flash-preview"])
+        real = ai.MODELS_URL
+        ai.available_models.__defaults__ = (url, 30)
+        try:
+            self.assertEqual(ai.candidate_models("K", "gemini-flash-latest", "gemini-3.1-flash")[:3],
+                             ["gemini-3.1-flash", "gemini-flash-latest", "gemini-flash-lite-latest"])
+        finally:
+            ai.available_models.__defaults__ = (real, 30)
+
     def test_ping(self):
         import threading
         from http.server import BaseHTTPRequestHandler, HTTPServer
