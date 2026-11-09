@@ -38,16 +38,17 @@ class DriveMemory:
             raise MemoryError_(f"couldn't read the bot's memory from Drive ({str(e)[:200]}); "
                                "nothing was changed, the next run tries again") from None
         state = load_state(local)            # first time: move the repo copy to Drive
-        self.save(state)
+        self.save(state, local)
         return state
 
-    def save(self, state: dict, local: Path = STATE_PATH) -> None:
+    def save(self, state: dict, local: Path = STATE_PATH, marker: Path | None = None) -> None:
         save_state(state, local)             # local copy for this run only (no longer committed)
         text = json.dumps(state, indent=2, ensure_ascii=False, sort_keys=True) + "\n"
         self.file_id = self.drive.write_text(NAME, self.folder_id or self.drive.folder(FOLDER), text,
                                              self.file_id)
-        MARKER.parent.mkdir(parents=True, exist_ok=True)
-        MARKER.write_text("bot memory lives in Google Drive\n")
+        marker = marker or (local.parent / MARKER.name)
+        marker.parent.mkdir(parents=True, exist_ok=True)
+        marker.write_text("bot memory lives in Google Drive\n")
 
 
 def owner_chat_id(drive=None) -> int | None:

@@ -347,13 +347,12 @@ class DriveMemoryTest(unittest.TestCase):
         tmp = Path(tempfile.mkdtemp())
         local = tmp / "state.json"
         local.write_text(json.dumps({"owner_chat_id": 7, "drawings": {"d1": {"status": "rendered"}}}))
-        memory.MARKER = tmp / ".in_drive"
         d = self.FakeDrive()
         m = memory.DriveMemory(d)
         state = m.load(local)                                   # first run: repo copy moves to Drive
         self.assertEqual(state["owner_chat_id"], 7)
         self.assertEqual(json.loads(d.files["mem"])["drawings"]["d1"]["status"], "rendered")
-        self.assertTrue(memory.MARKER.exists())
+        self.assertTrue((tmp / ".in_drive").exists())          # marker next to the memory file
         local.unlink()                                          # repo copy gone: Drive is the source
         state["paused"] = True
         m.save(state, local)
