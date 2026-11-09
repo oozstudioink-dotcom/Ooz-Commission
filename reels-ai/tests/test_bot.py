@@ -260,6 +260,7 @@ class DropsFeedTest(FakeVariantsMixin, unittest.TestCase):
         self.cfg = load_config()
         self.cfg["timezone"] = "UTC"
         self.cfg["approval"]["mode"] = "auto"            # albums straight into the bank
+        self.cfg["delivery"]["split"], self.cfg["variants"]["per_drawing"] = [], 5   # classic one-video drops
         self.clock = Clock(datetime(2026, 11, 7, 9, 0, tzinfo=timezone.utc))
         self.bot, self.state = FakeBot(), fresh_state()
         self.r = Runner(self.bot, self.state, self.cfg, clock=self.clock,
@@ -341,19 +342,21 @@ class RedoTest(DropsFeedTest):
         self.bot.push(**msg(OWNER, text="/redo naru"))
         self.assertTrue(self.r.poll())                                # rendering needed
         extra = len(self.cfg["variants"]["styles"]) - 5                 # styles it never had
-        self.assertTrue(any("Re-making Naruto" in t and f"{5 - sent_before + extra} styles" in t
-                            for t in self.bot.texts()))           # unsent + the styles it never had
+        made = min(5, 5 - sent_before + extra)                          # capped at per_drawing
+        self.assertTrue(any("Re-making Naruto" in t and f"{made} styles" in t
+                            for t in self.bot.texts()))           # unsent + new styles, up to per_drawing
         self.assertEqual(self.state["drawings"][naruto]["status"], "queued")
         self.stub_render(self.r)
         mine = [v for v in self.state["variants"].values() if v["drawing"] == naruto]
         self.assertEqual(sum(v["status"] == "replaced" for v in mine), 5 - sent_before)
-        self.assertEqual(sum(v["status"] == "approved" and not v.get("dropped_at") for v in mine),
-                         5 - sent_before + extra)
-        self.assertEqual(self.r.bank()["drops"], 15 - 2 + extra)      # swapped one for one, + new styles
+        self.assertEqual(sum(v["status"] == "approved" and not v.get("dropped_at") for v in mine), made)
+        self.assertEqual(self.r.bank()["drops"], 15 - 2 - (5 - sent_before) + made)
 
     def test_redo_all_requeues_every_drawing_once(self):
         self.clock.t = datetime(2026, 11, 7, 20, 0, tzinfo=timezone.utc)
         self.r.poll()                                                 # 2 drops go out
+        sent = {d: sum(1 for v in self.state["variants"].values() if v["drawing"] == d and v.get("dropped_at"))
+                for d in self.state["drawings"]}
         self.bot.push(**msg(OWNER, text="/redo all"))
         self.assertTrue(self.r.poll())
         self.assertTrue(all(d["status"] == "queued" for d in self.state["drawings"].values()))
@@ -361,7 +364,7 @@ class RedoTest(DropsFeedTest):
         self.stub_render(self.r)
         live = [v for v in self.state["variants"].values() if v["status"] == "approved" and not v.get("dropped_at")]
         extra = len(self.cfg["variants"]["styles"]) - 5
-        self.assertEqual(len(live), 15 - 2 + 3 * extra)                # one for one + new styles
+        self.assertEqual(len(live), sum(min(5, 5 - n + extra) for n in sent.values()))   # capped at per_drawing
         pairs = [(v["drawing"], v["style"]) for v in self.state["variants"].values()
                  if v["status"] in ("approved", "posted")]
         self.assertEqual(len(pairs), len(set(pairs)))                 # no drawing+style twice
@@ -504,6 +507,7 @@ class RetireAndTidyTest(FakeVariantsMixin, unittest.TestCase):
         cfg["timezone"] = "UTC"
         cfg["bank"]["retired"] = []
         cfg["approval"]["mode"] = "auto"
+        cfg["delivery"]["split"], cfg["variants"]["per_drawing"] = [], 5   # classic one-video drops
         clock = Clock(datetime(2026, 11, 7, 9, tzinfo=timezone.utc))
         r = Runner(bot, state, cfg, clock=clock)
         src = Path(tempfile.mkdtemp()) / "in.mp4"
@@ -657,9 +661,54 @@ class NoGuessedNamesTest(unittest.TestCase):
         self.assertEqual(r.labelled_subject({"subject": "Goku"}), "Goku")                   # Telegram caption
 
 
+class SplitDropsTest(FakeVariantsMixin, unittest.TestCase):
+    """Default now: each drop is one drawing with a different version for TikTok, YouTube, Reels."""
+
+    def test_one_drawing_per_drop_one_version_per_platform(self):
+        bot, state = FakeBot(), fresh_state()
+        cfg = load_config()
+        cfg["timezone"] = "UTC"
+        cfg["approval"]["mode"] = "auto"
+        clock = Clock(datetime(2026, 11, 7, 9, tzinfo=timezone.utc))
+        r = Runner(bot, state, cfg, clock=clock)
+        src = Path(tempfile.mkdtemp()) / "in.mp4"
+        src.write_bytes(b"raw")
+        bot.push(**msg(OWNER, text="hi"))
+        for i, name in enumerate(["Naruto", "Sasuke", "Kakashi", "Itachi"]):
+            bot.files[f"raw{i}"] = src
+            bot.push(**msg(OWNER, video={"file_id": f"raw{i}", "file_unique_id": f"u{i}", "file_size": 9},
+                           caption=name))
+        r.poll()
+        self.stub_render(r)
+        self.assertEqual(len(state["variants"]), 12)                  # 3 versions per drawing
+        self.assertEqual(r.bank()["drops"], 4)                        # counted in drawings
+        bot.push(**msg(OWNER, text="/queue"))
+        r.poll()
+        self.assertTrue(any("Drops: 4 drawings" in t for t in bot.texts()))
+        for day in range(3):
+            clock.t = datetime(2026, 11, 7, 20, tzinfo=timezone.utc) + timedelta(days=day)
+            r.poll()
+        dropped = [v for v in state["variants"].values() if v.get("dropped_at")]
+        by_drop: dict = {}
+        for v in dropped:
+            by_drop.setdefault(v["drop_no"], []).append(v)
+        self.assertEqual(len(by_drop), 4)                            # 2 a day until the 4 drawings are used
+        for vs in by_drop.values():
+            self.assertEqual(len({v["drawing"] for v in vs}), 1)     # one drawing per drop
+            self.assertEqual(sorted(v["platform"] for v in vs), ["instagram", "tiktok", "youtube"])
+            self.assertEqual(len({v["style"] for v in vs}), 3)       # a different version each
+            self.assertEqual(len({v["caption"] for v in vs}), 1)     # one caption to paste everywhere
+        drawings = [vs[0]["drawing"] for _, vs in sorted(by_drop.items())]
+        self.assertEqual(len(set(drawings)), 4)                      # no drawing twice
+        fors = [p for k, _, p in bot.sent if k == "video" and "for TikTok" in p]
+        self.assertEqual(len(fors), 4)
+        self.assertEqual(r.bank()["drops"], 0)
+
+
 class StyleLearningTest(unittest.TestCase):
     def test_winning_styles_come_round_more_and_weakest_is_skipped(self):
         cfg = load_config()
+        cfg["variants"]["per_drawing"] = 5
         r = Runner(FakeBot(), fresh_state(), cfg, clock=Clock(datetime(2026, 11, 7, tzinfo=timezone.utc)))
         self.assertEqual(len(r.choose_styles("d1")), 5)
         r.state["style_scores"] = {"process_cuts": {"avg_views": 3000, "posts": 4},
@@ -1685,6 +1734,7 @@ class Shorts4KFlowTest(FakeVariantsMixin, unittest.TestCase):
         cfg["timezone"] = "UTC"
         cfg["shorts"]["max_render_minutes"] = 0          # budget: one drawing per run
         cfg["approval"]["mode"] = "auto"
+        cfg["delivery"]["split"], cfg["variants"]["per_drawing"] = [], 5   # classic one-video drops
         clock = Clock(datetime(2026, 11, 8, 9, tzinfo=timezone.utc))
         r = Runner(bot, state, cfg, clock=clock, drive=D())
         src = Path(tempfile.mkdtemp()) / "raw.mp4"

@@ -116,13 +116,15 @@ def build(state: dict, clients: dict, now: datetime, days: int = 7) -> str:
         if posts:
             avg_watch = sum(p["watch_s"] for p in posts) / len(posts)
             lines.append(f"Average watch time: {avg_watch:.1f}s")
+        # split drops share a caption across platforms: match within this platform's versions
+        mine = [v for v in variants if v.get("platform") in (None, platform)]
         for p in sorted(posts, key=lambda p: -p["views"])[:3]:
-            v = match_variant(p["title"], variants)
+            v = match_variant(p["title"], mine)
             tag = f" · {STYLE_LABELS.get(v['style'], v['style'])}" if v else ""
             lines.append(f"• {int(p['views']):,} views · {p['watch_s']:.1f}s{tag} · "
                          f"“{(p['title'] or '').splitlines()[0][:40]}”")
         for p in posts:
-            v = match_variant(p["title"], variants)
+            v = match_variant(p["title"], mine)
             if v:
                 style_views.setdefault(v["style"], []).append(p["views"])
     if style_views:

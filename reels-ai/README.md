@@ -103,6 +103,14 @@ Ooz Reels/Longform/
 - When the page is done, `/longform Naruto Page` joins the drawings in number order into the LongDraw;
   chapters read `Kakashi (Part 2)` etc.
 
+## Drops: one drawing, one version per platform
+
+`[delivery] split = ["tiktok", "youtube", "instagram"]`, `[variants] per_drawing = 3`: each drop is ONE
+drawing, with a different version for TikTok, YouTube Shorts and Instagram Reels (each platform gets the
+style it has had least) and one caption to paste on all three. No platform ever sees the same drawing
+twice, and a drawing that went out in any drop is used up. The weekly report matches posts per platform,
+so styles still get ranked. `/queue` counts drawings ready. `split = []` restores one-video drops.
+
 ## Keep / skip, ratings and your own hooks
 
 - `[approval] mode = "approve"`: every new video arrives on its own with its hook and caption and

@@ -237,6 +237,10 @@ class Runner:
         styles = [st for st in dict.fromkeys([v["style"] for v in unsent] + never) if st in STYLE_LABELS]
         if not styles and repeat_if_all_sent:
             styles = [st for st in dict.fromkeys(v["style"] for v in old) if st in STYLE_LABELS]
+        # no more than per_drawing versions, picked like new drawings (least used, best liked first)
+        weight, uses = self.style_weights(), self.state["style_uses"]
+        styles.sort(key=lambda st: uses.get(st, 0) / weight.get(st, 1.0))
+        styles = styles[: self.cfg["variants"].get("per_drawing", len(styles))]
         if not styles:
             return 0, []
         for v in unsent:
@@ -661,19 +665,87 @@ class Runner:
     def drop_times(self) -> list[str]:
         return self.cfg.get("delivery", {}).get("drop_times", ["17:00"])
 
+    @property
+    def split(self) -> list[str]:
+        """Platforms that each get their own version of a drawing per drop ([delivery] split)."""
+        return [p for p in self.cfg.get("delivery", {}).get("split", []) if p in PLATFORM_LABELS]
+
     def drop_due(self) -> None:
-        """Deliver one never-sent variant per drop time, shuffled, for the owner to post."""
+        """Deliver one drop per drop time, shuffled, for the owner to post."""
         lt = self.local(self.clock())
         open_slots = sum(1 for hhmm in self.drop_times
                          if lt.time() >= datetime.strptime(hhmm, "%H:%M").time())
-        done_today = sum(1 for v in self.state["variants"].values()
-                         if v.get("dropped_at") and self.local(parse(v["dropped_at"])).date() == lt.date())
+        today = [v for v in self.state["variants"].values()
+                 if v.get("dropped_at") and self.local(parse(v["dropped_at"])).date() == lt.date()]
+        done_today = len({v.get("drop_no") for v in today}) if self.split else len(today)
         while done_today < open_slots:
-            v = self.next_drop()
-            if not v:
-                return
-            self.deliver(v)
+            if self.split:
+                pairs = self.next_split_drop()
+                if not pairs:
+                    return
+                self.deliver_split(pairs)
+            else:
+                v = self.next_drop()
+                if not v:
+                    return
+                self.deliver(v)
             done_today += 1
+
+    def split_ready(self) -> dict[str, list[str]]:
+        """Drawings that can still be dropped: {drawing: [kept, unsent variant ids]}. A drawing
+        that already went out (in any drop, old style included) is used up: no repeats."""
+        used = {v["drawing"] for v in self.state["variants"].values() if v.get("dropped_at")}
+        ready: dict[str, list[str]] = {}
+        for vid, v in self.state["variants"].items():
+            if (v["status"] == "approved" and not v.get("dropped_at") and v["drawing"] not in used
+                    and not self.retired_variant(v)):
+                ready.setdefault(v["drawing"], []).append(vid)
+        return ready
+
+    def next_split_drop(self) -> list[tuple[str, str]]:
+        """One drawing, a different version for each platform: [(platform, variant id)].
+        Drawings with a full set first (shuffled); each platform gets the style it has had least."""
+        ready = self.split_ready()
+        if not ready:
+            return []
+        sent = len({v.get("drop_no") for v in self.state["variants"].values() if v.get("dropped_at")})
+        rng = random.Random(f"{self.local(self.clock()).date()}-{sent}")
+        full = max(min(len(v), len(self.split)) for v in ready.values())
+        did = rng.choice(sorted(d for d, v in ready.items() if min(len(v), len(self.split)) == full))
+        uses = self.state.setdefault("platform_style_uses", {})
+        left = list(ready[did])
+        pairs = []
+        for p in self.split:
+            if not left:
+                break
+            counts = uses.get(p, {})
+            vid = min(left, key=lambda k: (counts.get(self.state["variants"][k]["style"], 0), rng.random()))
+            left.remove(vid)
+            pairs.append((p, vid))
+        return pairs
+
+    def deliver_split(self, pairs: list[tuple[str, str]]) -> None:
+        variants = self.state["variants"]
+        n = max((x.get("drop_no", 0) for x in variants.values()), default=0) + 1
+        first = variants[pairs[0][1]]
+        did = first["drawing"]
+        subject = self.state["drawings"].get(did, {}).get("subject") or "this piece"
+        caption = first["caption"]
+        uses = self.state.setdefault("platform_style_uses", {})
+        for p, vid in pairs:
+            v = variants[vid]
+            self.bot.send_video(self.owner, v["file_id"], caption=(
+                f"\U0001f3ac Drop #{n} \u00b7 {subject} \u00b7 for {PLATFORM_LABELS[p]}\n"
+                f"{STYLE_LABELS.get(v['style'], v['style'])} \u00b7 {v.get('seconds', '?')}s \u00b7 "
+                f"hook on video: \u201c{v.get('hook', '')}\u201d\n"
+                + (f"\U0001f39e 4K file: {v['full_link']}\n" if v.get("full_link") else "")
+                + "\U0001f3b5 Add a trending sound when you post."), reply_markup=rating_markup(vid))
+            v.update(dropped_at=iso(self.clock()), drop_no=n, status="posted", platform=p, caption=caption)
+            uses.setdefault(p, {})[v["style"]] = uses.get(p, {}).get(v["style"], 0) + 1
+        missing = [PLATFORM_LABELS[p] for p in self.split[len(pairs):]]
+        self.say(caption + ("\n\n(No version for " + ", ".join(missing) + " this time.)" if missing else ""))
+        for vid in self.split_ready().get(did, []):           # this drawing is done: spares stay out
+            variants[vid]["status"] = "spare"
 
     def next_drop(self) -> dict | None:
         """Shuffled, but spread out: never the same drawing back-to-back when avoidable, prefer a
@@ -794,6 +866,11 @@ class Runner:
 
     def bank(self) -> dict[str, int]:
         """Approved (or still pending) videos not yet sent to each enabled platform."""
+        if self.drops_mode and self.split:                   # drawings ready (each drop = one drawing)
+            used = {v["drawing"] for v in self.state["variants"].values() if v.get("dropped_at")}
+            return {"drops": len({v["drawing"] for v in self.state["variants"].values()
+                                  if v["status"] in ("approved", "pending") and not v.get("dropped_at")
+                                  and v["drawing"] not in used and not self.retired_variant(v)})}
         if self.drops_mode:
             return {"drops": sum(1 for v in self.state["variants"].values()
                                  if v["status"] in ("approved", "pending") and not v.get("dropped_at")
@@ -809,7 +886,8 @@ class Runner:
         lines = ["\U0001f3e6 Video bank"]
         for p, n in self.bank().items():
             label = "Drops" if p == "drops" else PLATFORM_LABELS.get(p, p)
-            lines.append(f"{label}: {n} videos \u2248 {n // self.per_day(p)} days")
+            unit = "drawings" if p == "drops" and self.split else "videos"
+            lines.append(f"{label}: {n} {unit} \u2248 {n // self.per_day(p)} days")
         pending = sum(1 for v in self.state["variants"].values() if v["status"] == "pending")
         if pending:
             lines.append(f"({pending} still waiting for your OK are counted)")
@@ -828,7 +906,8 @@ class Runner:
             days = n // self.per_day(p)
             if days < low_at:
                 label = "Drops" if p == "drops" else PLATFORM_LABELS.get(p, p)
-                short.append(f"{label}: {days} day(s) left ({n} videos)")
+                unit = "drawings" if p == "drops" and self.split else "videos"
+                short.append(f"{label}: {days} day(s) left ({n} {unit})")
         if short:
             self.state["low_bank_warned"] = today
             self.say("\U0001faab Video bank is running low\n" + "\n".join(short) +

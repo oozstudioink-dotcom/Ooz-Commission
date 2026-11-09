@@ -9,7 +9,10 @@ timezone = "America/New_York"   # used for post_times below
 #              Nothing is auto-posted.
 # "platforms": per-platform schedules below, with optional auto-posting (method = "api").
 mode = "drops"
-drop_times = ["17:00", "17:00"]      # same time twice = both videos at 5 PM
+drop_times = ["17:00", "17:00"]      # same time twice = both drops at 5 PM
+# Each drop = ONE drawing, with a different version for each platform below, so no platform sees
+# the same drawing twice and the platforms test styles against each other. [] = old one-video drops.
+split = ["tiktok", "youtube", "instagram"]
 post_to = "TikTok \u00b7 Instagram Reels \u00b7 YouTube Shorts"
 
 [approval]
@@ -20,7 +23,7 @@ mode = "approve"                 # you tap ✅ / ❌ on every new video; only �
 fallback_hours = 6
 
 [variants]
-per_drawing = 5                  # variants made from each drawing (7 = every style; least-used and best-performing first)
+per_drawing = 3                  # versions made from each drawing: one per platform in [delivery] split
 styles = ["one_take", "process_cuts", "reveal_first", "speedrun", "before_after", "detail_zoom", "ink_only"]
 
 # method = "manual": at post time the bot sends you the finished video + caption to upload
