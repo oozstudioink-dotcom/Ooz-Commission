@@ -186,7 +186,7 @@ class Drive:
 
 
 def make_proxy(url: str, token: str, dst: Path, duration_s: float, max_side: int = 2560,
-               target_frames: int = 1800) -> Path:
+               target_frames: int = 2700) -> Path:
     """Stream a raw recording and write a small 30 fps timelapse of it.
 
     Long recordings (>= 15 min) use keyframes only (iPhone: ~1 per second), so ffmpeg decodes

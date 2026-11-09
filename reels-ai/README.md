@@ -32,9 +32,12 @@ Options: `--variants reveal_first ink_only` (pick some), `--seed 2` (different h
 - **detail box**: the most line-dense area (usually the face) and when it gets inked.
 - **arm sweeps**: frames where an arm covers the page are dropped from the edit.
 
-**Smooth motion:** when a variant speeds up, the frames it skips are blended into the frame it
-shows (up to 6, newest weighted most; `BLEND` in `variants.py`), so ink builds up smoothly and the
-hand glides instead of jumping. Holds, flashbacks and the final reveal stay razor sharp.
+**Smooth motion:** frames are never shown twice in a row. When a variant speeds up, the frames it
+skips are blended into the frame it shows (up to 6, newest weighted most), so ink builds up
+smoothly and the hand glides. When a recording has fewer frames than the edit needs (long Drive
+recordings are sampled at a few frames per real second), neighbouring frames cross-fade instead of
+stuttering. Holds, flashbacks and the final reveal stay razor sharp. Knobs: `BLEND`, `MIN_SPAN`,
+`MAX_SLOW` in `variants.py`.
 
 ### Variants (all 8-15 s: channel data shows ~7-10 s average watch time)
 

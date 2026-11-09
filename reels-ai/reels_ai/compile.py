@@ -17,7 +17,7 @@ import numpy as np
 from . import fx
 from .analyze import Analysis, analyze
 from .media import FPS, Encoder, FrameStore, normalize
-from .variants import ramp
+from .variants import blend_windows, mix, ramp, single
 
 W, H = 720, 1280
 
@@ -40,9 +40,10 @@ def load_clips(sources: list[tuple[Path, str | None]], work: Path) -> list[Clip]
     return clips
 
 
-def _frame(clip: Clip, idx: int, cam: tuple[float, float, float] | None = None,
+def _frame(clip: Clip, idx, cam: tuple[float, float, float] | None = None,
            grade: str = "clean") -> np.ndarray:
-    img = fx.grade(clip.store[idx], grade)
+    """idx: a frame number, or a blend window from variants.blend_windows."""
+    img = fx.grade(mix(clip.store, idx if isinstance(idx, tuple) else single(idx)), grade)
     img = fx.camera(img, *(cam or clip.a.focus))
     if img.shape[1] != W:
         img = cv2.resize(img, (W, H), interpolation=cv2.INTER_CUBIC)
@@ -71,7 +72,7 @@ def render_short(clips: list[Clip], out: Path, title: str, audio: Path | None = 
         label = f"{ci + 1}/{n}" + (f" · {c.subject}" if c.subject else "")
         idxs = ramp(a, a.draw_start, a.ink_start, per * 0.3) + \
             ramp(a, a.ink_start, a.ink_end, per * 0.6, focus=a.peak_idx, slow=2.5)
-        frames += [(ci, i, None, label, "tag") for i in idxs]
+        frames += [(ci, win, None, label, "tag") for win in blend_windows(idxs, a.usable)]
         frames += [(ci, a.reveal_idx, None, label, "tag")] * int(per * 0.1 * FPS)
     # 3. pull back to the whole page (last clip's final frame, un-cropped)
     last = clips[-1]
