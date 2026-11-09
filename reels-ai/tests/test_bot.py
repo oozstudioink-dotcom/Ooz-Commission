@@ -324,6 +324,38 @@ class DropsFeedTest(FakeVariantsMixin, unittest.TestCase):
         self.assertTrue(any("Drops: 13 videos" in t for t in self.bot.texts()))
 
 
+class RedoTest(DropsFeedTest):
+    """/redo re-makes a drawing's Shorts; unsent old versions leave the bank, sent ones stay."""
+
+    def test_redo_replaces_unsent_versions(self):
+        self.clock.t = datetime(2026, 11, 7, 20, 0, tzinfo=timezone.utc)
+        self.r.poll()                                                 # 2 drops go out
+        naruto = next(did for did, d in self.state["drawings"].items() if d["subject"] == "Naruto")
+        sent_before = sum(1 for v in self.state["variants"].values()
+                          if v["drawing"] == naruto and v.get("dropped_at"))
+        self.bot.push(**msg(OWNER, text="/redo naru"))
+        self.assertTrue(self.r.poll())                                # rendering needed
+        self.assertTrue(any("Re-making Naruto" in t and f"{6 - sent_before} styles" in t
+                            for t in self.bot.texts()))           # unsent + the style it never had
+        self.assertEqual(self.state["drawings"][naruto]["status"], "queued")
+        self.stub_render(self.r)
+        mine = [v for v in self.state["variants"].values() if v["drawing"] == naruto]
+        self.assertEqual(sum(v["status"] == "replaced" for v in mine), 5 - sent_before)
+        self.assertEqual(sum(v["status"] == "approved" and not v.get("dropped_at") for v in mine), 6 - sent_before)
+        self.assertEqual(self.r.bank()["drops"], 15 - 2 + 1)          # swapped one for one, +1 new style
+
+    def test_redo_unknown_name_lists_drawings(self):
+        self.bot.push(**msg(OWNER, text="/redo Luffy"))
+        self.r.poll()
+        self.assertTrue(any("No finished drawing" in t for t in self.bot.texts()))
+        self.assertTrue(any("Deku" in t and "Goku" in t for t in self.bot.texts()))
+
+    def test_redo_without_name_takes_newest(self):
+        self.bot.push(**msg(OWNER, text="/redo"))
+        self.r.poll()
+        self.assertTrue(any("Re-making Goku" in t for t in self.bot.texts()))
+
+
 @unittest.skipUnless(os.environ.get("REELS_TEST_VIDEO"), "set REELS_TEST_VIDEO to run a real render")
 class RealRenderTest(unittest.TestCase):
     def test_real_render(self):
@@ -1293,3 +1325,79 @@ class Shorts4KFlowTest(FakeVariantsMixin, unittest.TestCase):
         drops = [p for k, _, p in bot.sent if k == "video" and p.startswith("\U0001f3ac Drop")]
         self.assertEqual(len(drops), 2)
         self.assertTrue(all("4K file to post: https://drive/" in p for p in drops))
+
+
+class UploadOnceAndStorageTest(FakeVariantsMixin, unittest.TestCase):
+    class D:
+        def __init__(self):
+            self.moves, self.ups = [], []
+            self.tree = {
+                "id:Inbox": [{"id": "i1", "name": "Goku.MOV", "mimeType": "video/quicktime", "size": "4000000000"}],
+                "id:Longform": [{"id": "p1", "name": "Shinobi Page", "mimeType": "folder"},
+                                {"id": "fin", "name": "Finished", "mimeType": "folder"}],
+                "p1": [{"id": "s1", "name": "Naruto.MOV", "mimeType": "video/quicktime", "size": "9000000000"}],
+                "id:Inbox/Processed": [{"id": "x", "name": "old.MOV", "mimeType": "video/quicktime",
+                                        "size": "60000000000"}],
+                "id:Longform/Finished": [{"id": "f1", "name": "Old Page", "mimeType": "folder"}],
+                "f1": [{"id": "y", "name": "a.MOV", "mimeType": "video/quicktime", "size": "20000000000"}],
+            }
+
+        def folder(self, p=""):
+            return "id:" + p
+
+        def list(self, fid, kind="video"):
+            files = self.tree.get(fid, [])
+            return [f for f in files if (f["mimeType"] == "folder") == (kind == "folder")]
+
+        def about(self):
+            return {"storageQuota": {"usage": "1200000000000", "limit": "5000000000000"}}
+
+        def move(self, fid, to, frm):
+            self.moves.append(fid)
+
+        def upload(self, path, folder, name=None, mime="video/mp4"):
+            self.ups.append(folder)
+            return {"webViewLink": "https://drive/x"}
+
+    def test_longform_sessions_become_shorts_without_moving(self):
+        bot, state, d = FakeBot(), fresh_state(), self.D()
+        state["owner_chat_id"] = OWNER
+        cfg = load_config()
+        cfg["timezone"] = "UTC"
+        r = Runner(bot, state, cfg, clock=lambda: datetime(2026, 11, 9, 9, tzinfo=timezone.utc), drive=d)
+        r.poll()
+        r.poll()                                                         # second poll: nothing new
+        drawings = {x["drive_id"]: x for x in state["drawings"].values()}
+        self.assertEqual(set(drawings), {"i1", "s1"})                    # Finished folder ignored
+        self.assertTrue(drawings["s1"]["keep_in_place"])
+        self.assertEqual(sum("new recording" in t for t in bot.texts()), 1)
+        self.assertIn("Longform › Shinobi Page: Naruto.MOV", [t for t in bot.texts() if "new recording" in t][0])
+        src = Path(tempfile.mkdtemp()) / "raw.mp4"
+        src.write_bytes(b"x")
+        r.drive_source = lambda dd, tmp: src
+        self.stub_render(r)
+        self.assertEqual(d.moves, ["i1"])                                # only the Inbox file moved
+        self.assertIn("id:Done/Shorts/Naruto", d.ups)
+
+    def test_monthly_storage_note(self):
+        bot, state, d = FakeBot(), fresh_state(), self.D()
+        state["owner_chat_id"] = OWNER
+        d.tree["id:Inbox"], d.tree["id:Longform"] = [], []
+        cfg = load_config()
+        cfg["timezone"] = "UTC"
+        clock = Clock(datetime(2026, 11, 9, 9, tzinfo=timezone.utc))
+        r = Runner(bot, state, cfg, clock=clock, drive=d)
+        r.poll()
+        r.poll()
+        notes = [t for t in bot.texts() if "Monthly storage check" in t]
+        self.assertEqual(len(notes), 1)
+        self.assertIn("Processed (raw clips already made into Shorts): 60 GB", notes[0])
+        self.assertIn("Finished (sessions already in a LongDraw): 20 GB", notes[0])
+        self.assertIn("1.20 TB of 5 TB", notes[0])
+        clock.t = datetime(2026, 12, 1, 9, tzinfo=timezone.utc)
+        r.poll()
+        self.assertEqual(sum("Monthly storage check" in t for t in bot.texts()), 2)    # next month again
+        d.tree["id:Inbox/Processed"], d.tree["f1"] = [], []
+        clock.t = datetime(2027, 1, 1, 9, tzinfo=timezone.utc)
+        r.poll()
+        self.assertEqual(sum("Monthly storage check" in t for t in bot.texts()), 2)    # under 50 GB: quiet

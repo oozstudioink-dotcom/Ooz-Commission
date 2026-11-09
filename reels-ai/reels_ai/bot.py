@@ -24,6 +24,7 @@ STYLE_LABELS = {
     "before_after": "Before / after",
     "detail_zoom": "Detail zoom",
     "ink_only": "Ink only",
+    "process_cuts": "Process cuts",
     "page_compilation": "Page compilation",
 }
 PLATFORM_LABELS = {"youtube": "YouTube Shorts", "instagram": "Instagram Reels", "tiktok": "TikTok"}
@@ -32,7 +33,7 @@ MAX_BOT_DOWNLOAD = 20 * 1024 * 1024   # Telegram bots can only download files up
 HELP = (
     "Send me a drawing timelapse (as a video) and I'll make variants for you to approve.\n"
     "Add the character name as the video's caption, e.g. Naruto.\n\n"
-    "/status  overview\n/longform [project]  build a LongDraw from Drive \u203a Longform (no name = list projects)\n/compile [title]  stitch the drawings since the last compilation into one page video\n/report  stats report now (also sent every Sunday)\n/queue  your video bank and how many days it covers\n/pause  stop all posting\n/resume  start posting again\n/help  this message"
+    "/status  overview\n/longform [project]  build a LongDraw from Drive \u203a Longform (no name = list projects)\n/redo [name]  re-make a drawing's Shorts with the latest editing (no name = newest)\n/compile [title]  stitch the drawings since the last compilation into one page video\n/report  stats report now (also sent every Sunday)\n/queue  your video bank and how many days it covers\n/pause  stop all posting\n/resume  start posting again\n/help  this message"
 )
 
 
@@ -96,6 +97,7 @@ class Runner:
                 self.post_due()
             self.warn_low_bank()
         self.check_drive_inbox()
+        self.storage_check()
         self.refresh_stats()
         self.weekly_report()
         return (any(d["status"] == "queued" for d in self.state["drawings"].values())
@@ -144,6 +146,8 @@ class Runner:
                 self.say(f"\U0001f3ac Compiling {len(pending)} drawings into a page video on the next run.")
         elif cmd == "/longform":
             self.longform_command(text.split(maxsplit=1)[1].strip() if len(text.split(maxsplit=1)) > 1 else "")
+        elif cmd == "/redo":
+            self.redo(text.split(maxsplit=1)[1].strip() if len(text.split(maxsplit=1)) > 1 else "")
         elif cmd == "/id":
             self.say(f"Your chat ID: {chat['id']}\n(For the commission-alerts script's TELEGRAM_CHAT_ID.)")
         elif cmd == "/report":
@@ -160,6 +164,44 @@ class Runner:
         elif text:
             self.say("Send me a timelapse video, or /help.")
 
+    def redo(self, name: str) -> None:
+        """Re-render a drawing's Shorts (e.g. after the editing improves). Unsent old versions
+        leave the bank so the new ones replace them; already-dropped ones are untouched."""
+        want = name.lower()
+        found = [(did, d) for did, d in self.state["drawings"].items()
+                 if d["status"] in ("rendered", "failed")
+                 and (not want or want in (d.get("subject") or "").lower()
+                      or want in (d.get("drive_name") or "").lower())]
+        if not found:
+            names = sorted({d.get("subject") or d.get("drive_name") or did
+                            for did, d in self.state["drawings"].items() if d["status"] == "rendered"})
+            self.say(f"🔎 No finished drawing matches “{name}”." if name else
+                     "🔎 No finished drawings yet.")
+            if names:
+                self.say("Try one of: " + ", ".join(names[:20]))
+            return
+        did, d = max(found, key=lambda x: (x[1].get("received") or "", int(x[0][1:])))
+        old = [v for v in self.state["variants"].values() if v["drawing"] == did]
+        replaced = 0
+        unsent: list[str] = []
+        for v in old:
+            if v["status"] in ("approved", "pending") and not v.get("dropped_at"):
+                v["status"] = "replaced"
+                replaced += 1
+                unsent.append(v["style"])
+        # Styles you already posted aren't re-made (no repeats in the feed); styles this drawing
+        # never had (e.g. a new one) are added. If everything was posted, all are re-made.
+        made = {v["style"] for v in old}
+        never = [st for st in self.cfg["variants"]["styles"] if st in STYLE_LABELS and st not in made]
+        styles = [st for st in dict.fromkeys(unsent + never) if st in STYLE_LABELS]
+        styles = styles or [st for st in dict.fromkeys(v["style"] for v in old) if st in STYLE_LABELS]
+        d.update(status="queued", redo=True, keep_in_place=True, redo_styles=styles or None)
+        d.pop("error", None)
+        label = d.get("subject") or d.get("drive_name") or did
+        self.say(f"🔁 Re-making {label} with the latest editing"
+                 + (f" ({len(styles)} styles)" if styles else "") + ". It arrives within the hour"
+                 + (f"; its {replaced} unsent old version(s) leave the bank." if replaced else "."))
+
     # ------------------------------------------------------------------ Google Drive inbox
     def drive_problem(self, e: Exception) -> None:
         """Tell the owner about a Drive problem once per distinct message, not every run."""
@@ -170,30 +212,73 @@ class Runner:
             self.say(f"\u26a0\ufe0f Google Drive: {msg}")
 
     def check_drive_inbox(self) -> None:
+        """New videos in Inbox, and (shorts_from_longform) in Longform project folders, become
+        Shorts. Longform sessions stay where they are so the LongDraw can use them too."""
         if not self.drive:
             return
         from .drive import subject_from_name
+        sources = []                                    # (file, folder label, keep in place?)
         try:
-            inbox = self.drive.folder("Inbox")
-            files = self.drive.list(inbox, "video")
+            for f in self.drive.list(self.drive.folder("Inbox"), "video"):
+                sources.append((f, "Inbox", False))
+            if self.cfg.get("drive", {}).get("shorts_from_longform", True):
+                for proj in self.drive.list(self.drive.folder("Longform"), "folder"):
+                    if proj["name"] == "Finished":
+                        continue
+                    for f in self.drive.list(proj["id"], "video"):
+                        sources.append((f, f"Longform \u203a {proj['name']}", True))
         except Exception as e:  # noqa: BLE001 - never let Drive break Telegram handling
             return self.drive_problem(e)
         self.state.pop("drive_error", None)
         seen = self.state.setdefault("drive_seen", [])
-        new = [f for f in files if f["id"] not in seen]
-        for f in new:
+        new = [(f, where, keep) for f, where, keep in sources if f["id"] not in seen]
+        for f, where, keep in new:
             meta = f.get("videoMediaMetadata") or {}
             did = new_id(self.state, "d")
             self.state["drawings"][did] = {
-                "source": "drive", "drive_id": f["id"], "drive_name": f["name"],
-                "subject": subject_from_name(f["name"]), "received": iso(self.clock()),
+                "source": "drive", "drive_id": f["id"], "drive_name": f["name"], "drive_where": where,
+                "keep_in_place": keep, "subject": subject_from_name(f["name"]), "received": iso(self.clock()),
                 "duration": (int(meta["durationMillis"]) / 1000) if meta.get("durationMillis") else None,
                 "size_gb": round(int(f.get("size") or 0) / 1e9, 2), "status": "queued"}
             seen.append(f["id"])
         if new:
-            names = ", ".join(f["name"] for f in new[:6]) + (" \u2026" if len(new) > 6 else "")
-            self.say(f"\U0001f4e5 Found {len(new)} new recording(s) in Drive \u203a Inbox: {names}\n"
-                     "I'll turn them into variants now. Long 4K files take a few minutes each.")
+            by_place: dict[str, list[str]] = {}
+            for f, where, _ in new:
+                by_place.setdefault(where, []).append(f["name"])
+            more = " \u2026"
+            lines = [f"\u2022 {where}: {', '.join(n[:6])}{more if len(n) > 6 else ''}"
+                     for where, n in by_place.items()]
+            self.say(f"\U0001f4e5 Found {len(new)} new recording(s) in Drive:\n" + "\n".join(lines) +
+                     "\nTurning them into 4K Shorts now (LongDraw sessions stay in their folder).")
+
+    # ------------------------------------------------------------------ storage
+    def storage_check(self) -> None:
+        """Monthly: how much space raw recordings use, and Drive's overall usage. Never deletes."""
+        if not self.drive:
+            return
+        month = self.local(self.clock()).strftime("%Y-%m")
+        if self.state.get("storage_month") == month:
+            return
+        try:
+            raw = sum(int(f.get("size") or 0) for f in self.drive.list(self.drive.folder("Inbox/Processed"), "video"))
+            fin = 0
+            for proj in self.drive.list(self.drive.folder("Longform/Finished"), "folder"):
+                fin += sum(int(f.get("size") or 0) for f in self.drive.list(proj["id"], "video"))
+            quota = self.drive.about().get("storageQuota", {})
+        except Exception as e:  # noqa: BLE001
+            print(f"warn: storage check: {e}")
+            return
+        self.state["storage_month"] = month
+        warn_gb = float(self.cfg.get("drive", {}).get("storage_alert_gb", 50))
+        if (raw + fin) / 1e9 < warn_gb:
+            return
+        used, limit = int(quota.get("usage") or 0), int(quota.get("limit") or 0)
+        total = (f"\nDrive overall: {used / 1e12:.2f} TB of {limit / 1e12:.0f} TB used." if limit else "")
+        self.say("\U0001f9f9 Monthly storage check\n"
+                 f"\u2022 Inbox \u203a Processed (raw clips already made into Shorts): {raw / 1e9:.0f} GB\n"
+                 f"\u2022 Longform \u203a Finished (sessions already in a LongDraw): {fin / 1e9:.0f} GB"
+                 f"{total}\nThese are safe to delete when you're ready; the Shorts and LongDraws are in Done. "
+                 "I never delete anything myself.")
 
     def drive_source(self, d: dict, tmp: Path) -> Path:
         """Stream a raw Drive recording into a small timelapse working copy."""
@@ -201,6 +286,15 @@ class Runner:
         dur = d.get("duration") or 30 * 60        # unknown -> assume long (keyframe mode)
         return make_proxy(self.drive.media_url(d["drive_id"]), self.drive.token(),
                           tmp / f"{d['drive_id']}.mp4", dur, max_side=3840 if self.shorts_4k else 2560)
+
+    def drive_raw(self, d: dict) -> dict:
+        """How Process cuts read short real-speed moments straight from the original on Drive."""
+        if not (self.drive and d.get("duration")):
+            return {}
+        url, token = self.drive.media_url(d["drive_id"]), self.drive.fresh_token()
+        return {"raw_duration": float(d["duration"]),
+                "raw_input": lambda t0: ["-headers", f"Authorization: Bearer {token}\r\n",
+                                         "-ss", f"{t0:.3f}", "-i", url]}
 
     @property
     def shorts_4k(self) -> bool:
@@ -211,7 +305,8 @@ class Runner:
         Done/Shorts. Returns {style: Drive link}."""
         links: dict[str, str] = {}
         try:
-            self.drive.move(d["drive_id"], self.drive.folder("Inbox/Processed"), self.drive.folder("Inbox"))
+            if not d.get("keep_in_place"):          # LongDraw sessions stay in their project folder
+                self.drive.move(d["drive_id"], self.drive.folder("Inbox/Processed"), self.drive.folder("Inbox"))
         except Exception as e:  # noqa: BLE001
             print(f"warn: couldn't move {d.get('drive_name')}: {e}")
         if not (self.cfg.get("drive", {}).get("backup_shorts", True) or self.shorts_4k):
@@ -220,8 +315,9 @@ class Runner:
             name = d.get("subject") or Path(d.get("drive_name") or did).stem
             folder = self.drive.folder(f"Done/Shorts/{name}")
             for r in results:
+                tag = " (redo)" if d.get("redo") else ""
                 up = self.drive.upload(out_dir / r["file"], folder,
-                                       f"{name} - {STYLE_LABELS.get(r['name'], r['name'])}.mp4")
+                                       f"{name} - {STYLE_LABELS.get(r['name'], r['name'])}{tag}.mp4")
                 if up.get("webViewLink"):
                     links[r["name"]] = up["webViewLink"]
         except Exception as e:  # noqa: BLE001
@@ -650,13 +746,16 @@ class Runner:
                         src = self.drive_source(d, tmp)
                     else:
                         src = self.bot.download(d["file_id"], tmp / f"{did}.mp4")
-                    styles = self.choose_styles(did)
+                    styles = d.pop("redo_styles", None) or self.choose_styles(did)
                     copy = self.ai_copy(src, d, styles, tmp)
                     big = self.shorts_4k and d.get("source") == "drive"
+                    raw = self.drive_raw(d) if d.get("source") == "drive" else {}
+                    if d.get("source") == "drive" and not raw and "process_cuts" in styles:
+                        styles = [st for st in styles if st != "process_cuts"]   # needs the original
                     out_dir, results = make_variants(src, tmp / "out", styles,
                                                      seed=int(did[1:]), subject=d["subject"],
                                                      review_page=False, copy=copy,
-                                                     max_width=2160 if big else 1080)
+                                                     max_width=2160 if big else 1080, **raw)
                 except Exception as e:  # noqa: BLE001 - report any failure to the owner
                     d["status"] = "failed"
                     d["error"] = str(e)[:300]

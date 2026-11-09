@@ -32,7 +32,16 @@ Options: `--variants reveal_first ink_only` (pick some), `--seed 2` (different h
 - **detail box**: the most line-dense area (usually the face) and when it gets inked.
 - **arm sweeps**: frames where an arm covers the page are dropped from the edit.
 
+**Smooth motion:** frames are never shown twice in a row. When a variant speeds up, the frames it
+skips are blended into the frame it shows (up to 6, newest weighted most), so ink builds up
+smoothly and the hand glides. When a recording has fewer frames than the edit needs (long Drive
+recordings are sampled at a few frames per real second), neighbouring frames cross-fade instead of
+stuttering. Holds, flashbacks and the final reveal stay razor sharp. Knobs: `BLEND`, `MIN_SPAN`,
+`MAX_SLOW` in `variants.py`.
+
 ### Variants (all 8-15 s: channel data shows ~7-10 s average watch time)
+
+6 styles; each drawing gets `per_drawing` of them (least-used first).
 
 | Name | Idea | Look |
 |---|---|---|
@@ -41,6 +50,7 @@ Options: `--variants reveal_first ink_only` (pick some), `--seed 2` (different h
 | `before_after` | Sketch to ink wipe, then the inking | warm cream paper |
 | `detail_zoom` | Punches in on the face while it's inked, pulls back to reveal | clean |
 | `ink_only` | Skips pencils, straight into the ink | high-contrast B&W |
+| `process_cuts` | ~8 jump cuts of the pen actually moving (cut straight from the original recording, 2x for long sessions), finished piece first and last; the jump-cut format common in popular manga-inking Shorts | clean |
 
 Hooks, end cards and captions live in `reels_ai/hooks.py`; edit freely.
 
@@ -61,6 +71,12 @@ Full-quality files go to `Done/Shorts/<character>/`. Telegram gets 1080p preview
 send 50 MB at most), and every drop message links to its 4K file. Each run renders for at most
 `max_render_minutes`; the rest continues on the next run. "All caught up" is sent when the queue
 is empty.
+
+## Upload once
+
+Sessions uploaded to `Longform/<project>/` are also turned into Shorts automatically and
+stay in place for the LongDraw (`[drive] shorts_from_longform`). A monthly Telegram note reports
+how much space processed raws use (`storage_alert_gb`); nothing is ever deleted by the bot.
 
 ## Google Drive inbox (raw recordings)
 
@@ -126,7 +142,8 @@ Runs hourly on GitHub Actions (`.github/workflows/reels-bot.yml`), free.
    twice in a row. Until the YouTube / Instagram connections exist (`method = "manual"`) it
    sends you the finished video + caption to upload yourself.
 
-Commands: `/status`, `/queue` (video bank and days of posts it covers), `/pause`, `/resume`, `/help`.
+Commands: `/status`, `/queue` (video bank and days of posts it covers), `/redo [name]` (re-make a
+drawing's unsent Shorts with the latest editing; no name = newest), `/pause`, `/resume`, `/help`.
 The bot warns in Telegram when the bank drops below `[bank] warn_below_days`. The first person to message the bot becomes
 its owner; everyone else is ignored. Memory lives in `state/state.json` (committed by the job).
 

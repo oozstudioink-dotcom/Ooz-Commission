@@ -40,6 +40,13 @@ HOOKS = {
         "Inking {subject}, no talking",
         "Skip the sketch. Here's the ink.",
     ],
+    "process_cuts": [
+        "Watch every line go down",
+        "How I ink {subject}",
+        "Inking {subject} by hand",
+        "Watch the pen work",
+        "Every line by hand",
+    ],
 }
 
 END_CARDS = [

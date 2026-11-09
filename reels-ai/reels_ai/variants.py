@@ -10,6 +10,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Callable
 
+import cv2
 import numpy as np
 
 from . import fx, hooks
@@ -19,12 +20,13 @@ from .media import FPS, Encoder, FrameStore
 
 @dataclass
 class Shot:
-    idx: int
+    idx: float                      # source frame (fractional = cross-fade of neighbours)
     cam: tuple[float, float, float] = (0.5, 0.5, 1.0)
     alt: int | None = None          # second frame for wipes
     wipe: float | None = None
     flash: float = 0.0
     bar: float | None = None
+    src: str | None = None          # None = the timelapse; else a real-speed clip (Plan.clips)
 
 
 @dataclass
@@ -45,6 +47,7 @@ class Plan:
     texts: list[TextCard] = field(default_factory=list)
     hook: str = ""
     caption: str = ""
+    clips: dict = field(default_factory=dict)      # real-speed clips: key -> FrameStore
 
     @property
     def seconds(self) -> float:
@@ -52,35 +55,44 @@ class Plan:
 
 
 # ---------------------------------------------------------------- timing helpers
-def ramp(an: Analysis, a: int, b: int, dur: float, focus: int | None = None,
-         slow: float = 4.0) -> list[int]:
-    """Source frame indices covering [a, b] in `dur` seconds.
+MAX_SLOW = 2.0   # at most this many output frames per source frame (in-betweens are cross-fades)
 
-    Never slower than real time (no duplicated frames). With `focus`, time stretches around
-    that moment (up to 1x) and the rest speeds up to compensate - a speed ramp.
-    Frames where an arm blocks the page are skipped.
+
+def ramp(an: Analysis, a: int, b: int, dur: float, focus: int | None = None,
+         slow: float = 4.0) -> list[float]:
+    """Source positions (fractional frame numbers) covering [a, b] in `dur` seconds.
+
+    With `focus`, time stretches around that moment and the rest speeds up to compensate - a
+    speed ramp. Positions are fractional, so when the clip has fewer frames than the edit needs
+    the renderer cross-fades between neighbours instead of showing a frame twice (no stop-motion
+    stutter). Frames where an arm blocks the page are stepped over.
     """
     b = max(b, a + 1)
-    src = np.array(an.clean_range(a, min(b, an.n_frames - 1)))
-    n_out = int(min(round(dur * FPS), len(src)))
-    w = np.ones(len(src))
+    src = np.array(an.clean_range(a, min(b, an.n_frames - 1)), dtype=np.float64)
+    m = len(src)
+    n_out = max(1, int(round(dur * FPS)))
+    if m < 2:
+        return [float(src[0])] * n_out
+    n_out = min(n_out, int(MAX_SLOW * (m - 1)) + 1)
+    w = np.ones(m)
     if focus is not None and a <= focus <= b:
-        sigma = max(FPS * 0.6, len(src) * 0.05)
+        sigma = max(FPS * 0.6, m * 0.05)
         w += (slow - 1) * np.exp(-((src - focus) / sigma) ** 2)
-    dens = w / w.sum() * n_out
-    for _ in range(20):                          # cap at 1 output frame per source frame
-        over = dens > 1
+    seg = (w[:-1] + w[1:]) / 2                       # output frames spent on each source step
+    dens = seg / seg.sum() * (n_out - 1)
+    for _ in range(100):                             # cap the slow-down, hand the rest out evenly
+        over = dens > MAX_SLOW + 1e-9
         if not over.any():
             break
-        spare = (dens[over] - 1).sum()
-        dens[over] = 1
-        free = ~over & (dens < 1)
+        spare = (dens[over] - MAX_SLOW).sum()
+        dens[over] = MAX_SLOW
+        free = dens < MAX_SLOW - 1e-9
         if not free.any():
             break
         dens[free] += spare * dens[free] / dens[free].sum()
-    cum = np.cumsum(dens)
-    picks = np.searchsorted(cum, np.arange(n_out) + 0.5)
-    return [int(src[min(p, len(src) - 1)]) for p in picks]
+    cum = np.concatenate([[0.0], np.cumsum(dens)])
+    u = np.interp(np.arange(n_out) * cum[-1] / max(1, n_out - 1), cum, np.arange(m))
+    return [float(x) for x in np.interp(u, np.arange(m), src)]
 
 
 def hold(idx: int, dur: float) -> list[int]:
@@ -183,22 +195,75 @@ def ink_only(a: Analysis, rng, subject) -> Plan:
     return p
 
 
+CUT_SECONDS = 1.1     # each real-speed moment on screen
+CUTS = 8
+
+
+def pick_moments(a: Analysis, n: int = CUTS) -> list[int]:
+    """Timelapse frames where ink is going down, spread evenly through the inking.
+
+    Each moment is the busiest stretch of its slice of the ink stage (most new ink), on a frame
+    where the page isn't blocked by an arm."""
+    win = max(1, a.window_frames)
+    prog = np.asarray(a.ink_progress, dtype=float)
+    gain = np.diff(prog, prepend=prog[:1]) if len(prog) else np.zeros(0)
+    lo, hi = a.ink_start // win, max(a.ink_start // win + 1, a.ink_end // win)
+    edges = np.linspace(lo, hi, n + 1)
+    out: list[int] = []
+    for k in range(n):
+        w0, w1 = int(edges[k]), max(int(edges[k]) + 1, int(edges[k + 1]))
+        seg = gain[w0:w1]
+        w = w0 + (int(np.argmax(seg)) if seg.size else 0)
+        f = int(min(a.n_frames - 1, w * win + win // 2))
+        ok = [i for i in range(max(0, f - win), min(a.n_frames, f + win)) if a.usable[i]]
+        f = min(ok, key=lambda i: abs(i - f)) if ok else f
+        if not out or f > out[-1]:
+            out.append(f)
+    return out
+
+
+def process_cuts(a: Analysis, rng, subject, clips: dict | None = None) -> Plan:
+    p = Plan("process_cuts", "Real-speed jump cuts: short moments of the pen actually moving, hopping "
+             "forward through the inking, finished piece at the start and end.", "clean")
+    if not clips:
+        raise ValueError("process_cuts needs real-speed clips from the original recording")
+    p.clips = clips
+    open_ = hold(a.reveal_idx, 0.6)
+    p.shots += shots(open_, push(len(open_), 1.08, 1.0))
+    for k, (key, store) in enumerate(clips.items()):
+        n = len(store)
+        z0, z1 = (1.0, 1.05) if k % 2 == 0 else (1.05, 1.0)      # a slow push, alternating
+        p.shots += [Shot(i, c, src=key) for i, c in zip(range(n), push(n, z0, z1))]
+    t_end = p.seconds
+    end = hold(a.reveal_idx, 1.3)
+    p.shots += shots(end, push(len(end), 1.0, 1.04))
+    p.hook = hooks.pick_hook("process_cuts", rng, subject, round(p.seconds))
+    p.texts = [TextCard(p.hook, "outline", 0, t_end),
+               TextCard(hooks.pick_end_card(rng), "box", t_end + 0.1, p.seconds)]
+    return p
+
+
 RECIPES: dict[str, Callable] = {
     "reveal_first": reveal_first,
     "speedrun": speedrun,
     "before_after": before_after,
     "detail_zoom": detail_zoom,
     "ink_only": ink_only,
+    "process_cuts": process_cuts,
 }
 
 
 def build(a: Analysis, names: list[str], seed: int, subject: str | None,
-          copy: dict | None = None) -> list[Plan]:
-    """`copy` (from ai.write_copy) replaces template hooks/captions where it has them."""
+          copy: dict | None = None, clips: dict | None = None) -> list[Plan]:
+    """`copy` (from ai.write_copy) replaces template hooks/captions where it has them.
+    `clips`: real-speed clips from the original recording (needed by process_cuts)."""
     plans = []
     for name in names:
         rng = random.Random(f"{seed}-{name}")
-        plan = RECIPES[name](a, rng, subject)
+        if name == "process_cuts":
+            plan = process_cuts(a, rng, subject, clips)
+        else:
+            plan = RECIPES[name](a, rng, subject)
         plan.caption = hooks.make_caption(rng, subject)
         ai_hook = (copy or {}).get("hooks", {}).get(name)
         if ai_hook:
@@ -214,28 +279,121 @@ def build(a: Analysis, names: list[str], seed: int, subject: str | None,
 
 
 # ---------------------------------------------------------------- render
+BLEND = 6        # max source frames blended into one output frame (motion blur)
+MIN_SPAN = 1.5   # source frames of motion trail kept even at real speed or slower
+
+
+def _snap(j: int, usable: list[bool] | None, step: int, limit: int) -> int | None:
+    """Nearest frame at or beyond j (stepping by `step`) where no arm blocks the page."""
+    for k in range(limit + 1):
+        i = j + k * step
+        if i < 0 or (usable is not None and i >= len(usable)):
+            return None
+        if usable is None or usable[i]:
+            return i
+    return None
+
+
+def _at(x: float, usable: list[bool] | None, limit: int) -> dict[int, float]:
+    """A fractional position as a cross-fade of the clean frames either side of it."""
+    lo, f = int(np.floor(x)), x - np.floor(x)
+    if f < 1e-3:
+        lo_i = _snap(lo, usable, -1, limit) if usable is not None else lo
+        return {lo if lo_i is None else lo_i: 1.0}
+    a = _snap(lo, usable, -1, limit)
+    b = _snap(lo + 1, usable, +1, limit)
+    if a is None or b is None or a == b:
+        return {lo if a is None and b is None else (a if b is None else b): 1.0}
+    f = (x - a) / (b - a) if b > a else f
+    return {a: 1 - f, b: f}
+
+
+Window = tuple[tuple[int, float], ...]
+
+
+def blend_windows(pos: list[float], usable: list[bool] | None = None, blend: int = BLEND,
+                  min_span: float = MIN_SPAN) -> list[Window]:
+    """For each output frame, the source frames (with weights) it is made of.
+
+    - Speed-up: the frames it skips are blended in (motion blur, newest weighted most), so ink
+      builds up smoothly and the hand glides instead of jumping.
+    - Slower than the clip (sparse recordings): neighbouring frames cross-fade, so nothing is
+      ever shown twice in a row (no stop-motion stutter).
+    - Holds, flashbacks and long cuts stay single sharp frames; arm-sweep frames are left out.
+    """
+    out: list[Window] = []
+    prev = None
+    lim = 4 * blend
+    for p in pos:
+        step = None if prev is None else p - prev
+        prev = p
+        if step is None or step <= 1e-6 or step > lim or blend <= 1:
+            parts = _at(p, usable, lim)
+        else:
+            span = min(max(step, min_span), blend)
+            n = int(np.clip(np.ceil(span * 2), 2, 2 * blend))
+            parts: dict[int, float] = {}
+            for k in range(n):
+                x = p - span * (n - 1 - k) / n          # oldest .. newest (x = p)
+                for i, wt in _at(max(x, 0.0), usable, lim).items():
+                    parts[i] = parts.get(i, 0.0) + wt * (k + 1)
+        tot = sum(parts.values())
+        out.append(tuple(sorted((i, round(wt / tot, 3)) for i, wt in parts.items() if wt / tot >= 0.02)))
+    return out
+
+
+def mix(store, win: Window) -> np.ndarray:
+    """Weighted average of source frames (running uint8 blend: fast even at 4K)."""
+    if len(win) == 1:
+        return store[win[0][0]]
+    out, total = None, 0.0
+    for i, wt in win:
+        total += wt
+        f = store[i]
+        out = f if out is None else cv2.addWeighted(out, 1 - wt / total, f, wt / total, 0)
+    return out
+
+
+def single(idx: float) -> Window:
+    return ((int(round(idx)), 1.0),)
+
+
 def render(plan: Plan, store: FrameStore, out: Path, audio: Path | None = None,
-           focus: tuple[float, float, float] = (0.5, 0.5, 1.0)) -> Path:
+           focus: tuple[float, float, float] = (0.5, 0.5, 1.0), usable: list[bool] | None = None,
+           blend: int = BLEND) -> Path:
     w, h = store.width, store.height
     enc = Encoder(out, w, h, audio, duration=plan.seconds)
-    graded: dict[int, np.ndarray] = {}
+    stores = {None: store, **plan.clips}
+    windows: list[Window] = []
+    k = 0
+    while k < len(plan.shots):                     # blend within each run from one source
+        e = k
+        while e < len(plan.shots) and plan.shots[e].src == plan.shots[k].src:
+            e += 1
+        windows += blend_windows([s.idx for s in plan.shots[k:e]],
+                                 usable if plan.shots[k].src is None else None, blend)
+        k = e
+    graded: dict[tuple, np.ndarray] = {}
 
-    def frame(i: int) -> np.ndarray:
-        if i not in graded:
+    def frame(win: Window, src: str | None = None) -> np.ndarray:
+        key = (src, win)
+        if key not in graded:
             if len(graded) > 8:
                 graded.clear()
-            graded[i] = fx.grade(store[i], plan.grade)
-        return graded[i]
+            img = mix(stores[src], win)
+            if img.shape[:2] != (h, w):
+                img = cv2.resize(img, (w, h), interpolation=cv2.INTER_AREA)
+            graded[key] = fx.grade(img, plan.grade)
+        return graded[key]
 
     fade = 0.15
     try:
         for k, s in enumerate(plan.shots):
             t = k / FPS
-            img = frame(s.idx)
+            img = frame(windows[k] if s.wipe is None else single(s.idx), s.src)
             if s.wipe is not None and s.alt is not None:
-                img = fx.wipe(img, frame(s.alt), s.wipe)
-            img = fx.camera(img, *focus)            # frame this clip's drawing
-            img = fx.camera(img, *s.cam)
+                img = fx.wipe(img, frame(single(s.alt)), s.wipe)
+            img = fx.camera(img, *focus, s.cam)     # frame this clip's drawing, then the shot's move
             for card in plan.texts:
                 if card.start <= t < card.end:
                     alpha = min(1.0, (t - card.start) / fade, (card.end - t) / fade)
