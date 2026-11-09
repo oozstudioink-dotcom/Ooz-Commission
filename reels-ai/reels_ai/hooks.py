@@ -41,7 +41,7 @@ HOOKS = {
         "Skip the sketch. Here's the ink.",
     ],
     "process_cuts": [
-        "Inking my own manga",
+        "Watch every line go down",
         "How I ink {subject}",
         "Inking {subject} by hand",
         "Watch the pen work",
