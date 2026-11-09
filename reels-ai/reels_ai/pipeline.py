@@ -3,15 +3,49 @@ from __future__ import annotations
 
 import html
 import json
+import subprocess
 import time
 from pathlib import Path
+from typing import Callable
 
 import cv2
 import numpy as np
 
 from .analyze import analyze
-from .media import FrameStore, crop_vertical, normalize
-from .variants import RECIPES, build, render
+from .media import FPS, FrameStore, crop_vertical, normalize
+from .variants import CUT_SECONDS, RECIPES, build, pick_moments, render
+
+RawInput = Callable[[float], list[str]]     # seek time (s) -> ffmpeg input args for the original
+
+
+def process_cuts_clips(a, frame_filter: str, raw_input: RawInput, src_time: Callable[[float], float],
+                     speedup: float, total: float, out_dir: Path, size: tuple[int, int]) -> dict:
+    """Cut short real-speed moments straight from the original recording (dense frames: the pen
+    actually glides), framed like the timelapse. Long sessions play at 2x, short clips at 1x."""
+    speed = 2.0 if total > 180 else 1.0
+    raw_len = CUT_SECONDS * speed
+    w, h = size
+    clips = {}
+    for k, f in enumerate(pick_moments(a)):
+        t = src_time(f / FPS * speedup)
+        t0 = min(max(0.0, t - raw_len * 0.6), max(0.0, total - raw_len))
+        dst = out_dir / f"cut{k}.mp4"
+        cmd = (["ffmpeg", "-v", "error", "-y"] + raw_input(t0) +
+               ["-frames:v", str(int(round(CUT_SECONDS * FPS))), "-an", "-vf",
+                f"{frame_filter}setpts=PTS/{speed},fps={FPS},scale={w}:{h}:flags=lanczos,setsar=1",
+                "-c:v", "libx264", "-crf", "14", "-preset", "veryfast", "-pix_fmt", "yuv420p", str(dst)])
+        res = subprocess.run(cmd, capture_output=True, text=True)
+        if res.returncode != 0 or not dst.exists() or dst.stat().st_size == 0:
+            print(f"warn: real-speed cut at {t0:.1f}s failed: {(res.stderr or '').strip()[-200:]}")
+            continue
+        try:
+            store = FrameStore(dst)
+        except RuntimeError:
+            continue
+        if len(store) >= FPS // 2:
+            clips[f"cut{k}"] = store
+        dst.unlink(missing_ok=True)
+    return clips
 
 
 def _thumb(path: Path, at: float, dst: Path) -> None:
@@ -71,8 +105,12 @@ h2{{font-size:16px;margin:10px 0 4px;text-transform:capitalize}} small{{color:va
 def make_variants(src: Path, out_root: Path, names: list[str] | None = None, seed: int = 1,
                   subject: str | None = None, audio: Path | None = None, sheets: bool = False,
                   keep_work: bool = False, review_page: bool = True,
-                  copy: dict | None = None, max_width: int = 1080) -> tuple[Path, list[dict]]:
-    """Analyse `src` and render the requested variants. Returns (output dir, results)."""
+                  copy: dict | None = None, max_width: int = 1080, raw_input: RawInput | None = None,
+                  raw_duration: float | None = None) -> tuple[Path, list[dict]]:
+    """Analyse `src` and render the requested variants. Returns (output dir, results).
+
+    raw_input / raw_duration: where the original recording is when `src` is only a sampled
+    proxy of it (Drive). Without them `src` itself is the original."""
     src = Path(src).expanduser().resolve()
     out_dir = Path(out_root).resolve() / src.stem
     (out_dir / "variants").mkdir(parents=True, exist_ok=True)
@@ -84,10 +122,17 @@ def make_variants(src: Path, out_root: Path, names: list[str] | None = None, see
     print(f"normalized {src.name} -> {norm['width']}x{norm['height']} (x{norm['speedup']:.1f} speed)")
     store = FrameStore(work)
     a = analyze(store)
-    if store.width / store.height > 9 / 16 + 0.02:
+    wide = store.width / store.height > 9 / 16 + 0.02
+    frame_filter = ""
+    if not wide:
+        frame_filter = "crop=iw:'min(ih,trunc(iw*16/9/2)*2)',"          # taller than 9:16: centre
+    if wide:
         # Landscape recording: cut a vertical frame around this clip's drawing, then re-analyse.
         vert = out_dir / "work_vertical.mp4"
+        wide_w = store.width
         crop = crop_vertical(work, vert, a.work_center[0], out_w=max_width)
+        xf, wf = crop["crop_x"] / wide_w, crop["crop_w"] / wide_w
+        frame_filter = f"crop=trunc(iw*{wf:.5f}/2)*2:ih:trunc(iw*{xf:.5f}):0,"
         print(f"landscape -> vertical crop at x={crop['crop_x']} ({crop['crop_w']}px wide)")
         work.unlink(missing_ok=True)
         vert.rename(work)
@@ -97,8 +142,18 @@ def make_variants(src: Path, out_root: Path, names: list[str] | None = None, see
     (out_dir / "analysis.json").write_text(json.dumps({**norm, **a.to_dict()}, indent=2))
     print("beats (s):", a.to_dict()["seconds"])
 
-    names = names or list(RECIPES)
-    plans = build(a, names, seed, subject, copy)
+    names = list(names or RECIPES)
+    clips = None
+    if "process_cuts" in names:
+        total = raw_duration or norm["source_duration"]
+        scale = total / max(norm["source_duration"], 1e-6)
+        raw = raw_input or (lambda t0: ["-ss", f"{t0:.3f}", "-i", str(src)])
+        clips = process_cuts_clips(a, frame_filter, raw, lambda s: s * scale, norm["speedup"], total,
+                                 out_dir, (store.width, store.height))
+        if len(clips) < 4:
+            print(f"warn: only {len(clips)} real-speed moments; skipping process_cuts")
+            names.remove("process_cuts")
+    plans = build(a, names, seed, subject, copy, clips)
     results = []
     for plan in plans:
         dst = out_dir / "variants" / f"{plan.name}.mp4"

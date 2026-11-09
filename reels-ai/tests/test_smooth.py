@@ -77,3 +77,54 @@ class BlendWindowTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class ProcessCutsTest(unittest.TestCase):
+    """Process cuts: short real-speed moments from the original, spread through the inking."""
+
+    def test_moments_spread_through_ink_and_skip_arm_frames(self):
+        from reels_ai.variants import pick_moments
+        n, win = 900, 15
+        usable = [not (300 <= i < 330) for i in range(n)]
+        prog = list(np.clip((np.arange(n // win) * win - 150) / 600, 0, 1))
+        a = SimpleNamespace(n_frames=n, window_frames=win, ink_progress=prog, usable=usable,
+                            ink_start=150, ink_end=750)
+        m = pick_moments(a, 8)
+        self.assertGreaterEqual(len(m), 6)
+        self.assertEqual(m, sorted(m))
+        self.assertTrue(all(140 <= f <= 765 for f in m), m)
+        self.assertFalse(any(300 <= f < 330 for f in m))
+
+    def test_renders_from_original_recording(self):
+        import shutil
+        import subprocess
+        import tempfile
+        from pathlib import Path
+
+        import cv2
+
+        from reels_ai.pipeline import make_variants
+        tmp = Path(tempfile.mkdtemp())
+        try:
+            src = tmp / "naruto.mp4"
+            w, h, n = 360, 640, 600
+            vw = cv2.VideoWriter(str(tmp / "raw.avi"), cv2.VideoWriter_fourcc(*"MJPG"), 30, (w, h))
+            page = np.full((h, w, 3), 235, np.uint8)
+            for i in range(n):
+                if 60 < i < 560:                                    # ink goes down line by line
+                    y = 80 + (i - 60)
+                    cv2.line(page, (60, y), (300, y), (20, 20, 20), 1)
+                img = page.copy()
+                if i < 570:                                         # a hand following the pen
+                    cv2.circle(img, (320, 80 + max(0, i - 60) % 480), 40, (120, 160, 210), -1)
+                vw.write(img)
+            vw.release()
+            subprocess.run(["ffmpeg", "-v", "error", "-y", "-i", str(tmp / "raw.avi"), "-pix_fmt",
+                            "yuv420p", str(src)], check=True)
+            out, res = make_variants(src, tmp / "out", ["process_cuts"], subject="Naruto",
+                                     review_page=False)
+            self.assertEqual([r["name"] for r in res], ["process_cuts"])
+            self.assertTrue(8 <= res[0]["seconds"] <= 15, res[0]["seconds"])
+            self.assertTrue((out / "variants" / "process_cuts.mp4").stat().st_size > 10_000)
+        finally:
+            shutil.rmtree(tmp, ignore_errors=True)

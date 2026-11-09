@@ -12,7 +12,7 @@ from datetime import datetime, timedelta, timezone
 from .state import parse
 
 STYLE_LABELS = {"reveal_first": "Reveal first", "speedrun": "Speedrun", "before_after": "Before / after",
-                "detail_zoom": "Detail zoom", "ink_only": "Ink only", "page_compilation": "Page compilation"}
+                "detail_zoom": "Detail zoom", "ink_only": "Ink only", "process_cuts": "Process cuts", "page_compilation": "Page compilation"}
 
 
 def _norm(text: str) -> str:

@@ -24,6 +24,7 @@ STYLE_LABELS = {
     "before_after": "Before / after",
     "detail_zoom": "Detail zoom",
     "ink_only": "Ink only",
+    "process_cuts": "Process cuts",
     "page_compilation": "Page compilation",
 }
 PLATFORM_LABELS = {"youtube": "YouTube Shorts", "instagram": "Instagram Reels", "tiktok": "TikTok"}
@@ -281,6 +282,15 @@ class Runner:
         dur = d.get("duration") or 30 * 60        # unknown -> assume long (keyframe mode)
         return make_proxy(self.drive.media_url(d["drive_id"]), self.drive.token(),
                           tmp / f"{d['drive_id']}.mp4", dur, max_side=3840 if self.shorts_4k else 2560)
+
+    def drive_raw(self, d: dict) -> dict:
+        """How Process cuts read short real-speed moments straight from the original on Drive."""
+        if not (self.drive and d.get("duration")):
+            return {}
+        url, token = self.drive.media_url(d["drive_id"]), self.drive.fresh_token()
+        return {"raw_duration": float(d["duration"]),
+                "raw_input": lambda t0: ["-headers", f"Authorization: Bearer {token}\r\n",
+                                         "-ss", f"{t0:.3f}", "-i", url]}
 
     @property
     def shorts_4k(self) -> bool:
@@ -735,10 +745,13 @@ class Runner:
                     styles = d.pop("redo_styles", None) or self.choose_styles(did)
                     copy = self.ai_copy(src, d, styles, tmp)
                     big = self.shorts_4k and d.get("source") == "drive"
+                    raw = self.drive_raw(d) if d.get("source") == "drive" else {}
+                    if d.get("source") == "drive" and not raw and "process_cuts" in styles:
+                        styles = [st for st in styles if st != "process_cuts"]   # needs the original
                     out_dir, results = make_variants(src, tmp / "out", styles,
                                                      seed=int(did[1:]), subject=d["subject"],
                                                      review_page=False, copy=copy,
-                                                     max_width=2160 if big else 1080)
+                                                     max_width=2160 if big else 1080, **raw)
                 except Exception as e:  # noqa: BLE001 - report any failure to the owner
                     d["status"] = "failed"
                     d["error"] = str(e)[:300]

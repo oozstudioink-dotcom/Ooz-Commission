@@ -20,8 +20,8 @@ mode = "auto"
 fallback_hours = 6
 
 [variants]
-per_drawing = 5                  # max variants made from each drawing (5 = every style)
-styles = ["reveal_first", "speedrun", "before_after", "detail_zoom", "ink_only"]
+per_drawing = 5                  # variants made from each drawing (6 = every style; least-used styles first)
+styles = ["process_cuts", "reveal_first", "speedrun", "before_after", "detail_zoom", "ink_only"]
 
 # method = "manual": at post time the bot sends you the finished video + caption to upload
 #                    (until the YouTube / Instagram API connections are set up)

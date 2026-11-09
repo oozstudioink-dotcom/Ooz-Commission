@@ -23,6 +23,7 @@ STYLE_BRIEFS = {
     "before_after": "wipe between the pencil sketch and the final ink",
     "detail_zoom": "zooms into the face/detail while it is being inked",
     "ink_only": "only the inking stage, no pencils",
+    "process_cuts": "short jump cuts of the pen inking at near real speed (like 'How I ink my manga')",
 }
 
 PROMPT = """You write short-form video copy for Ooz Studio Ink, a traditional manga inking artist.

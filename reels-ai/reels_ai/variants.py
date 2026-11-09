@@ -26,6 +26,7 @@ class Shot:
     wipe: float | None = None
     flash: float = 0.0
     bar: float | None = None
+    src: str | None = None          # None = the timelapse; else a real-speed clip (Plan.clips)
 
 
 @dataclass
@@ -46,6 +47,7 @@ class Plan:
     texts: list[TextCard] = field(default_factory=list)
     hook: str = ""
     caption: str = ""
+    clips: dict = field(default_factory=dict)      # real-speed clips: key -> FrameStore
 
     @property
     def seconds(self) -> float:
@@ -193,22 +195,75 @@ def ink_only(a: Analysis, rng, subject) -> Plan:
     return p
 
 
+CUT_SECONDS = 1.1     # each real-speed moment on screen
+CUTS = 8
+
+
+def pick_moments(a: Analysis, n: int = CUTS) -> list[int]:
+    """Timelapse frames where ink is going down, spread evenly through the inking.
+
+    Each moment is the busiest stretch of its slice of the ink stage (most new ink), on a frame
+    where the page isn't blocked by an arm."""
+    win = max(1, a.window_frames)
+    prog = np.asarray(a.ink_progress, dtype=float)
+    gain = np.diff(prog, prepend=prog[:1]) if len(prog) else np.zeros(0)
+    lo, hi = a.ink_start // win, max(a.ink_start // win + 1, a.ink_end // win)
+    edges = np.linspace(lo, hi, n + 1)
+    out: list[int] = []
+    for k in range(n):
+        w0, w1 = int(edges[k]), max(int(edges[k]) + 1, int(edges[k + 1]))
+        seg = gain[w0:w1]
+        w = w0 + (int(np.argmax(seg)) if seg.size else 0)
+        f = int(min(a.n_frames - 1, w * win + win // 2))
+        ok = [i for i in range(max(0, f - win), min(a.n_frames, f + win)) if a.usable[i]]
+        f = min(ok, key=lambda i: abs(i - f)) if ok else f
+        if not out or f > out[-1]:
+            out.append(f)
+    return out
+
+
+def process_cuts(a: Analysis, rng, subject, clips: dict | None = None) -> Plan:
+    p = Plan("process_cuts", "Real-speed jump cuts: short moments of the pen actually moving, hopping "
+             "forward through the inking, finished piece at the start and end.", "clean")
+    if not clips:
+        raise ValueError("process_cuts needs real-speed clips from the original recording")
+    p.clips = clips
+    open_ = hold(a.reveal_idx, 0.6)
+    p.shots += shots(open_, push(len(open_), 1.08, 1.0))
+    for k, (key, store) in enumerate(clips.items()):
+        n = len(store)
+        z0, z1 = (1.0, 1.05) if k % 2 == 0 else (1.05, 1.0)      # a slow push, alternating
+        p.shots += [Shot(i, c, src=key) for i, c in zip(range(n), push(n, z0, z1))]
+    t_end = p.seconds
+    end = hold(a.reveal_idx, 1.3)
+    p.shots += shots(end, push(len(end), 1.0, 1.04))
+    p.hook = hooks.pick_hook("process_cuts", rng, subject, round(p.seconds))
+    p.texts = [TextCard(p.hook, "outline", 0, t_end),
+               TextCard(hooks.pick_end_card(rng), "box", t_end + 0.1, p.seconds)]
+    return p
+
+
 RECIPES: dict[str, Callable] = {
     "reveal_first": reveal_first,
     "speedrun": speedrun,
     "before_after": before_after,
     "detail_zoom": detail_zoom,
     "ink_only": ink_only,
+    "process_cuts": process_cuts,
 }
 
 
 def build(a: Analysis, names: list[str], seed: int, subject: str | None,
-          copy: dict | None = None) -> list[Plan]:
-    """`copy` (from ai.write_copy) replaces template hooks/captions where it has them."""
+          copy: dict | None = None, clips: dict | None = None) -> list[Plan]:
+    """`copy` (from ai.write_copy) replaces template hooks/captions where it has them.
+    `clips`: real-speed clips from the original recording (needed by process_cuts)."""
     plans = []
     for name in names:
         rng = random.Random(f"{seed}-{name}")
-        plan = RECIPES[name](a, rng, subject)
+        if name == "process_cuts":
+            plan = process_cuts(a, rng, subject, clips)
+        else:
+            plan = RECIPES[name](a, rng, subject)
         plan.caption = hooks.make_caption(rng, subject)
         ai_hook = (copy or {}).get("hooks", {}).get(name)
         if ai_hook:
@@ -308,21 +363,34 @@ def render(plan: Plan, store: FrameStore, out: Path, audio: Path | None = None,
            blend: int = BLEND) -> Path:
     w, h = store.width, store.height
     enc = Encoder(out, w, h, audio, duration=plan.seconds)
-    windows = blend_windows([s.idx for s in plan.shots], usable, blend)
-    graded: dict[Window, np.ndarray] = {}
+    stores = {None: store, **plan.clips}
+    windows: list[Window] = []
+    k = 0
+    while k < len(plan.shots):                     # blend within each run from one source
+        e = k
+        while e < len(plan.shots) and plan.shots[e].src == plan.shots[k].src:
+            e += 1
+        windows += blend_windows([s.idx for s in plan.shots[k:e]],
+                                 usable if plan.shots[k].src is None else None, blend)
+        k = e
+    graded: dict[tuple, np.ndarray] = {}
 
-    def frame(win: Window) -> np.ndarray:
-        if win not in graded:
+    def frame(win: Window, src: str | None = None) -> np.ndarray:
+        key = (src, win)
+        if key not in graded:
             if len(graded) > 8:
                 graded.clear()
-            graded[win] = fx.grade(mix(store, win), plan.grade)
-        return graded[win]
+            img = mix(stores[src], win)
+            if img.shape[:2] != (h, w):
+                img = cv2.resize(img, (w, h), interpolation=cv2.INTER_AREA)
+            graded[key] = fx.grade(img, plan.grade)
+        return graded[key]
 
     fade = 0.15
     try:
         for k, s in enumerate(plan.shots):
             t = k / FPS
-            img = frame(windows[k] if s.wipe is None else single(s.idx))
+            img = frame(windows[k] if s.wipe is None else single(s.idx), s.src)
             if s.wipe is not None and s.alt is not None:
                 img = fx.wipe(img, frame(single(s.alt)), s.wipe)
             img = fx.camera(img, *focus, s.cam)     # frame this clip's drawing, then the shot's move
