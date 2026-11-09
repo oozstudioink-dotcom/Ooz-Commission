@@ -259,6 +259,7 @@ class DropsFeedTest(FakeVariantsMixin, unittest.TestCase):
         os.environ.pop("TELEGRAM_OWNER_ID", None)
         self.cfg = load_config()
         self.cfg["timezone"] = "UTC"
+        self.cfg["approval"]["mode"] = "auto"            # albums straight into the bank
         self.clock = Clock(datetime(2026, 11, 7, 9, 0, tzinfo=timezone.utc))
         self.bot, self.state = FakeBot(), fresh_state()
         self.r = Runner(self.bot, self.state, self.cfg, clock=self.clock,
@@ -502,6 +503,7 @@ class RetireAndTidyTest(FakeVariantsMixin, unittest.TestCase):
         cfg = load_config()
         cfg["timezone"] = "UTC"
         cfg["bank"]["retired"] = []
+        cfg["approval"]["mode"] = "auto"
         clock = Clock(datetime(2026, 11, 7, 9, tzinfo=timezone.utc))
         r = Runner(bot, state, cfg, clock=clock)
         src = Path(tempfile.mkdtemp()) / "in.mp4"
@@ -560,6 +562,76 @@ class RetireAndTidyTest(FakeVariantsMixin, unittest.TestCase):
         msg_ = tidy.run(d, state)
         self.assertEqual(sorted(d.trashed), ["CRASHaaaaaaa", "OLDaaaaaaaaa"])
         self.assertIn("moved 2 duplicate", msg_)
+
+
+class KeepSkipTest(FakeVariantsMixin, unittest.TestCase):
+    """Default setup now: every new video comes with ✅ Keep / ❌ Skip; only kept ones are dropped,
+    each drop has 👍/👎, and your taste steers which styles get made."""
+
+    def test_keep_skip_rate_and_learn(self):
+        bot, state = FakeBot(), fresh_state()
+        cfg = load_config()
+        cfg["timezone"] = "UTC"
+        clock = Clock(datetime(2026, 11, 7, 9, tzinfo=timezone.utc))
+        r = Runner(bot, state, cfg, clock=clock)
+        src = Path(tempfile.mkdtemp()) / "in.mp4"
+        src.write_bytes(b"raw")
+        bot.files["raw0"] = src
+        bot.push(**msg(OWNER, text="hi"))
+        bot.push(**msg(OWNER, video={"file_id": "raw0", "file_unique_id": "u0", "file_size": 9}, caption="Goku"))
+        r.poll()
+        self.stub_render(r)
+        vids = {k: v for k, v in state["variants"].items()}
+        self.assertTrue(all(v["status"] == "pending" for v in vids.values()))
+        markup = bot.markups[next(iter(vids.values()))["message_id"]]
+        self.assertEqual(markup["inline_keyboard"][0][0]["text"], "✅ Keep")
+        ks = list(vids)
+        bot.push(**tap(f"ok:{ks[0]}"))
+        bot.push(**tap(f"no:{ks[1]}"))
+        r.poll()
+        self.assertEqual(state["variants"][ks[0]]["status"], "approved")
+        self.assertEqual(state["variants"][ks[1]]["status"], "skipped")
+        clock.t = datetime(2026, 11, 7, 20, tzinfo=timezone.utc)
+        r.poll()                                                      # only the kept one drops
+        dropped = [k for k, v in state["variants"].items() if v.get("dropped_at")]
+        self.assertEqual(dropped, [ks[0]])
+        drop_msg = max(bot.markups)
+        self.assertEqual(bot.markups[drop_msg]["inline_keyboard"][0][1]["callback_data"], f"dn:{ks[0]}")
+        bot.push(**tap(f"dn:{ks[0]}", message_id=drop_msg))
+        r.poll()
+        style = state["variants"][ks[0]]["style"]
+        self.assertEqual(state["style_feedback"][style], {"liked": 1, "disliked": 1})
+
+    def test_taste_weights(self):
+        r = Runner(FakeBot(), fresh_state(), load_config())
+        r.state["style_feedback"] = {"speedrun": {"liked": 0, "disliked": 4},
+                                     "one_take": {"liked": 4, "disliked": 0},
+                                     "ink_only": {"liked": 1, "disliked": 0}}          # too few: ignored
+        w = r.style_weights()
+        self.assertAlmostEqual(w["speedrun"], 0.4)
+        self.assertAlmostEqual(w["one_take"], 1.6)
+        self.assertNotIn("ink_only", w)
+        r.state["style_uses"] = {s: 3 for s in r.cfg["variants"]["styles"]}
+        self.assertNotIn("speedrun", r.choose_styles("d1"))
+
+
+class IdeasTest(unittest.TestCase):
+    def test_pasted_lines_become_hooks_and_captions(self):
+        bot, state = FakeBot(), fresh_state()
+        r = Runner(bot, state, load_config(), clock=Clock(datetime(2026, 11, 7, tzinfo=timezone.utc)))
+        bot.push(**msg(OWNER, text="hi"))
+        bot.push(**msg(OWNER, text="/ideas\nHooks:\n1. Wait for the last line\n- \u201cEvery line by hand\u201d\n"
+                                    "Caption: Inked this one on stream with the chat picking the character. Who next? \U0001f447"))
+        r.poll()
+        self.assertEqual(state["owner_ideas"]["hooks"], ["Wait for the last line", "Every line by hand"])
+        self.assertEqual(len(state["owner_ideas"]["captions"]), 1)
+        styles = ["one_take", "speedrun", "ink_only", "detail_zoom", "reveal_first"]
+        mixed = [r.with_owner_ideas(None, styles, f"d{i}") for i in range(20)]
+        used = [h for m in mixed for h in m["hooks"].values()]
+        self.assertTrue(used and set(used) <= {"Wait for the last line", "Every line by hand"})
+        bot.push(**msg(OWNER, text="/ideas clear"))
+        r.poll()
+        self.assertEqual(state["owner_ideas"]["hooks"], [])
 
 
 class StyleLearningTest(unittest.TestCase):
@@ -1589,6 +1661,7 @@ class Shorts4KFlowTest(FakeVariantsMixin, unittest.TestCase):
         cfg = load_config()
         cfg["timezone"] = "UTC"
         cfg["shorts"]["max_render_minutes"] = 0          # budget: one drawing per run
+        cfg["approval"]["mode"] = "auto"
         clock = Clock(datetime(2026, 11, 8, 9, tzinfo=timezone.utc))
         r = Runner(bot, state, cfg, clock=clock, drive=D())
         src = Path(tempfile.mkdtemp()) / "raw.mp4"

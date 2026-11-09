@@ -103,6 +103,15 @@ Ooz Reels/Longform/
 - When the page is done, `/longform Naruto Page` joins the drawings in number order into the LongDraw;
   chapters read `Kakashi (Part 2)` etc.
 
+## Keep / skip, ratings and your own hooks
+
+- `[approval] mode = "approve"`: every new video arrives on its own with its hook and caption and
+  **✅ Keep / ❌ Skip / ✏️ Edit caption**. Only kept videos go into the drops.
+- Each drop has **👍 Good one / 👎 Not my style**. Keeps, skips and ratings per style (3+ of them)
+  steer which styles get made next (0.4x to 1.6x), together with the weekly views.
+- `/ideas` + pasted lines (e.g. from the Gemini app): short lines become on-screen hooks, longer ones
+  captions; new videos mix them in (still checked for false claims). `/ideas clear` empties the list.
+
 ## Retiring drawings and tidying Drive
 
 - `config.toml` → `[bank] retired = ["Shinobi Undercover"]`: drawings whose name or file name contains

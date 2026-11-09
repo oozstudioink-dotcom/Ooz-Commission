@@ -16,7 +16,7 @@ post_to = "TikTok \u00b7 Instagram Reels \u00b7 YouTube Shorts"
 # "approve"        : each variant waits for your Post / Skip tap
 # "auto"           : variants go straight into the bank (sent to you as one album per drawing)
 # "approve_or_auto": asks you; if you don't answer within fallback_hours, approves anyway
-mode = "auto"
+mode = "approve"                 # you tap ✅ / ❌ on every new video; only ✅ ones are dropped
 fallback_hours = 6
 
 [variants]
@@ -72,7 +72,7 @@ storage_alert_gb = 50            # monthly Telegram note when processed raws exc
 
 [longform]
 # "LongDraw" YouTube videos built from Drive > Longform/<project>/ sessions.
-next_episode = 3                 # EP. number for the next upload (counts up automatically)
+next_episode = 2                 # EP. number for the next upload (counts up automatically)
 target_minutes = [20, 30]        # speed is picked so the cut lands in this range
 resolution = "4k"                # "4k" (3840x2160) or "1080p"
 art_panel_name = "YT_Longform_Finished_Art_Panel"   # optional image in the project folder for the thumbnail
@@ -96,8 +96,8 @@ socials = [
 ]
 schedule_title = "Upload schedule"
 schedule = [                     # "MAIN TEXT | small line under it"
-  "New Shorts | every day",
-  "LongDraw | every Sunday",
+  "New Shorts | every day \u00b7 5 PM EST",
+  "LongDraw | every Friday \u00b7 5 PM EST",
 ]
 
 [panels.advert]
