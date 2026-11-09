@@ -118,11 +118,21 @@
       "drive_name": "IMG_0157.mov",
       "drive_where": "Inbox",
       "duration": null,
-      "keep_in_place": false,
+      "keep_in_place": true,
       "received": "2026-11-09T05:27:58+00:00",
+      "redo": true,
+      "redo_styles": [
+        "speedrun",
+        "reveal_first",
+        "ink_only",
+        "detail_zoom",
+        "one_take",
+        "process_cuts",
+        "before_after"
+      ],
       "size_gb": 8.12,
       "source": "drive",
-      "status": "rendered",
+      "status": "queued",
       "subject": null
     },
     "d4": {
@@ -301,11 +311,21 @@
       "drive_name": "IMG_0156.mov",
       "drive_where": "Inbox",
       "duration": 819.719,
-      "keep_in_place": false,
+      "keep_in_place": true,
       "received": "2026-11-09T07:00:29+00:00",
+      "redo": true,
+      "redo_styles": [
+        "process_cuts",
+        "ink_only",
+        "speedrun",
+        "before_after",
+        "reveal_first",
+        "one_take",
+        "detail_zoom"
+      ],
       "size_gb": 4.67,
       "source": "drive",
-      "status": "rendered",
+      "status": "queued",
       "subject": null
     },
     "d46": {
@@ -468,7 +488,7 @@
     "reveal_first": 10,
     "speedrun": 9
   },
-  "update_offset": 116973155,
+  "update_offset": 116973158,
   "variants": {
     "v10": {
       "caption": "Brush pen on paper, no tablet. Drop a character for the next one 👇🏾\n\n#drawingprocess #naruto #mangadrawing #mangaart #mangaka #drawing #ink #narutofanart #inking #animeart",
@@ -935,7 +955,7 @@
       "message_id": 85,
       "posts": {},
       "seconds": 8.7,
-      "status": "approved",
+      "status": "replaced",
       "style": "speedrun"
     },
     "v41": {
@@ -951,7 +971,7 @@
       "message_id": 86,
       "posts": {},
       "seconds": 12.0,
-      "status": "approved",
+      "status": "replaced",
       "style": "reveal_first"
     },
     "v42": {
@@ -967,7 +987,7 @@
       "message_id": 87,
       "posts": {},
       "seconds": 9.4,
-      "status": "approved",
+      "status": "replaced",
       "style": "ink_only"
     },
     "v43": {
@@ -983,7 +1003,7 @@
       "message_id": 88,
       "posts": {},
       "seconds": 12.1,
-      "status": "approved",
+      "status": "replaced",
       "style": "detail_zoom"
     },
     "v47": {
@@ -1079,7 +1099,7 @@
       "message_id": 97,
       "posts": {},
       "seconds": 10.7,
-      "status": "approved",
+      "status": "replaced",
       "style": "process_cuts"
     },
     "v53": {
@@ -1095,7 +1115,7 @@
       "message_id": 98,
       "posts": {},
       "seconds": 9.4,
-      "status": "approved",
+      "status": "replaced",
       "style": "ink_only"
     },
     "v54": {
@@ -1111,7 +1131,7 @@
       "message_id": 99,
       "posts": {},
       "seconds": 8.7,
-      "status": "approved",
+      "status": "replaced",
       "style": "speedrun"
     },
     "v55": {
@@ -1127,7 +1147,7 @@
       "message_id": 100,
       "posts": {},
       "seconds": 10.6,
-      "status": "approved",
+      "status": "replaced",
       "style": "before_after"
     },
     "v56": {
@@ -1143,7 +1163,7 @@
       "message_id": 101,
       "posts": {},
       "seconds": 12.0,
-      "status": "approved",
+      "status": "replaced",
       "style": "reveal_first"
     },
     "v57": {
