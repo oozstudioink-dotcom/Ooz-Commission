@@ -121,4 +121,4 @@ model = "gemini-pro-latest"     # best quality; falls back to Flash when Pro is 
 
 [bank]
 warn_below_days = 3              # Telegram alert when the approved-video bank gets this low
-retired = ["Shinobi Undercover"]  # used enough: never dropped or re-made again (matches name or file name)
+retired = ["Shinobi Undercover", "My Hero Academia"]  # used enough: never dropped or re-made again (matches name or file name)

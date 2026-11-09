@@ -122,7 +122,7 @@ so styles still get ranked. `/queue` counts drawings ready. `split = []` restore
 
 ## Retiring drawings and tidying Drive
 
-- `config.toml` → `[bank] retired = ["Shinobi Undercover"]`: drawings whose name or file name contains
+- `config.toml` → `[bank] retired = [...]`, or `/retire <name>` in Telegram (`/unretire` undoes it): drawings whose name or file name contains
   one of these are never dropped, re-made (`/redo`) or rendered again. Their files stay in Drive.
 - `Run workflow → tidy-drive` moves leftover duplicate Shorts in `Done/Shorts/` (old versions replaced by
   `/redo`, copies from a crashed run) to Drive's Trash, restorable for 30 days. It goes by the bot's

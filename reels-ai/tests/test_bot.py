@@ -532,6 +532,21 @@ class RetireAndTidyTest(FakeVariantsMixin, unittest.TestCase):
         r.poll()
         self.assertTrue(any("No finished drawing" in t for t in bot.texts()))
 
+    def test_retire_command(self):
+        bot, state = FakeBot(), fresh_state()
+        cfg = load_config()
+        cfg["bank"]["retired"] = []
+        r = Runner(bot, state, cfg, clock=Clock(datetime(2026, 11, 7, tzinfo=timezone.utc)))
+        state["drawings"]["d5"] = {"subject": "My Hero Academia", "status": "queued"}
+        bot.push(**msg(OWNER, text="hi"))
+        bot.push(**msg(OWNER, text="/retire my hero"))
+        r.poll()
+        self.assertTrue(r.retired(state["drawings"]["d5"]))
+        self.assertTrue(any("1 drawing(s): My Hero Academia" in t for t in bot.texts()))
+        bot.push(**msg(OWNER, text="/unretire My Hero"))
+        r.poll()
+        self.assertFalse(r.retired(state["drawings"]["d5"]))
+
     def test_tidy_trashes_only_leftovers(self):
         from reels_ai import tidy
 

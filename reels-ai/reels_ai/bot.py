@@ -35,7 +35,7 @@ MAX_BOT_DOWNLOAD = 20 * 1024 * 1024   # Telegram bots can only download files up
 HELP = (
     "Send me a drawing timelapse (as a video) and I'll make variants for you to approve.\n"
     "Add the character name as the video's caption, e.g. Naruto.\n\n"
-    "/status  overview\n/longform [project]  build a LongDraw from Drive \u203a Longform (no name = list projects)\n/redo [name]  re-make a drawing's Shorts with the latest editing (no name = newest; all = every drawing)\n/ideas  paste hooks/captions (e.g. from the Gemini app) to mix into new videos\n/clear  delete recent chat messages (Telegram allows the last 2 days)\n/compile [title]  stitch the drawings since the last compilation into one page video\n/report  stats report now (also sent every Sunday)\n/queue  your video bank and how many days it covers\n/pause  stop all posting\n/resume  start posting again\n/help  this message"
+    "/status  overview\n/longform [project]  build a LongDraw from Drive \u203a Longform (no name = list projects)\n/redo [name]  re-make a drawing's Shorts with the latest editing (no name = newest; all = every drawing)\n/ideas  paste hooks/captions (e.g. from the Gemini app) to mix into new videos\n/retire <name>  never use a drawing again (/unretire to undo)\n/clear  delete recent chat messages (Telegram allows the last 2 days)\n/compile [title]  stitch the drawings since the last compilation into one page video\n/report  stats report now (also sent every Sunday)\n/queue  your video bank and how many days it covers\n/pause  stop all posting\n/resume  start posting again\n/help  this message"
 )
 
 
@@ -162,6 +162,9 @@ class Runner:
             self.redo_all() if arg.lower() == "all" else self.redo(arg)
         elif cmd == "/ideas":
             self.save_ideas(text.split(maxsplit=1)[1] if len(text.split(maxsplit=1)) > 1 else "")
+        elif cmd in ("/retire", "/unretire"):
+            self.retire_command(cmd == "/retire", text.split(maxsplit=1)[1].strip()
+                                if len(text.split(maxsplit=1)) > 1 else "")
         elif cmd == "/clear":
             self.clear_chat(int(m.get("message_id") or 0))
         elif cmd == "/id":
@@ -586,6 +589,30 @@ class Runner:
             self.say(f"✏️ Send the new caption for {STYLE_LABELS[v['style']]} ({vid}):",
                      force_reply=True)
 
+    def retire_command(self, retire: bool, name: str) -> None:
+        """/retire <name>: never render, drop or re-make drawings whose name (or file name) contains it.
+        /unretire <name> undoes it. Their files in Drive are left alone."""
+        lst = self.state.setdefault("retired", [])
+        if not name:
+            listed = self.cfg.get("bank", {}).get("retired", []) + lst
+            return self.say("Retired: " + (", ".join(listed) if listed else "nothing yet") +
+                            "\nUse /retire <name> or /unretire <name>.")
+        if retire:
+            if name.lower() not in [n.lower() for n in lst]:
+                lst.append(name)
+            hit = [d.get("subject") or d.get("drive_name") for d in self.state["drawings"].values()
+                   if self.retired(d)]
+            self.say(f"\U0001f4e6 Retired \u201c{name}\u201d: it won't be rendered, dropped or re-made again"
+                     + (f" ({len(hit)} drawing(s): {', '.join(sorted(set(map(str, hit))))})." if hit else
+                        ". No drawing matches that name yet."))
+        else:
+            before = len(lst)
+            lst[:] = [n for n in lst if n.lower() != name.lower()]
+            in_cfg = name.lower() in [n.lower() for n in self.cfg.get("bank", {}).get("retired", [])]
+            self.say(f"\u267b\ufe0f \u201c{name}\u201d is back in the rotation." if len(lst) < before else
+                     (f"\u201c{name}\u201d is retired in config.toml ([bank] retired); remove it there." if in_cfg
+                      else f"\u201c{name}\u201d wasn't retired."))
+
     def save_ideas(self, text: str) -> None:
         """/ideas + pasted lines (e.g. from the Gemini app): short lines become on-screen hooks,
         longer ones captions. /ideas clear empties the list."""
@@ -650,7 +677,8 @@ class Runner:
     # ------------------------------------------------------------------ drops (manual posting)
     def retired(self, d: dict | None) -> bool:
         """Drawings you've used enough ([bank] retired in config.toml): no more drops or redos."""
-        names = [n.lower() for n in self.cfg.get("bank", {}).get("retired", []) if n.strip()]
+        names = [n.lower() for n in self.cfg.get("bank", {}).get("retired", []) + self.state.get("retired", [])
+                 if n.strip()]
         text = f"{(d or {}).get('subject') or ''} {(d or {}).get('drive_name') or ''}".lower()
         return any(n in text for n in names)
 
