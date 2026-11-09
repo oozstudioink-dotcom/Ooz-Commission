@@ -324,6 +324,38 @@ class DropsFeedTest(FakeVariantsMixin, unittest.TestCase):
         self.assertTrue(any("Drops: 13 videos" in t for t in self.bot.texts()))
 
 
+class RedoTest(DropsFeedTest):
+    """/redo re-makes a drawing's Shorts; unsent old versions leave the bank, sent ones stay."""
+
+    def test_redo_replaces_unsent_versions(self):
+        self.clock.t = datetime(2026, 11, 7, 20, 0, tzinfo=timezone.utc)
+        self.r.poll()                                                 # 2 drops go out
+        naruto = next(did for did, d in self.state["drawings"].items() if d["subject"] == "Naruto")
+        sent_before = sum(1 for v in self.state["variants"].values()
+                          if v["drawing"] == naruto and v.get("dropped_at"))
+        self.bot.push(**msg(OWNER, text="/redo naru"))
+        self.assertTrue(self.r.poll())                                # rendering needed
+        self.assertTrue(any("Re-making Naruto" in t and f"{5 - sent_before} styles" in t
+                            for t in self.bot.texts()))
+        self.assertEqual(self.state["drawings"][naruto]["status"], "queued")
+        self.stub_render(self.r)
+        mine = [v for v in self.state["variants"].values() if v["drawing"] == naruto]
+        self.assertEqual(sum(v["status"] == "replaced" for v in mine), 5 - sent_before)
+        self.assertEqual(sum(v["status"] == "approved" and not v.get("dropped_at") for v in mine), 5 - sent_before)
+        self.assertEqual(self.r.bank()["drops"], 15 - 2)              # same size: swapped, not added
+
+    def test_redo_unknown_name_lists_drawings(self):
+        self.bot.push(**msg(OWNER, text="/redo Luffy"))
+        self.r.poll()
+        self.assertTrue(any("No finished drawing" in t for t in self.bot.texts()))
+        self.assertTrue(any("Deku" in t and "Goku" in t for t in self.bot.texts()))
+
+    def test_redo_without_name_takes_newest(self):
+        self.bot.push(**msg(OWNER, text="/redo"))
+        self.r.poll()
+        self.assertTrue(any("Re-making Goku" in t for t in self.bot.texts()))
+
+
 @unittest.skipUnless(os.environ.get("REELS_TEST_VIDEO"), "set REELS_TEST_VIDEO to run a real render")
 class RealRenderTest(unittest.TestCase):
     def test_real_render(self):

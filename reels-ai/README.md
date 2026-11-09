@@ -139,7 +139,8 @@ Runs hourly on GitHub Actions (`.github/workflows/reels-bot.yml`), free.
    twice in a row. Until the YouTube / Instagram connections exist (`method = "manual"`) it
    sends you the finished video + caption to upload yourself.
 
-Commands: `/status`, `/queue` (video bank and days of posts it covers), `/pause`, `/resume`, `/help`.
+Commands: `/status`, `/queue` (video bank and days of posts it covers), `/redo [name]` (re-make a
+drawing's unsent Shorts with the latest editing; no name = newest), `/pause`, `/resume`, `/help`.
 The bot warns in Telegram when the bank drops below `[bank] warn_below_days`. The first person to message the bot becomes
 its owner; everyone else is ignored. Memory lives in `state/state.json` (committed by the job).
 

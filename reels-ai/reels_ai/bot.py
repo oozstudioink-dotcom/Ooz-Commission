@@ -32,7 +32,7 @@ MAX_BOT_DOWNLOAD = 20 * 1024 * 1024   # Telegram bots can only download files up
 HELP = (
     "Send me a drawing timelapse (as a video) and I'll make variants for you to approve.\n"
     "Add the character name as the video's caption, e.g. Naruto.\n\n"
-    "/status  overview\n/longform [project]  build a LongDraw from Drive \u203a Longform (no name = list projects)\n/compile [title]  stitch the drawings since the last compilation into one page video\n/report  stats report now (also sent every Sunday)\n/queue  your video bank and how many days it covers\n/pause  stop all posting\n/resume  start posting again\n/help  this message"
+    "/status  overview\n/longform [project]  build a LongDraw from Drive \u203a Longform (no name = list projects)\n/redo [name]  re-make a drawing's Shorts with the latest editing (no name = newest)\n/compile [title]  stitch the drawings since the last compilation into one page video\n/report  stats report now (also sent every Sunday)\n/queue  your video bank and how many days it covers\n/pause  stop all posting\n/resume  start posting again\n/help  this message"
 )
 
 
@@ -145,6 +145,8 @@ class Runner:
                 self.say(f"\U0001f3ac Compiling {len(pending)} drawings into a page video on the next run.")
         elif cmd == "/longform":
             self.longform_command(text.split(maxsplit=1)[1].strip() if len(text.split(maxsplit=1)) > 1 else "")
+        elif cmd == "/redo":
+            self.redo(text.split(maxsplit=1)[1].strip() if len(text.split(maxsplit=1)) > 1 else "")
         elif cmd == "/id":
             self.say(f"Your chat ID: {chat['id']}\n(For the commission-alerts script's TELEGRAM_CHAT_ID.)")
         elif cmd == "/report":
@@ -160,6 +162,40 @@ class Runner:
                 self.say(f"✅ Caption updated for {STYLE_LABELS[v['style']]} ({vid}).{tail}")
         elif text:
             self.say("Send me a timelapse video, or /help.")
+
+    def redo(self, name: str) -> None:
+        """Re-render a drawing's Shorts (e.g. after the editing improves). Unsent old versions
+        leave the bank so the new ones replace them; already-dropped ones are untouched."""
+        want = name.lower()
+        found = [(did, d) for did, d in self.state["drawings"].items()
+                 if d["status"] in ("rendered", "failed")
+                 and (not want or want in (d.get("subject") or "").lower()
+                      or want in (d.get("drive_name") or "").lower())]
+        if not found:
+            names = sorted({d.get("subject") or d.get("drive_name") or did
+                            for did, d in self.state["drawings"].items() if d["status"] == "rendered"})
+            self.say(f"🔎 No finished drawing matches “{name}”." if name else
+                     "🔎 No finished drawings yet.")
+            if names:
+                self.say("Try one of: " + ", ".join(names[:20]))
+            return
+        did, d = max(found, key=lambda x: (x[1].get("received") or "", int(x[0][1:])))
+        old = [v for v in self.state["variants"].values() if v["drawing"] == did]
+        replaced = 0
+        unsent: list[str] = []
+        for v in old:
+            if v["status"] in ("approved", "pending") and not v.get("dropped_at"):
+                v["status"] = "replaced"
+                replaced += 1
+                unsent.append(v["style"])
+        # Styles you already posted aren't re-made (no repeats in the feed), unless all were.
+        styles = [st for st in dict.fromkeys(unsent or [v["style"] for v in old]) if st in STYLE_LABELS]
+        d.update(status="queued", redo=True, keep_in_place=True, redo_styles=styles or None)
+        d.pop("error", None)
+        label = d.get("subject") or d.get("drive_name") or did
+        self.say(f"🔁 Re-making {label} with the latest editing"
+                 + (f" ({len(styles)} styles)" if styles else "") + ". It arrives within the hour"
+                 + (f"; its {replaced} unsent old version(s) leave the bank." if replaced else "."))
 
     # ------------------------------------------------------------------ Google Drive inbox
     def drive_problem(self, e: Exception) -> None:
@@ -265,8 +301,9 @@ class Runner:
             name = d.get("subject") or Path(d.get("drive_name") or did).stem
             folder = self.drive.folder(f"Done/Shorts/{name}")
             for r in results:
+                tag = " (redo)" if d.get("redo") else ""
                 up = self.drive.upload(out_dir / r["file"], folder,
-                                       f"{name} - {STYLE_LABELS.get(r['name'], r['name'])}.mp4")
+                                       f"{name} - {STYLE_LABELS.get(r['name'], r['name'])}{tag}.mp4")
                 if up.get("webViewLink"):
                     links[r["name"]] = up["webViewLink"]
         except Exception as e:  # noqa: BLE001
@@ -695,7 +732,7 @@ class Runner:
                         src = self.drive_source(d, tmp)
                     else:
                         src = self.bot.download(d["file_id"], tmp / f"{did}.mp4")
-                    styles = self.choose_styles(did)
+                    styles = d.pop("redo_styles", None) or self.choose_styles(did)
                     copy = self.ai_copy(src, d, styles, tmp)
                     big = self.shorts_4k and d.get("source") == "drive"
                     out_dir, results = make_variants(src, tmp / "out", styles,
