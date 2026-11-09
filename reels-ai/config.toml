@@ -76,8 +76,8 @@ next_episode = 3                 # EP. number for the next upload (counts up aut
 target_minutes = [20, 30]        # speed is picked so the cut lands in this range
 resolution = "4k"                # "4k" (3840x2160) or "1080p"
 art_panel_name = "YT_Longform_Finished_Art_Panel"   # optional image in the project folder for the thumbnail
-youtube_upload = true            # upload automatically (private until Google's audit; flip to Public)
-privacy = "public"
+youtube_upload = true            # upload automatically (private; you schedule it in YouTube Studio)
+privacy = "private"              # you schedule each LongDraw yourself in YouTube Studio (stays private after the audit too)
 music_source = "YouTube Audio Library"   # credited with the track list in each description
 
 [panels]

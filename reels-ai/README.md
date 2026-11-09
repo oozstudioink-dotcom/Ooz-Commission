@@ -141,7 +141,8 @@ It then adds:
 - a beat tape: shuffled, loudness-matched to -16 LUFS, crossfaded and looped
 - chapters and the LongDraw thumbnail (`EP. NN`; numbering continues from Done/Longform)
 
-It uploads to `Done/Longform/EP NN - <project>/` and to YouTube (private until Google's audit;
+It uploads to `Done/Longform/EP NN - <project>/` and to YouTube as private (`[longform] privacy`;
+you schedule it in YouTube Studio;
 the custom thumbnail needs a phone-verified channel), messages you the links, and moves the
 project folder to `Longform/Finished/`. Panel text lives in `config.toml` → `[panels]`.
 

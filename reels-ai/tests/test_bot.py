@@ -448,6 +448,54 @@ class AlbumSizeTest(unittest.TestCase):
         self.assertEqual(sum(k == "video" for k, _, _ in bot.sent), 6)
 
 
+class ReliabilityTest(FakeVariantsMixin, unittest.TestCase):
+    def test_memory_saved_after_each_drawing(self):
+        bot, state = FakeBot(), fresh_state()
+        saves = []
+        r = Runner(bot, state, load_config(), clock=Clock(datetime(2026, 11, 7, tzinfo=timezone.utc)),
+                   checkpoint=lambda: saves.append({d: x["status"] for d, x in state["drawings"].items()}))
+        src = Path(tempfile.mkdtemp()) / "in.mp4"
+        src.write_bytes(b"raw")
+        bot.push(**msg(OWNER, text="hi"))
+        for i in range(3):
+            bot.files[f"raw{i}"] = src
+            bot.push(**msg(OWNER, video={"file_id": f"raw{i}", "file_unique_id": f"u{i}", "file_size": 9},
+                           caption=f"Char{i}"))
+        r.poll()
+        self.stub_render(r)
+        self.assertEqual(len(saves), 3)
+        self.assertEqual([list(x.values()).count("rendered") for x in saves], [1, 2, 3])
+
+    def test_failure_alert(self):
+        import reels_ai.bot as botmod
+        sent = []
+
+        class B:
+            def __init__(self, token):
+                pass
+
+            def send_message(self, chat, text, **kw):
+                sent.append((chat, text))
+        tmp = Path(tempfile.mkdtemp()) / "state.json"
+        tmp.write_text(json.dumps({"owner_chat_id": 4242}))
+        env = {"TELEGRAM_BOT_TOKEN": "123456789:" + "A" * 35, "GITHUB_REPOSITORY": "o/r", "GITHUB_RUN_ID": "77"}
+        old_env = {k: os.environ.get(k) for k in env}
+        os.environ.update(env)
+        real_bot, real_load = botmod.Bot, botmod.load_state
+        botmod.Bot, botmod.load_state = B, (lambda: {**json.loads(json.dumps(EMPTY)), **json.loads(tmp.read_text())})
+        try:
+            botmod.run("alert")
+        finally:
+            botmod.Bot, botmod.load_state = real_bot, real_load
+            for k, v in old_env.items():
+                if v is None:
+                    os.environ.pop(k, None)
+                else:
+                    os.environ[k] = v
+        self.assertEqual(sent[0][0], 4242)
+        self.assertIn("actions/runs/77", sent[0][1])
+
+
 class StyleLearningTest(unittest.TestCase):
     def test_winning_styles_come_round_more_and_weakest_is_skipped(self):
         cfg = load_config()

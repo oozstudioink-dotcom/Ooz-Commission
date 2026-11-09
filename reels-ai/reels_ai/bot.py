@@ -53,8 +53,11 @@ def label_markup(text: str) -> dict:
 
 class Runner:
     def __init__(self, bot: Bot, state: dict, config: dict, clock=now, clients: dict | None = None,
-                 drive=None):
+                 drive=None, checkpoint=None):
         self.bot, self.state, self.cfg, self.clock = bot, state, config, clock
+        # Saves the bot's memory mid-run (after each drawing), so a run cut off by GitHub's time
+        # limit keeps what it finished instead of re-rendering and re-sending it.
+        self.checkpoint = checkpoint or (lambda: None)
         self.clients = clients or {}          # platform -> API client (e.g. Instagram)
         self.drive = drive                    # Google Drive inbox / backups (optional)
         self.tz = ZoneInfo(config.get("timezone", "UTC"))
@@ -842,6 +845,7 @@ class Runner:
                     d["status"] = "failed"
                     d["error"] = str(e)[:300]
                     self.say(f"⚠️ Couldn't process that video ({did}): {d['error']}")
+                    self.checkpoint()
                     continue
                 d["beats"] = self.beats_summary(out_dir, results)
                 links = {}
@@ -858,8 +862,10 @@ class Runner:
                         self.say(f"\u26a0\ufe0f Made {d.get('subject') or did}'s videos but couldn't send them: "
                                  f"{str(e)[:200]}. The 4K files are in Drive \u203a Done \u203a Shorts; "
                                  f"/redo {d.get('subject') or ''} tries again.")
+                        self.checkpoint()
                         continue
                     d["status"] = "rendered"
+                    self.checkpoint()
                     continue
                 for r in results:
                     vid = new_id(self.state, "v")
@@ -892,6 +898,7 @@ class Runner:
                     uses = self.state["style_uses"]
                     uses[r["name"]] = uses.get(r["name"], 0) + 1
                 d["status"] = "rendered"
+                self.checkpoint()
         if done_now and not any(x["status"] == "queued" for x in self.state["drawings"].values()):
             bank = self.bank().get("drops")
             extra = f" Bank: {bank} videos \u2248 {bank // self.per_day('drops')} days of drops." if bank else ""
@@ -1024,7 +1031,17 @@ def run(phase: str) -> None:
                          "(expected digits, a colon, then ~35 letters/numbers). Re-paste it.")
     token = m.group(0)
     state, config = load_state(), load_config()
-    runner = Runner(Bot(token), state, config, clients=make_clients(config), drive=make_drive(config))
+    if phase == "alert":                       # the workflow failed or timed out: tell the owner
+        owner = os.environ.get("TELEGRAM_OWNER_ID") or state.get("owner_chat_id")
+        if owner:
+            url = (f"{os.environ.get('GITHUB_SERVER_URL', 'https://github.com')}/"
+                   f"{os.environ.get('GITHUB_REPOSITORY', '')}/actions/runs/{os.environ.get('GITHUB_RUN_ID', '')}")
+            what = os.environ.get("ALERT_WHAT", "bot run")
+            Bot(token).send_message(int(owner), f"\u26a0\ufe0f The {what} stopped with an error. Finished work is "
+                                                 f"kept; anything left over is retried on the next run.\nDetails: {url}")
+        return
+    runner = Runner(Bot(token), state, config, clients=make_clients(config), drive=make_drive(config),
+                    checkpoint=lambda: save_state(state))
     if phase == "tiktok-connect":
         try:
             tiktok_connect(runner, config)
