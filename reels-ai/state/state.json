@@ -3,13 +3,183 @@
   "awaiting_caption": null,
   "drawings": {
     "d1": {
+      "beats": {
+        "focus": [
+          0.5,
+          0.5,
+          1.0
+        ],
+        "has_pencil": true,
+        "ink_progress": [
+          0.0,
+          0.0,
+          0.0002,
+          0.0002,
+          0.0002,
+          0.0002,
+          0.0002,
+          0.0004,
+          0.0008,
+          0.0037,
+          0.0038,
+          0.0038,
+          0.0038,
+          0.0042,
+          0.0042,
+          0.0046,
+          0.0048,
+          0.0049,
+          0.0076,
+          0.0077,
+          0.0077,
+          0.0077,
+          0.0077,
+          0.0077,
+          0.0077,
+          0.0081,
+          0.0085,
+          0.0093,
+          0.0094,
+          0.0099,
+          0.0109,
+          0.0111,
+          0.0119,
+          0.0203,
+          0.0205,
+          0.0206,
+          0.0238,
+          0.0245,
+          0.0247,
+          0.0408,
+          0.0466,
+          0.0701,
+          0.0707,
+          0.0974,
+          0.106,
+          0.1274,
+          0.1348,
+          0.3064,
+          0.3252,
+          0.3324,
+          0.3346,
+          0.3565,
+          0.3661,
+          0.8395,
+          0.9889,
+          0.9999,
+          1.0
+        ],
+        "occluded_frames": 0,
+        "seconds": {
+          "detail_end": 54.0,
+          "detail_start": 40.5,
+          "draw_start": 8.5,
+          "ink_end": 56.0,
+          "ink_start": 32.5,
+          "peak_idx": 53.0,
+          "reveal_idx": 56.47,
+          "sketch_idx": 28.83
+        },
+        "source_seconds": 56.5,
+        "speedup": 1.0,
+        "variant_seconds": {
+          "before_after": 10.6,
+          "detail_zoom": 12.1,
+          "ink_only": 9.4,
+          "one_take": 13.1,
+          "process_cuts": 10.7,
+          "reveal_first": 12.0,
+          "speedrun": 8.7
+        },
+        "work_seconds": 56.5
+      },
       "file_id": "BAACAgEAAxkBAAMQau6N-POTh63SJR5cn0CGi8WCycsAAhkJAAKFAnlHrL7iYgUCS8U9BA",
+      "keep_in_place": true,
       "received": "2026-11-07T02:33:52+00:00",
+      "redo": true,
       "status": "rendered",
       "subject": "Shinobi Undercover Manga",
       "unique_id": "AgADGQkAAoUCeUc"
     },
     "d22": {
+      "beats": {
+        "focus": [
+          0.5,
+          0.5,
+          1.0
+        ],
+        "has_pencil": true,
+        "ink_progress": [
+          0.0,
+          0.3735,
+          0.3774,
+          0.3821,
+          0.3852,
+          0.3852,
+          0.3875,
+          0.4022,
+          0.4022,
+          0.4029,
+          0.406,
+          0.4138,
+          0.4145,
+          0.4563,
+          0.4625,
+          0.464,
+          0.4718,
+          0.4772,
+          0.4865,
+          0.5344,
+          0.5429,
+          0.5507,
+          0.6148,
+          0.6357,
+          0.645,
+          0.6512,
+          0.6589,
+          0.6605,
+          0.6674,
+          0.6721,
+          0.6736,
+          0.7177,
+          0.7293,
+          0.751,
+          0.7602,
+          0.768,
+          0.768,
+          0.7788,
+          0.7858,
+          0.8561,
+          0.8747,
+          0.8925,
+          0.9142,
+          0.9196,
+          0.9598
+        ],
+        "occluded_frames": 0,
+        "seconds": {
+          "detail_end": 77.5,
+          "detail_start": 0.5,
+          "draw_start": 0.0,
+          "ink_end": 89.5,
+          "ink_start": 0.5,
+          "peak_idx": 1.0,
+          "reveal_idx": 89.97,
+          "sketch_idx": 0.8
+        },
+        "source_seconds": 90.2,
+        "speedup": 1.0022222222222223,
+        "variant_seconds": {
+          "before_after": 10.6,
+          "detail_zoom": 11.1,
+          "ink_only": 9.4,
+          "one_take": 11.6,
+          "process_cuts": 10.7,
+          "reveal_first": 10.5,
+          "speedrun": 6.7
+        },
+        "work_seconds": 90.0
+      },
       "drive_id": "1WlV-eBowuwEzkurywSgVcK268gVSo6IZ",
       "drive_name": "Naruto_3.MOV",
       "duration": 731.218,
@@ -22,16 +192,102 @@
       "subject": "Naruto"
     },
     "d34": {
+      "beats": {
+        "focus": [
+          0.5,
+          0.5,
+          1.0
+        ],
+        "has_pencil": true,
+        "ink_progress": [
+          0.0,
+          0.0,
+          0.0,
+          0.0016,
+          0.0031,
+          0.0031,
+          0.0031,
+          0.0031,
+          0.0031,
+          0.0031,
+          0.0031,
+          0.0031,
+          0.0031,
+          0.0031,
+          0.0035,
+          0.0035,
+          0.0035,
+          0.0035,
+          0.0035,
+          0.0035,
+          0.0035,
+          0.0035,
+          0.0035,
+          0.0035,
+          0.0035,
+          0.0035,
+          0.0035,
+          0.0035,
+          0.0035,
+          0.0035,
+          0.0802,
+          0.0802,
+          0.0802,
+          0.0802,
+          0.0888,
+          0.1233,
+          0.1353,
+          0.1353,
+          0.2601,
+          0.2601,
+          0.2601,
+          0.2601,
+          0.2601,
+          0.2601,
+          0.2605,
+          0.2841,
+          0.3124,
+          0.3512,
+          0.3512,
+          0.3519,
+          0.3531,
+          0.4895,
+          0.595
+        ],
+        "occluded_frames": 172,
+        "seconds": {
+          "detail_end": 78.0,
+          "detail_start": 44.5,
+          "draw_start": 25.5,
+          "ink_end": 78.0,
+          "ink_start": 44.0,
+          "peak_idx": 77.0,
+          "reveal_idx": 78.37,
+          "sketch_idx": 40.4
+        },
+        "source_seconds": 78.4,
+        "speedup": 1.0,
+        "variant_seconds": {
+          "before_after": 10.6,
+          "detail_zoom": 12.1,
+          "ink_only": 9.4,
+          "one_take": 13.1,
+          "reveal_first": 12.0,
+          "speedrun": 8.7
+        },
+        "work_seconds": 78.4
+      },
       "drive_id": "1j4bDmmt0Sh5ASiSuY2xI64i4b6I9w-LS",
       "drive_name": "IMG_0153.mov",
       "drive_where": "Inbox",
       "duration": null,
-      "keep_in_place": false,
+      "keep_in_place": true,
       "received": "2026-11-09T05:00:28+00:00",
+      "redo": true,
       "size_gb": 12.96,
       "source": "drive",
       "status": "rendered",
-      "subject": null
+      "subject": "Sasuke Uchiha"
     },
     "d39": {
       "beats": {
@@ -123,15 +379,33 @@
       "keep_in_place": true,
       "received": "2026-11-09T05:27:58+00:00",
       "redo": true,
+      "redo_styles": [
+        "speedrun",
+        "reveal_first",
+        "ink_only",
+        "detail_zoom",
+        "one_take",
+        "before_after",
+        "process_cuts"
+      ],
       "size_gb": 8.12,
       "source": "drive",
-      "status": "rendered",
+      "status": "queued",
       "subject": "Naruto"
     },
     "d4": {
       "file_id": "BAACAgEAAxkBAAMZau6mTztA9rCuYE8AATWlHiSE8SH3AAI0CQAChQJ5R01gnupBOguXPQQ",
+      "keep_in_place": true,
       "received": "2026-11-07T04:26:16+00:00",
-      "status": "rendered",
+      "redo": true,
+      "redo_styles": [
+        "speedrun",
+        "before_after",
+        "detail_zoom",
+        "one_take",
+        "process_cuts"
+      ],
+      "status": "queued",
       "subject": "Naruto",
       "unique_id": "AgADNAkAAoUCeUc"
     },
@@ -216,11 +490,21 @@
       "drive_name": "IMG_0155.mov",
       "drive_where": "Inbox",
       "duration": 28.533,
-      "keep_in_place": false,
+      "keep_in_place": true,
       "received": "2026-11-09T06:19:05+00:00",
+      "redo": true,
+      "redo_styles": [
+        "process_cuts",
+        "speedrun",
+        "reveal_first",
+        "before_after",
+        "detail_zoom",
+        "one_take",
+        "ink_only"
+      ],
       "size_gb": 0.16,
       "source": "drive",
-      "status": "rendered",
+      "status": "queued",
       "subject": null
     },
     "d45": {
@@ -309,9 +593,18 @@
       "keep_in_place": true,
       "received": "2026-11-09T07:00:29+00:00",
       "redo": true,
+      "redo_styles": [
+        "process_cuts",
+        "ink_only",
+        "speedrun",
+        "before_after",
+        "reveal_first",
+        "one_take",
+        "detail_zoom"
+      ],
       "size_gb": 4.67,
       "source": "drive",
-      "status": "rendered",
+      "status": "queued",
       "subject": "Naruto"
     },
     "d46": {
@@ -437,15 +730,33 @@
     },
     "d5": {
       "file_id": "BAACAgEAAxkBAAMaau6njgrUbffP4cnY1pSEX_iMhUAAAjYJAAKFAnlHzI_e4sZMhD09BA",
+      "keep_in_place": true,
       "received": "2026-11-07T04:26:16+00:00",
-      "status": "rendered",
+      "redo": true,
+      "redo_styles": [
+        "reveal_first",
+        "ink_only",
+        "speedrun",
+        "one_take",
+        "process_cuts"
+      ],
+      "status": "queued",
       "subject": "My Hero Academia",
       "unique_id": "AgADNgkAAoUCeUc"
     },
     "d6": {
       "file_id": "BAACAgEAAxkBAAMbau6oPOFBiz4sl5IwEklhCcUBOQUAAjgJAAKFAnlHM3iBh1iquwU9BA",
+      "keep_in_place": true,
       "received": "2026-11-07T04:26:16+00:00",
-      "status": "rendered",
+      "redo": true,
+      "redo_styles": [
+        "detail_zoom",
+        "before_after",
+        "speedrun",
+        "one_take",
+        "process_cuts"
+      ],
+      "status": "queued",
       "subject": "Shinobi undercover",
       "unique_id": "AgADOAkAAoUCeUc"
     }
@@ -458,8 +769,8 @@
     "1j9RlG4pGA9b6OnU3xR7x9b6OVZwugyHV",
     "1ZKzBTktNt6MWGGaD_w_ik1pia3oOLK6Q"
   ],
-  "low_bank_warned": "2026-11-06",
-  "next_id": 74,
+  "low_bank_warned": "2026-11-09",
+  "next_id": 94,
   "owner_chat_id": 5745191999,
   "paused": false,
   "report_followers": {
@@ -470,15 +781,15 @@
   "stats_at": "2026-11-09T11:00:29+00:00",
   "storage_month": "2026-11",
   "style_uses": {
-    "before_after": 12,
-    "detail_zoom": 11,
-    "ink_only": 11,
-    "one_take": 2,
-    "process_cuts": 4,
-    "reveal_first": 12,
-    "speedrun": 11
+    "before_after": 15,
+    "detail_zoom": 14,
+    "ink_only": 14,
+    "one_take": 5,
+    "process_cuts": 6,
+    "reveal_first": 15,
+    "speedrun": 14
   },
-  "update_offset": 116973159,
+  "update_offset": 116973161,
   "variants": {
     "v10": {
       "caption": "Brush pen on paper, no tablet. Drop a character for the next one 👇🏾\n\n#drawingprocess #naruto #mangadrawing #mangaart #mangaka #drawing #ink #narutofanart #inking #animeart",
@@ -492,7 +803,7 @@
       "message_id": 34,
       "posts": {},
       "seconds": 8.7,
-      "status": "approved",
+      "status": "replaced",
       "style": "speedrun"
     },
     "v11": {
@@ -507,7 +818,7 @@
       "message_id": 35,
       "posts": {},
       "seconds": 10.6,
-      "status": "approved",
+      "status": "replaced",
       "style": "before_after"
     },
     "v12": {
@@ -539,7 +850,7 @@
       "message_id": 37,
       "posts": {},
       "seconds": 12.0,
-      "status": "approved",
+      "status": "replaced",
       "style": "reveal_first"
     },
     "v14": {
@@ -554,7 +865,7 @@
       "message_id": 38,
       "posts": {},
       "seconds": 9.4,
-      "status": "approved",
+      "status": "replaced",
       "style": "ink_only"
     },
     "v15": {
@@ -586,7 +897,7 @@
       "message_id": 40,
       "posts": {},
       "seconds": 8.7,
-      "status": "approved",
+      "status": "replaced",
       "style": "speedrun"
     },
     "v17": {
@@ -635,7 +946,7 @@
       "message_id": 43,
       "posts": {},
       "seconds": 12.1,
-      "status": "approved",
+      "status": "replaced",
       "style": "detail_zoom"
     },
     "v2": {
@@ -650,7 +961,7 @@
       "message_id": 18,
       "posts": {},
       "seconds": 10.6,
-      "status": "approved",
+      "status": "replaced",
       "style": "before_after"
     },
     "v20": {
@@ -665,7 +976,7 @@
       "message_id": 44,
       "posts": {},
       "seconds": 10.6,
-      "status": "approved",
+      "status": "replaced",
       "style": "before_after"
     },
     "v21": {
@@ -680,7 +991,7 @@
       "message_id": 45,
       "posts": {},
       "seconds": 8.7,
-      "status": "approved",
+      "status": "replaced",
       "style": "speedrun"
     },
     "v23": {
@@ -775,7 +1086,7 @@
       "message_id": 70,
       "posts": {},
       "seconds": 10.2,
-      "status": "approved",
+      "status": "replaced",
       "style": "detail_zoom"
     },
     "v29": {
@@ -790,7 +1101,7 @@
       "message_id": 71,
       "posts": {},
       "seconds": 9.6,
-      "status": "approved",
+      "status": "replaced",
       "style": "reveal_first"
     },
     "v3": {
@@ -805,7 +1116,7 @@
       "message_id": 19,
       "posts": {},
       "seconds": 8.7,
-      "status": "approved",
+      "status": "replaced",
       "style": "speedrun"
     },
     "v30": {
@@ -820,7 +1131,7 @@
       "message_id": 72,
       "posts": {},
       "seconds": 9.4,
-      "status": "approved",
+      "status": "replaced",
       "style": "ink_only"
     },
     "v31": {
@@ -835,7 +1146,7 @@
       "message_id": 73,
       "posts": {},
       "seconds": 10.6,
-      "status": "approved",
+      "status": "replaced",
       "style": "before_after"
     },
     "v32": {
@@ -850,7 +1161,7 @@
       "message_id": 74,
       "posts": {},
       "seconds": 5.8,
-      "status": "approved",
+      "status": "replaced",
       "style": "speedrun"
     },
     "v33": {
@@ -865,7 +1176,7 @@
       "message_id": 75,
       "posts": {},
       "seconds": 10.7,
-      "status": "approved",
+      "status": "replaced",
       "style": "process_cuts"
     },
     "v35": {
@@ -881,7 +1192,7 @@
       "message_id": 78,
       "posts": {},
       "seconds": 12.0,
-      "status": "approved",
+      "status": "replaced",
       "style": "reveal_first"
     },
     "v36": {
@@ -897,7 +1208,7 @@
       "message_id": 79,
       "posts": {},
       "seconds": 12.1,
-      "status": "approved",
+      "status": "replaced",
       "style": "detail_zoom"
     },
     "v37": {
@@ -913,7 +1224,7 @@
       "message_id": 80,
       "posts": {},
       "seconds": 9.4,
-      "status": "approved",
+      "status": "replaced",
       "style": "ink_only"
     },
     "v38": {
@@ -929,7 +1240,7 @@
       "message_id": 81,
       "posts": {},
       "seconds": 10.6,
-      "status": "approved",
+      "status": "replaced",
       "style": "before_after"
     },
     "v40": {
@@ -1009,7 +1320,7 @@
       "message_id": 92,
       "posts": {},
       "seconds": 10.7,
-      "status": "approved",
+      "status": "replaced",
       "style": "process_cuts"
     },
     "v48": {
@@ -1025,7 +1336,7 @@
       "message_id": 93,
       "posts": {},
       "seconds": 8.7,
-      "status": "approved",
+      "status": "replaced",
       "style": "speedrun"
     },
     "v49": {
@@ -1041,7 +1352,7 @@
       "message_id": 94,
       "posts": {},
       "seconds": 12.0,
-      "status": "approved",
+      "status": "replaced",
       "style": "reveal_first"
     },
     "v50": {
@@ -1057,7 +1368,7 @@
       "message_id": 95,
       "posts": {},
       "seconds": 10.6,
-      "status": "approved",
+      "status": "replaced",
       "style": "before_after"
     },
     "v51": {
@@ -1073,7 +1384,7 @@
       "message_id": 96,
       "posts": {},
       "seconds": 12.1,
-      "status": "approved",
+      "status": "replaced",
       "style": "detail_zoom"
     },
     "v52": {
@@ -1232,7 +1543,7 @@
       "message_id": 118,
       "posts": {},
       "seconds": 8.7,
-      "status": "approved",
+      "status": "replaced",
       "style": "speedrun"
     },
     "v62": {
@@ -1247,7 +1558,7 @@
       "message_id": 119,
       "posts": {},
       "seconds": 12.0,
-      "status": "approved",
+      "status": "replaced",
       "style": "reveal_first"
     },
     "v63": {
@@ -1262,7 +1573,7 @@
       "message_id": 120,
       "posts": {},
       "seconds": 9.4,
-      "status": "approved",
+      "status": "replaced",
       "style": "ink_only"
     },
     "v64": {
@@ -1277,7 +1588,7 @@
       "message_id": 121,
       "posts": {},
       "seconds": 12.1,
-      "status": "approved",
+      "status": "replaced",
       "style": "detail_zoom"
     },
     "v65": {
@@ -1292,7 +1603,7 @@
       "message_id": 122,
       "posts": {},
       "seconds": 13.1,
-      "status": "approved",
+      "status": "replaced",
       "style": "one_take"
     },
     "v66": {
@@ -1307,7 +1618,7 @@
       "message_id": 123,
       "posts": {},
       "seconds": 10.6,
-      "status": "approved",
+      "status": "replaced",
       "style": "before_after"
     },
     "v67": {
@@ -1323,7 +1634,7 @@
       "message_id": 124,
       "posts": {},
       "seconds": 10.7,
-      "status": "approved",
+      "status": "replaced",
       "style": "process_cuts"
     },
     "v68": {
@@ -1339,7 +1650,7 @@
       "message_id": 125,
       "posts": {},
       "seconds": 9.4,
-      "status": "approved",
+      "status": "replaced",
       "style": "ink_only"
     },
     "v69": {
@@ -1355,7 +1666,7 @@
       "message_id": 126,
       "posts": {},
       "seconds": 5.8,
-      "status": "approved",
+      "status": "replaced",
       "style": "speedrun"
     },
     "v7": {
@@ -1370,7 +1681,7 @@
       "message_id": 31,
       "posts": {},
       "seconds": 12.1,
-      "status": "approved",
+      "status": "replaced",
       "style": "detail_zoom"
     },
     "v70": {
@@ -1386,7 +1697,7 @@
       "message_id": 127,
       "posts": {},
       "seconds": 10.6,
-      "status": "approved",
+      "status": "replaced",
       "style": "before_after"
     },
     "v71": {
@@ -1402,7 +1713,7 @@
       "message_id": 128,
       "posts": {},
       "seconds": 9.6,
-      "status": "approved",
+      "status": "replaced",
       "style": "reveal_first"
     },
     "v72": {
@@ -1418,7 +1729,7 @@
       "message_id": 129,
       "posts": {},
       "seconds": 10.7,
-      "status": "approved",
+      "status": "replaced",
       "style": "one_take"
     },
     "v73": {
@@ -1434,6 +1745,96 @@
       "message_id": 130,
       "posts": {},
       "seconds": 10.2,
+      "status": "replaced",
+      "style": "detail_zoom"
+    },
+    "v74": {
+      "caption": "Bringing this dynamic manga panel to life with traditional ink ✍🏾. Who is your favorite character from the series 👇🏾?\n\n#shinobiundercover #mangaart #mangaartist #mangainking #traditionalart #penandink #animeart #drawingprocess #comicart",
+      "created": "2026-11-09T15:55:55+00:00",
+      "deadline": null,
+      "decided_at": "2026-11-09T15:55:55+00:00",
+      "decided_by": "auto",
+      "drawing": "d1",
+      "file_id": "BAACAgEAAxUHavHtCgMbRHAnKaHlkHQEciCK1p0AAqMJAAK5lJFHOC_LicI4QKA9BA",
+      "hook": "From lines to finished ink",
+      "message_id": 139,
+      "posts": {},
+      "seconds": 10.6,
+      "status": "approved",
+      "style": "before_after"
+    },
+    "v75": {
+      "caption": "Bringing this dynamic manga panel to life with traditional ink ✍🏾. Who is your favorite character from the series 👇🏾?\n\n#shinobiundercover #mangaart #mangaartist #mangainking #traditionalart #penandink #animeart #drawingprocess #comicart",
+      "created": "2026-11-09T15:55:55+00:00",
+      "deadline": null,
+      "decided_at": "2026-11-09T15:55:55+00:00",
+      "decided_by": "auto",
+      "drawing": "d1",
+      "file_id": "BAACAgEAAxUHavHtCsDwCALDvv1dxYc_vJIC1hgAAqQJAAK5lJFHuiB3ee45vB09BA",
+      "hook": "Complete Shinobi Undercover in 8 seconds",
+      "message_id": 140,
+      "posts": {},
+      "seconds": 8.7,
+      "status": "approved",
+      "style": "speedrun"
+    },
+    "v76": {
+      "caption": "Bringing this dynamic manga panel to life with traditional ink ✍🏾. Who is your favorite character from the series 👇🏾?\n\n#shinobiundercover #mangaart #mangaartist #mangainking #traditionalart #penandink #animeart #drawingprocess #comicart",
+      "created": "2026-11-09T15:55:55+00:00",
+      "deadline": null,
+      "decided_at": "2026-11-09T15:55:55+00:00",
+      "decided_by": "auto",
+      "drawing": "d1",
+      "file_id": "BAACAgEAAxUHavHtC9YGPIgKQ8kFIz-O-OM9844AAqgJAAK5lJFHWTci6kgaI0I9BA",
+      "hook": "Watch this inking from start",
+      "message_id": 141,
+      "posts": {},
+      "seconds": 13.1,
+      "status": "approved",
+      "style": "one_take"
+    },
+    "v77": {
+      "caption": "Bringing this dynamic manga panel to life with traditional ink ✍🏾. Who is your favorite character from the series 👇🏾?\n\n#shinobiundercover #mangaart #mangaartist #mangainking #traditionalart #penandink #animeart #drawingprocess #comicart",
+      "created": "2026-11-09T15:55:55+00:00",
+      "deadline": null,
+      "decided_at": "2026-11-09T15:55:55+00:00",
+      "decided_by": "auto",
+      "drawing": "d1",
+      "file_id": "BAACAgEAAxUHavHtCqT9kCInFkI_CXpwkhnrXqQAAqUJAAK5lJFHqdNNoRo_a_I9BA",
+      "hook": "Traditional inking cuts up close",
+      "message_id": 142,
+      "posts": {},
+      "seconds": 10.7,
+      "status": "approved",
+      "style": "process_cuts"
+    },
+    "v78": {
+      "caption": "Bringing this dynamic manga panel to life with traditional ink ✍🏾. Who is your favorite character from the series 👇🏾?\n\n#shinobiundercover #mangaart #mangaartist #mangainking #traditionalart #penandink #animeart #drawingprocess #comicart",
+      "created": "2026-11-09T15:55:55+00:00",
+      "deadline": null,
+      "decided_at": "2026-11-09T15:55:55+00:00",
+      "decided_by": "auto",
+      "drawing": "d1",
+      "file_id": "BAACAgEAAxUHavHtC-KcnNdAkEhlITfy-AVTGn8AAqcJAAK5lJFH2cESToawyxc9BA",
+      "hook": "Rewinding this finished manga panel",
+      "message_id": 143,
+      "posts": {},
+      "seconds": 12.0,
+      "status": "approved",
+      "style": "reveal_first"
+    },
+    "v79": {
+      "caption": "Bringing this dynamic manga panel to life with traditional ink ✍🏾. Who is your favorite character from the series 👇🏾?\n\n#shinobiundercover #mangaart #mangaartist #mangainking #traditionalart #penandink #animeart #drawingprocess #comicart",
+      "created": "2026-11-09T15:55:55+00:00",
+      "deadline": null,
+      "decided_at": "2026-11-09T15:55:55+00:00",
+      "decided_by": "auto",
+      "drawing": "d1",
+      "file_id": "BAACAgEAAxUHavHtC9S1G49WFV07hyTUJ4zKazYAAqkJAAK5lJFHflCxX5nwHUI9BA",
+      "hook": "Inking the Shinobi Undercover action",
+      "message_id": 144,
+      "posts": {},
+      "seconds": 12.1,
       "status": "approved",
       "style": "detail_zoom"
     },
@@ -1454,6 +1855,165 @@
       "status": "posted",
       "style": "ink_only"
     },
+    "v80": {
+      "caption": "Bringing this dynamic manga panel to life with traditional ink ✍🏾. Who is your favorite character from the series 👇🏾?\n\n#shinobiundercover #mangaart #mangaartist #mangainking #traditionalart #penandink #animeart #drawingprocess #comicart",
+      "created": "2026-11-09T15:55:55+00:00",
+      "deadline": null,
+      "decided_at": "2026-11-09T15:55:55+00:00",
+      "decided_by": "auto",
+      "drawing": "d1",
+      "file_id": "BAACAgEAAxUHavHtCrjLB77RoiGWL8ImX9Fsi6gAAqYJAAK5lJFHdlORjzauy8U9BA",
+      "hook": "Pure inking on manga paper",
+      "message_id": 145,
+      "posts": {},
+      "seconds": 9.4,
+      "status": "approved",
+      "style": "ink_only"
+    },
+    "v81": {
+      "caption": "Bringing the ninja way to life with steady lines. ✍🏾 Who is your favorite character to draw down in the comments? 👇🏾\n\n#naruto #narutoart #mangaart #mangainking #traditionalart #penandink #animeart #timelapse #illustration",
+      "created": "2026-11-09T16:23:00+00:00",
+      "deadline": null,
+      "decided_at": "2026-11-09T16:23:00+00:00",
+      "decided_by": "auto",
+      "drawing": "d22",
+      "file_id": "BAACAgEAAxUHavHzYrdmd4ijTIzqcJvc5mPWgA0AArgJAAK5lJFHse7RgrIjVAg9BA",
+      "full_link": "https://drive.google.com/file/d/1DzKXoj-9A6-KwL3k-xI38saKgMe3_5oz/view?usp=drivesdk",
+      "hook": "Inking the eyes of Naruto",
+      "message_id": 146,
+      "posts": {},
+      "seconds": 11.1,
+      "status": "approved",
+      "style": "detail_zoom"
+    },
+    "v82": {
+      "caption": "Bringing the ninja way to life with steady lines. ✍🏾 Who is your favorite character to draw down in the comments? 👇🏾\n\n#naruto #narutoart #mangaart #mangainking #traditionalart #penandink #animeart #timelapse #illustration",
+      "created": "2026-11-09T16:23:00+00:00",
+      "deadline": null,
+      "decided_at": "2026-11-09T16:23:00+00:00",
+      "decided_by": "auto",
+      "drawing": "d22",
+      "file_id": "BAACAgEAAxUHavHzY1WOpwio2UJZpMGSvIJdIUAAArkJAAK5lJFHE-KBHIpGZ0Y9BA",
+      "full_link": "https://drive.google.com/file/d/1IWNQbfL4-F3FeYQupev_S0RxXu6jYzuq/view?usp=drivesdk",
+      "hook": "Watch this Naruto ink reverse",
+      "message_id": 147,
+      "posts": {},
+      "seconds": 10.5,
+      "status": "approved",
+      "style": "reveal_first"
+    },
+    "v83": {
+      "caption": "Bringing the ninja way to life with steady lines. ✍🏾 Who is your favorite character to draw down in the comments? 👇🏾\n\n#naruto #narutoart #mangaart #mangainking #traditionalart #penandink #animeart #timelapse #illustration",
+      "created": "2026-11-09T16:23:00+00:00",
+      "deadline": null,
+      "decided_at": "2026-11-09T16:23:00+00:00",
+      "decided_by": "auto",
+      "drawing": "d22",
+      "file_id": "BAACAgEAAxUHavHzY3H39_r6phIiTtTNbxNsuj8AAroJAAK5lJFH01zVLNIoxAc9BA",
+      "full_link": "https://drive.google.com/file/d/16L4fX2lWH2N6xq-zOTgDGWbp2O3Agy__/view?usp=drivesdk",
+      "hook": "Pure ink work on Naruto",
+      "message_id": 148,
+      "posts": {},
+      "seconds": 9.4,
+      "status": "approved",
+      "style": "ink_only"
+    },
+    "v84": {
+      "caption": "Bringing the ninja way to life with steady lines. ✍🏾 Who is your favorite character to draw down in the comments? 👇🏾\n\n#naruto #narutoart #mangaart #mangainking #traditionalart #penandink #animeart #timelapse #illustration",
+      "created": "2026-11-09T16:23:00+00:00",
+      "deadline": null,
+      "decided_at": "2026-11-09T16:23:00+00:00",
+      "decided_by": "auto",
+      "drawing": "d22",
+      "file_id": "BAACAgEAAxUHavHzYldzxYOco-1Q7n5M6uwe5WkAArcJAAK5lJFH3A1mzTmmBTI9BA",
+      "full_link": "https://drive.google.com/file/d/11VNflpMxHDlvOYppCzdYeab28zaZSpBK/view?usp=drivesdk",
+      "hook": "From lines to finished Naruto",
+      "message_id": 149,
+      "posts": {},
+      "seconds": 10.6,
+      "status": "approved",
+      "style": "before_after"
+    },
+    "v85": {
+      "caption": "Bringing the ninja way to life with steady lines. ✍🏾 Who is your favorite character to draw down in the comments? 👇🏾\n\n#naruto #narutoart #mangaart #mangainking #traditionalart #penandink #animeart #timelapse #illustration",
+      "created": "2026-11-09T16:23:00+00:00",
+      "deadline": null,
+      "decided_at": "2026-11-09T16:23:00+00:00",
+      "decided_by": "auto",
+      "drawing": "d22",
+      "file_id": "BAACAgEAAxUHavHzYhox72oDWX2wzOQrQsIYkeIAArYJAAK5lJFHcsbGiMb4BoA9BA",
+      "full_link": "https://drive.google.com/file/d/1CsATfPgbRL5yK3hdY15ACykcgbFFqv9p/view?usp=drivesdk",
+      "hook": "Naruto speed inking timelapse",
+      "message_id": 150,
+      "posts": {},
+      "seconds": 6.7,
+      "status": "approved",
+      "style": "speedrun"
+    },
+    "v86": {
+      "caption": "Bringing the ninja way to life with steady lines. ✍🏾 Who is your favorite character to draw down in the comments? 👇🏾\n\n#naruto #narutoart #mangaart #mangainking #traditionalart #penandink #animeart #timelapse #illustration",
+      "created": "2026-11-09T16:23:06+00:00",
+      "deadline": null,
+      "decided_at": "2026-11-09T16:23:06+00:00",
+      "decided_by": "auto",
+      "drawing": "d22",
+      "file_id": "BAACAgEAAxUHavHzaHAK4hgxtYbhZEvqLxgucuAAArwJAAK5lJFHIqvkMxQ2NR49BA",
+      "full_link": "https://drive.google.com/file/d/1zzgyB0qPgPFmpkkofYnsJlfaTirwCNGb/view?usp=drivesdk",
+      "hook": "Watch this Naruto come alive",
+      "message_id": 151,
+      "posts": {},
+      "seconds": 10.7,
+      "status": "approved",
+      "style": "process_cuts"
+    },
+    "v87": {
+      "caption": "Bringing the ninja way to life with steady lines. ✍🏾 Who is your favorite character to draw down in the comments? 👇🏾\n\n#naruto #narutoart #mangaart #mangainking #traditionalart #penandink #animeart #timelapse #illustration",
+      "created": "2026-11-09T16:23:06+00:00",
+      "deadline": null,
+      "decided_at": "2026-11-09T16:23:06+00:00",
+      "decided_by": "auto",
+      "drawing": "d22",
+      "file_id": "BAACAgEAAxUHavHzaNwcZtAZTrkuAwVUfk0QZDsAAr0JAAK5lJFHIqwzGgF1DyI9BA",
+      "full_link": "https://drive.google.com/file/d/1IN6ZjWUdiO36Gn3qg0rWLXgQ83oL_ja9/view?usp=drivesdk",
+      "hook": "One take inking Naruto",
+      "message_id": 152,
+      "posts": {},
+      "seconds": 11.6,
+      "status": "approved",
+      "style": "one_take"
+    },
+    "v88": {
+      "caption": "Bringing Sasuke to life with traditional ink and steady hands ✍🏾 What character should I ink next? 👇🏾\n\n#sasuke #sasukeuchiha #naruto #mangaart #mangainking #传统gpen #traditionalart #inkingprocess #animeart #penandink",
+      "created": "2026-11-09T16:45:34+00:00",
+      "deadline": null,
+      "decided_at": "2026-11-09T16:45:34+00:00",
+      "decided_by": "auto",
+      "drawing": "d34",
+      "file_id": "BAACAgEAAxUHavH4rK-_PD9f5hCyaj7AsQ4-MSUAAtQJAAK5lJFHMCoRwGwc73E9BA",
+      "full_link": "https://drive.google.com/file/d/1lwVVX_cG0R8YoQFMIgTBWyM8OPmbpWhG/view?usp=drivesdk",
+      "hook": "Watch this inking unfold backwards",
+      "message_id": 153,
+      "posts": {},
+      "seconds": 12.0,
+      "status": "approved",
+      "style": "reveal_first"
+    },
+    "v89": {
+      "caption": "Bringing Sasuke to life with traditional ink and steady hands ✍🏾 What character should I ink next? 👇🏾\n\n#sasuke #sasukeuchiha #naruto #mangaart #mangainking #传统gpen #traditionalart #inkingprocess #animeart #penandink",
+      "created": "2026-11-09T16:45:34+00:00",
+      "deadline": null,
+      "decided_at": "2026-11-09T16:45:34+00:00",
+      "decided_by": "auto",
+      "drawing": "d34",
+      "file_id": "BAACAgEAAxUHavH4reg4Eu-YaPdWtAGVNNy6R-0AAtgJAAK5lJFHgGdHTJdKJsQ9BA",
+      "full_link": "https://drive.google.com/file/d/1XEbaGBCKXzvvTqZ3jLKBwcHPbKvRUAfn/view?usp=drivesdk",
+      "hook": "Focus on these sharp linework details",
+      "message_id": 154,
+      "posts": {},
+      "seconds": 12.1,
+      "status": "approved",
+      "style": "detail_zoom"
+    },
     "v9": {
       "caption": "Inking Naruto by hand ✍🏾 Who should I draw next? 👇🏾\n\n#drawing #traditionalart #naruto #drawingprocess #ink #timelapse #mangaka #fanart #mangadrawing #mangaart",
       "created": "2026-11-07T04:27:26+00:00",
@@ -1470,6 +2030,70 @@
       "seconds": 12.0,
       "status": "posted",
       "style": "reveal_first"
+    },
+    "v90": {
+      "caption": "Bringing Sasuke to life with traditional ink and steady hands ✍🏾 What character should I ink next? 👇🏾\n\n#sasuke #sasukeuchiha #naruto #mangaart #mangainking #传统gpen #traditionalart #inkingprocess #animeart #penandink",
+      "created": "2026-11-09T16:45:34+00:00",
+      "deadline": null,
+      "decided_at": "2026-11-09T16:45:34+00:00",
+      "decided_by": "auto",
+      "drawing": "d34",
+      "file_id": "BAACAgEAAxUHavH4rUKIzaT-FMbe2ll2yEqMcYQAAtYJAAK5lJFHwdUKTzG8moc9BA",
+      "full_link": "https://drive.google.com/file/d/1X61bFlek8nrRaHzt8omRNYc7i0aWwDPE/view?usp=drivesdk",
+      "hook": "Pure ink flowing on paper",
+      "message_id": 155,
+      "posts": {},
+      "seconds": 9.4,
+      "status": "approved",
+      "style": "ink_only"
+    },
+    "v91": {
+      "caption": "Bringing Sasuke to life with traditional ink and steady hands ✍🏾 What character should I ink next? 👇🏾\n\n#sasuke #sasukeuchiha #naruto #mangaart #mangainking #传统gpen #traditionalart #inkingprocess #animeart #penandink",
+      "created": "2026-11-09T16:45:34+00:00",
+      "deadline": null,
+      "decided_at": "2026-11-09T16:45:34+00:00",
+      "decided_by": "auto",
+      "drawing": "d34",
+      "file_id": "BAACAgEAAxUHavH4rRO6l1K5wr_wP-J_l0PrCgMAAtUJAAK5lJFHX6fKGXCCIlw9BA",
+      "full_link": "https://drive.google.com/file/d/1-gxkv3wJ3i59F1iPpQLWmIuXYwdCyy2x/view?usp=drivesdk",
+      "hook": "From initial lines to final inks",
+      "message_id": 156,
+      "posts": {},
+      "seconds": 10.6,
+      "status": "approved",
+      "style": "before_after"
+    },
+    "v92": {
+      "caption": "Bringing Sasuke to life with traditional ink and steady hands ✍🏾 What character should I ink next? 👇🏾\n\n#sasuke #sasukeuchiha #naruto #mangaart #mangainking #传统gpen #traditionalart #inkingprocess #animeart #penandink",
+      "created": "2026-11-09T16:45:34+00:00",
+      "deadline": null,
+      "decided_at": "2026-11-09T16:45:34+00:00",
+      "decided_by": "auto",
+      "drawing": "d34",
+      "file_id": "BAACAgEAAxUHavH4rbBJOFurZwTEzDAQRuqcQfMAAtcJAAK5lJFHT39TUbt8XE09BA",
+      "full_link": "https://drive.google.com/file/d/1nyvA6aEfCczcWJI3oUcMQMjDyV5KwGFD/view?usp=drivesdk",
+      "hook": "One continuous take of the inking process",
+      "message_id": 157,
+      "posts": {},
+      "seconds": 13.1,
+      "status": "approved",
+      "style": "one_take"
+    },
+    "v93": {
+      "caption": "Bringing Sasuke to life with traditional ink and steady hands ✍🏾 What character should I ink next? 👇🏾\n\n#sasuke #sasukeuchiha #naruto #mangaart #mangainking #传统gpen #traditionalart #inkingprocess #animeart #penandink",
+      "created": "2026-11-09T16:45:34+00:00",
+      "deadline": null,
+      "decided_at": "2026-11-09T16:45:34+00:00",
+      "decided_by": "auto",
+      "drawing": "d34",
+      "file_id": "BAACAgEAAxUHavH4rFxEWjmYgYgW3rtYi7EjmJkAAtMJAAK5lJFH7Y_BhO5IVPc9BA",
+      "full_link": "https://drive.google.com/file/d/1KyK1l626ibpH9fDe9-cvfDeC4La1JMi1/view?usp=drivesdk",
+      "hook": "Entire drawing process in seconds",
+      "message_id": 158,
+      "posts": {},
+      "seconds": 8.7,
+      "status": "approved",
+      "style": "speedrun"
     }
   }
 }
