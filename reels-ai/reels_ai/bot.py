@@ -189,8 +189,12 @@ class Runner:
                 v["status"] = "replaced"
                 replaced += 1
                 unsent.append(v["style"])
-        # Styles you already posted aren't re-made (no repeats in the feed), unless all were.
-        styles = [st for st in dict.fromkeys(unsent or [v["style"] for v in old]) if st in STYLE_LABELS]
+        # Styles you already posted aren't re-made (no repeats in the feed); styles this drawing
+        # never had (e.g. a new one) are added. If everything was posted, all are re-made.
+        made = {v["style"] for v in old}
+        never = [st for st in self.cfg["variants"]["styles"] if st in STYLE_LABELS and st not in made]
+        styles = [st for st in dict.fromkeys(unsent + never) if st in STYLE_LABELS]
+        styles = styles or [st for st in dict.fromkeys(v["style"] for v in old) if st in STYLE_LABELS]
         d.update(status="queued", redo=True, keep_in_place=True, redo_styles=styles or None)
         d.pop("error", None)
         label = d.get("subject") or d.get("drive_name") or did
