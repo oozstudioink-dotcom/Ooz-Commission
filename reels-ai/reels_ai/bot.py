@@ -35,16 +35,22 @@ MAX_BOT_DOWNLOAD = 20 * 1024 * 1024   # Telegram bots can only download files up
 HELP = (
     "Send me a drawing timelapse (as a video) and I'll make variants for you to approve.\n"
     "Add the character name as the video's caption, e.g. Naruto.\n\n"
-    "/status  overview\n/longform [project]  build a LongDraw from Drive \u203a Longform (no name = list projects)\n/redo [name]  re-make a drawing's Shorts with the latest editing (no name = newest; all = every drawing)\n/clear  delete recent chat messages (Telegram allows the last 2 days)\n/compile [title]  stitch the drawings since the last compilation into one page video\n/report  stats report now (also sent every Sunday)\n/queue  your video bank and how many days it covers\n/pause  stop all posting\n/resume  start posting again\n/help  this message"
+    "/status  overview\n/longform [project]  build a LongDraw from Drive \u203a Longform (no name = list projects)\n/redo [name]  re-make a drawing's Shorts with the latest editing (no name = newest; all = every drawing)\n/ideas  paste hooks/captions (e.g. from the Gemini app) to mix into new videos\n/clear  delete recent chat messages (Telegram allows the last 2 days)\n/compile [title]  stitch the drawings since the last compilation into one page video\n/report  stats report now (also sent every Sunday)\n/queue  your video bank and how many days it covers\n/pause  stop all posting\n/resume  start posting again\n/help  this message"
 )
 
 
-def pending_markup(vid: str) -> dict:
+def pending_markup(vid: str, drops: bool = False) -> dict:
     return {"inline_keyboard": [
-        [{"text": "✅ Post", "callback_data": f"ok:{vid}"},
+        [{"text": "✅ Keep" if drops else "✅ Post", "callback_data": f"ok:{vid}"},
          {"text": "❌ Skip", "callback_data": f"no:{vid}"}],
         [{"text": "✏️ Edit caption", "callback_data": f"ed:{vid}"}],
     ]}
+
+
+def rating_markup(vid: str) -> dict:
+    """Under each drop: how did this one turn out? Teaches the bot which styles you like."""
+    return {"inline_keyboard": [[{"text": "👍 Good one", "callback_data": f"up:{vid}"},
+                                 {"text": "👎 Not my style", "callback_data": f"dn:{vid}"}]]}
 
 
 def label_markup(text: str) -> dict:
@@ -154,6 +160,8 @@ class Runner:
         elif cmd == "/redo":
             arg = text.split(maxsplit=1)[1].strip() if len(text.split(maxsplit=1)) > 1 else ""
             self.redo_all() if arg.lower() == "all" else self.redo(arg)
+        elif cmd == "/ideas":
+            self.save_ideas(text.split(maxsplit=1)[1] if len(text.split(maxsplit=1)) > 1 else "")
         elif cmd == "/clear":
             self.clear_chat(int(m.get("message_id") or 0))
         elif cmd == "/id":
@@ -536,21 +544,79 @@ class Runner:
             return self.bot.answer_callback(q["id"])
         if v["status"] not in ("pending",) and action in ("ok", "no"):
             return self.bot.answer_callback(q["id"], f"Already {v['status']}")
+        if action in ("up", "dn"):
+            if v.get("rated"):
+                return self.bot.answer_callback(q["id"], "Already rated")
+            v["rated"] = action
+            self.feedback(v["style"], action == "up")
+            self.bot.answer_callback(q["id"], "Noted")
+            return self.bot.edit_markup(self.owner, msg.get("message_id"), label_markup(
+                "👍 Noted: more like this" if action == "up" else "👎 Noted: fewer like this"))
         if action == "ok":
             self.decide(v, "approved", "you")
-            self.bot.answer_callback(q["id"], "Queued to post")
-            self.bot.edit_markup(self.owner, msg.get("message_id", v["message_id"]),
-                                 label_markup("✅ Approved: queued to post"))
+            self.feedback(v["style"], True)
+            self.bot.answer_callback(q["id"], "Added to your drops" if self.drops_mode else "Queued to post")
+            self.bot.edit_markup(self.owner, msg.get("message_id", v["message_id"]), label_markup(
+                "✅ Kept: added to your drops" if self.drops_mode else "✅ Approved: queued to post"))
         elif action == "no":
             self.decide(v, "skipped", "you")
+            self.feedback(v["style"], False)
             self.bot.answer_callback(q["id"], "Skipped")
             self.bot.edit_markup(self.owner, msg.get("message_id", v["message_id"]),
-                                 label_markup("❌ Skipped"))
+                                 label_markup("❌ Skipped: won't be dropped"))
         elif action == "ed":
             self.state["awaiting_caption"] = vid
             self.bot.answer_callback(q["id"])
             self.say(f"✏️ Send the new caption for {STYLE_LABELS[v['style']]} ({vid}):",
                      force_reply=True)
+
+    def save_ideas(self, text: str) -> None:
+        """/ideas + pasted lines (e.g. from the Gemini app): short lines become on-screen hooks,
+        longer ones captions. /ideas clear empties the list."""
+        pool = self.state.setdefault("owner_ideas", {"hooks": [], "captions": []})
+        if text.strip().lower() == "clear":
+            pool["hooks"], pool["captions"] = [], []
+            return self.say("\U0001f9f9 Cleared your saved hooks and captions.")
+        added_h = added_c = 0
+        for line in text.splitlines():
+            line = re.sub(r"^\s*(?:[-*\u2022]|\d+[.)]|hook:|caption:)\s*", "", line, flags=re.I).strip().strip('"\u201c\u201d')
+            if not line or line.endswith(":"):
+                continue
+            if len(line) <= 45 and line not in pool["hooks"]:
+                pool["hooks"].append(line)
+                added_h += 1
+            elif 45 < len(line) <= 220 and line not in pool["captions"]:
+                pool["captions"].append(line)
+                added_c += 1
+        pool["hooks"], pool["captions"] = pool["hooks"][-80:], pool["captions"][-40:]
+        if not (added_h or added_c):
+            return self.say("Paste your lines after /ideas, one per line (short = on-screen hook, "
+                            "long = caption). Example:\n/ideas\nWait for the last line\nInked this one live on stream")
+        self.say(f"\U0001f4a1 Saved {added_h} hook(s) and {added_c} caption(s) "
+                 f"({len(pool['hooks'])} hooks, {len(pool['captions'])} captions in total). "
+                 "New videos mix them in with the AI ones; they're still checked for false claims.")
+
+    def with_owner_ideas(self, copy: dict | None, styles: list[str], did: str) -> dict | None:
+        """Mix your /ideas lines into this drawing's copy: about half the styles get one of your hooks."""
+        pool = self.state.get("owner_ideas") or {}
+        hooks, caps = pool.get("hooks") or [], pool.get("captions") or []
+        if not (hooks or caps):
+            return copy
+        rng = random.Random(f"ideas-{did}")
+        copy = dict(copy or {})
+        copy["hooks"] = dict(copy.get("hooks") or {})
+        picks = rng.sample(hooks, min(len(hooks), len(styles)))
+        for style, hook in zip(rng.sample(styles, len(styles)), picks):
+            if rng.random() < 0.5:
+                copy["hooks"][style] = hook
+        if caps and rng.random() < 0.5:
+            copy["caption"] = rng.choice(caps)
+        return copy
+
+    def feedback(self, style: str, liked: bool) -> None:
+        """Your ✅/❌ and 👍/👎 per style, used by choose_styles (style_weights)."""
+        fb = self.state.setdefault("style_feedback", {}).setdefault(style, {"liked": 0, "disliked": 0})
+        fb["liked" if liked else "disliked"] += 1
 
     def decide(self, v: dict, status: str, by: str) -> None:
         v["status"] = status
@@ -631,7 +697,7 @@ class Runner:
             f" \u00b7 {v.get('seconds', '?')}s\nHook on video: \u201c{v.get('hook', '')}\u201d\n\n"
             f"Post to: {where}\n\U0001f3b5 Add a trending sound when you post.\n"
             + (f"\U0001f39e 4K file to post: {v['full_link']}\n" if v.get("full_link") else "")
-            + "Caption is in the next message."))
+            + "Caption is in the next message."), reply_markup=rating_markup(next((k for k, x in self.state["variants"].items() if x is v), "")))
         self.say(v["caption"])
         v["dropped_at"] = iso(self.clock())
         v["drop_no"] = n
@@ -815,12 +881,18 @@ class Runner:
     def style_weights(self) -> dict[str, float]:
         """From the weekly report: average views per style vs the average style (0.5x..2x).
         Only styles with 2+ matched posts count, and only once 2+ styles have data."""
+        out: dict[str, float] = {}
         scores = {s: v["avg_views"] for s, v in self.state.get("style_scores", {}).items()
                   if v.get("posts", 0) >= 2 and v.get("avg_views", 0) > 0}
-        if len(scores) < 2:
-            return {}
-        mean = sum(scores.values()) / len(scores)
-        return {s: min(2.0, max(0.5, v / mean)) for s, v in scores.items()}
+        if len(scores) >= 2:
+            mean = sum(scores.values()) / len(scores)
+            out = {s: min(2.0, max(0.5, v / mean)) for s, v in scores.items()}
+        # your own taste: share of ✅/👍 per style (3+ ratings), 0.4x (mostly skipped) .. 1.6x
+        for s, fb in self.state.get("style_feedback", {}).items():
+            n = fb.get("liked", 0) + fb.get("disliked", 0)
+            if n >= 3:
+                out[s] = out.get(s, 1.0) * (0.4 + 1.2 * fb.get("liked", 0) / n)
+        return out
 
     def render(self, work_root: Path | None = None) -> None:
         from .pipeline import make_variants   # heavy imports only in this phase
@@ -851,7 +923,7 @@ class Runner:
                     else:
                         src = self.bot.download(d["file_id"], tmp / f"{did}.mp4")
                     styles = d.pop("redo_styles", None) or self.choose_styles(did)
-                    copy = self.ai_copy(src, d, styles, tmp)
+                    copy = self.with_owner_ideas(self.ai_copy(src, d, styles, tmp), styles, did)
                     big = self.shorts_4k and d.get("source") == "drive"
                     raw = self.drive_raw(d) if d.get("source") == "drive" else {}
                     if d.get("source") == "drive" and not raw and "process_cuts" in styles:
@@ -895,6 +967,8 @@ class Runner:
                         note = "\U0001f916 Auto mode: queued to post."
                     elif deadline:
                         note = f"⏱ Posts automatically {self.fmt_time(deadline)} unless you skip it."
+                    elif self.drops_mode:
+                        note = "Tap \u2705 Keep to add it to your drops, \u274c Skip if you don't like it."
                     else:
                         note = "Waiting for your OK."
                     text = (f"\U0001f3ac {STYLE_LABELS[r['name']]} · {r['seconds']:.0f}s · {vid}\n"
@@ -903,7 +977,7 @@ class Runner:
                         text += f"\n\U0001f39e Full quality: {links[r['name']]}"
                     sent = self.bot.send_video(
                         self.owner, out_dir / r.get("tg_file", r["file"]), caption=text,
-                        reply_markup=None if mode == "auto" else pending_markup(vid),
+                        reply_markup=None if mode == "auto" else pending_markup(vid, self.drops_mode),
                         width=720, height=1280, duration=round(r["seconds"]))
                     self.state["variants"][vid] = {
                         "drawing": did, "style": r["name"], "hook": r["hook"], "caption": r["caption"],
