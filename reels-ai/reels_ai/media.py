@@ -185,3 +185,67 @@ def preview_copy(src: Path, dst: Path, width: int = 1080, crf: int = 21) -> Path
                     "-c:v", "libx264", "-crf", str(crf), "-preset", "medium", "-pix_fmt", "yuv420p",
                     "-c:a", "copy", "-movflags", "+faststart", str(dst)], check=True)
     return Path(dst)
+
+
+def page_changes(store: "FrameStore", win: int = 6, threshold: float = 0.5) -> list[int]:
+    """Frames where the camera moved to a different page (e.g. flipping pages on a livestream).
+
+    In one drawing session ink only ever appears. A page change does two things at once: most of
+    the inked lines that were there vanish, and a lot of different lines appear. The page before
+    and after each frame is a median of several frames, and anything a hand, arm or pen covers in
+    either stretch is ignored, so moving your hand around, erasing, or uncovering lines doesn't
+    count."""
+    from .analyze import _skin
+    n = len(store)
+    if n < 4 * win:
+        return []
+    gray, hand = [], []
+    for i in range(n):
+        small = cv2.resize(store[i], (128, 228), interpolation=cv2.INTER_AREA)
+        gray.append(cv2.cvtColor(small, cv2.COLOR_BGR2GRAY))
+        hand.append(_skin(small))
+    gray = np.stack(gray).astype(np.float32)
+    hand = np.stack(hand)
+    min_ink = 0.008 * gray.shape[1] * gray.shape[2]          # a real amount of drawing on the page
+    grow = np.ones((5, 5), np.uint8)
+
+    def ink(img: np.ndarray) -> np.ndarray:
+        paper = cv2.GaussianBlur(cv2.dilate(img, np.ones((9, 9), np.uint8)), (0, 0), 4)
+        return (paper - img) > 40
+
+    scores = np.zeros(n)
+    for i in range(win, n - win, 2):
+        covered = cv2.dilate(hand[i - win:i + win].any(axis=0).astype(np.uint8), np.ones((15, 15), np.uint8)) > 0
+        before = ink(np.median(gray[i - win:i], axis=0)) & ~covered
+        after = ink(np.median(gray[i:i + win], axis=0)) & ~covered
+        if before.sum() < min_ink or after.sum() < min_ink:
+            continue
+        lost = float((before & ~(cv2.dilate(after.astype(np.uint8), grow) > 0)).sum()) / float(before.sum())
+        new = float((after & ~(cv2.dilate(before.astype(np.uint8), grow) > 0)).sum()) / float(after.sum())
+        scores[i] = scores[i + 1] = min(lost, new)
+    cuts = []
+    i = win
+    while i < n - win:
+        if scores[i] > threshold:
+            j = i
+            while j + 1 < n - win and scores[j + 1] > threshold:   # one change, several frames wide
+                j += 1
+            cuts.append(int(i + int(np.argmax(scores[i:j + 1]))))
+            i = j + win
+        else:
+            i += 1
+    return cuts
+
+
+def longest_stretch(n: int, cuts: list[int]) -> tuple[int, int]:
+    """The longest run of frames between page changes: (first, last)."""
+    edges = [0] + sorted(cuts) + [n]
+    a, b = max(zip(edges, edges[1:]), key=lambda ab: ab[1] - ab[0])
+    return a, b - 1
+
+
+def trim(src: Path, dst: Path, first: int, last: int) -> None:
+    subprocess.run(["ffmpeg", "-v", "error", "-y", "-i", str(src), "-an", "-vf",
+                    f"select='between(n,{first},{last})',setpts=N/{FPS}/TB", "-r", str(FPS),
+                    "-c:v", "libx264", "-crf", "14", "-preset", "fast", "-pix_fmt", "yuv420p", str(dst)],
+                   check=True)
