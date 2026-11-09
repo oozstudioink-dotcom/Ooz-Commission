@@ -16,7 +16,7 @@ import urllib.request
 from pathlib import Path
 
 ENDPOINT = "https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
-DEFAULT_MODEL = "gemini-flash-latest"
+DEFAULT_MODEL = "gemini-pro-latest"
 
 STYLE_BRIEFS = {
     "reveal_first": "video opens on the finished piece, then rewinds to the blank page",
@@ -82,13 +82,14 @@ def write_copy(image: Path, subject: str | None, styles: list[str], api_key: str
     return clean(out, styles)
 
 
-FALLBACK_MODELS = ["gemini-flash-lite-latest"]       # always-current aliases; more come from the API
+FALLBACK_MODELS = ["gemini-flash-latest", "gemini-flash-lite-latest"]   # if Pro is busy or not on the key
 MODELS_URL = "https://generativelanguage.googleapis.com/v1beta/models"
 _SKIP = re.compile(r"image|tts|audio|live|embed|vision|learnlm|gemma|robotics|computer", re.I)
 
 
 def available_models(api_key: str, url: str = MODELS_URL, timeout: int = 30) -> list[str]:
-    """Text 'flash' models this key can call, newest first ('-latest' aliases on top).
+    """Text 'pro' and 'flash' models this key can call: '-latest' aliases first, Pro before Flash,
+    then newest version.
     Model names change as Google retires versions, so the bot asks instead of guessing."""
     key = re.sub(r"\s+", "", api_key or "")
     req = urllib.request.Request(f"{url}?pageSize=200", headers={"x-goog-api-key": key})
@@ -99,11 +100,12 @@ def available_models(api_key: str, url: str = MODELS_URL, timeout: int = 30) -> 
         return []
     names = [m["name"].split("/", 1)[-1] for m in models
              if "generateContent" in (m.get("supportedGenerationMethods") or [])
-             and "flash" in m.get("name", "") and not _SKIP.search(m.get("name", ""))]
+             and re.search(r"flash|pro", m.get("name", "")) and not _SKIP.search(m.get("name", ""))]
 
     def rank(n: str):
         ver = [int(x) for x in re.findall(r"(\d+)(?:\.(\d+))?", n)[0] if x] if re.search(r"\d", n) else [99]
-        return (not n.endswith("-latest"), "preview" in n or "exp" in n, [-v for v in ver], "lite" in n, n)
+        return (not n.endswith("-latest"), "pro" not in n, "preview" in n or "exp" in n, [-v for v in ver],
+                "lite" in n, n)
     return sorted(dict.fromkeys(names), key=rank)
 
 

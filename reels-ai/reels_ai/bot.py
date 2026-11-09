@@ -1078,6 +1078,8 @@ def check(runner: Runner) -> None:
     wanted = runner.cfg.get("ai", {}).get("model", DEFAULT_MODEL)
     key = os.environ.get("GEMINI_API_KEY", "")
     results, working = [], None
+    from .ai import available_models
+    offered = available_models(key)
     for model in candidate_models(key, wanted, limit=5):
         t0 = _time.time()
         try:
@@ -1098,6 +1100,8 @@ def check(runner: Runner) -> None:
     else:
         lines.append("Gemini: \u274c no model answered")
     lines += results
+    if offered:
+        lines.append("\u2022 models this key can use: " + ", ".join(offered[:8]))
     text = "\n".join(lines)
     print(text)
     runner.say(text)

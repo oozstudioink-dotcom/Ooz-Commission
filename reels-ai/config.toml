@@ -113,7 +113,7 @@ offer = ["FIRST 10 CLIENTS", "50% OFF"]
 # Hooks + captions written by Google Gemini when the GEMINI_API_KEY secret is set
 # (free key: aistudio.google.com -> Get API key). Without a key the built-in hooks are used.
 enabled = true
-model = "gemini-flash-latest"
+model = "gemini-pro-latest"     # best quality; falls back to Flash when Pro is busy or not on the key
 
 [bank]
 warn_below_days = 3              # Telegram alert when the approved-video bank gets this low

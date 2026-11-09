@@ -786,8 +786,8 @@ class GeminiCopyTest(unittest.TestCase):
         from reels_ai import ai
         url = f"http://127.0.0.1:{srv.server_port}/models"
         got = ai.available_models("K", url=url)
-        self.assertEqual(got, ["gemini-flash-latest", "gemini-flash-lite-latest", "gemini-3.1-flash",
-                               "gemini-3.1-flash-lite", "gemini-3-flash-preview"])
+        self.assertEqual(got, ["gemini-flash-latest", "gemini-flash-lite-latest", "gemini-3.1-pro",
+                               "gemini-3.1-flash", "gemini-3.1-flash-lite", "gemini-3-flash-preview"])
         real = ai.MODELS_URL
         ai.available_models.__defaults__ = (url, 30)
         try:
