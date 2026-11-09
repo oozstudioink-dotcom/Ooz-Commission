@@ -53,8 +53,11 @@ def label_markup(text: str) -> dict:
 
 class Runner:
     def __init__(self, bot: Bot, state: dict, config: dict, clock=now, clients: dict | None = None,
-                 drive=None):
+                 drive=None, checkpoint=None):
         self.bot, self.state, self.cfg, self.clock = bot, state, config, clock
+        # Saves the bot's memory mid-run (after each drawing), so a run cut off by GitHub's time
+        # limit keeps what it finished instead of re-rendering and re-sending it.
+        self.checkpoint = checkpoint or (lambda: None)
         self.clients = clients or {}          # platform -> API client (e.g. Instagram)
         self.drive = drive                    # Google Drive inbox / backups (optional)
         self.tz = ZoneInfo(config.get("timezone", "UTC"))
@@ -174,7 +177,7 @@ class Runner:
         leave the bank so the new ones replace them; already-dropped ones are untouched."""
         want = name.lower()
         found = [(did, d) for did, d in self.state["drawings"].items()
-                 if d["status"] in ("rendered", "failed")
+                 if d["status"] in ("rendered", "failed") and not self.retired(d)
                  and (not want or want in (d.get("subject") or "").lower()
                       or want in (d.get("drive_name") or "").lower())]
         if not found:
@@ -194,7 +197,8 @@ class Runner:
 
     def redo_all(self) -> None:
         """/redo all: every finished drawing again with the current settings."""
-        todo = [(did, d) for did, d in self.state["drawings"].items() if d["status"] in ("rendered", "failed")]
+        todo = [(did, d) for did, d in self.state["drawings"].items()
+                if d["status"] in ("rendered", "failed") and not self.retired(d)]
         if not todo:
             return self.say("\U0001f50e No finished drawings yet.")
         replaced = videos = queued = 0
@@ -282,10 +286,14 @@ class Runner:
             meta = f.get("videoMediaMetadata") or {}
             did = new_id(self.state, "d")
             subject, hints = parse_name(f["name"])
-            if project:                                  # LongDraw session: the folder names the piece
+            if project:                                  # one drawing of a LongDraw page
+                from .drive import part_number
                 p_subject, p_hints = parse_name(project)
-                subject = p_subject or subject
+                subject = subject or p_subject           # '3 - Kakashi.MOV' names it, else the page does
                 hints = {**p_hints, **hints}
+                n = part_number(f["name"])
+                if n is not None and n > 1:              # drawings 2.. start on a page that has ink
+                    hints.setdefault("continued", True)
             self.state["drawings"][did] = {
                 "source": "drive", "drive_id": f["id"], "drive_name": f["name"], "drive_where": where,
                 "keep_in_place": keep, "subject": subject, "received": iso(self.clock()),
@@ -558,6 +566,15 @@ class Runner:
                                      label_markup("⏱ Auto-approved: queued to post"))
 
     # ------------------------------------------------------------------ drops (manual posting)
+    def retired(self, d: dict | None) -> bool:
+        """Drawings you've used enough ([bank] retired in config.toml): no more drops or redos."""
+        names = [n.lower() for n in self.cfg.get("bank", {}).get("retired", []) if n.strip()]
+        text = f"{(d or {}).get('subject') or ''} {(d or {}).get('drive_name') or ''}".lower()
+        return any(n in text for n in names)
+
+    def retired_variant(self, v: dict) -> bool:
+        return self.retired(self.state["drawings"].get(v.get("drawing")))
+
     @property
     def drops_mode(self) -> bool:
         return self.cfg.get("delivery", {}).get("mode") == "drops"
@@ -585,7 +602,7 @@ class Runner:
         different style than last time, and draw from the drawings with the most videos left so
         one drawing's variants don't pile up at the end of the bank."""
         pool = [v for v in self.state["variants"].values()
-                if v["status"] == "approved" and not v.get("dropped_at")]
+                if v["status"] == "approved" and not v.get("dropped_at") and not self.retired_variant(v)]
         if not pool:
             return None
         sent = [v for v in self.state["variants"].values() if v.get("dropped_at")]
@@ -701,7 +718,8 @@ class Runner:
         """Approved (or still pending) videos not yet sent to each enabled platform."""
         if self.drops_mode:
             return {"drops": sum(1 for v in self.state["variants"].values()
-                                 if v["status"] in ("approved", "pending") and not v.get("dropped_at"))}
+                                 if v["status"] in ("approved", "pending") and not v.get("dropped_at")
+                                 and not self.retired_variant(v))}
         out = {}
         for p, pc in self.cfg.get("platforms", {}).items():
             if pc.get("enabled"):
@@ -816,6 +834,11 @@ class Runner:
         for did, d in self.state["drawings"].items():
             if d["status"] != "queued":
                 continue
+            if self.retired(d):                      # listed in [bank] retired: not made any more
+                d["status"] = "retired"
+                self.say(f"\U0001f4e6 Skipped {d.get('subject') or d.get('drive_name') or did}: it's on your "
+                         "retired list ([bank] retired in config.toml).")
+                continue
             if done_now and _time.time() - started > budget:
                 left = sum(1 for x in self.state["drawings"].values() if x["status"] == "queued")
                 self.say(f"\u23f3 Rendered {done_now} drawing(s) this run; {left} more continue on the next run.")
@@ -842,6 +865,7 @@ class Runner:
                     d["status"] = "failed"
                     d["error"] = str(e)[:300]
                     self.say(f"⚠️ Couldn't process that video ({did}): {d['error']}")
+                    self.checkpoint()
                     continue
                 d["beats"] = self.beats_summary(out_dir, results)
                 links = {}
@@ -858,8 +882,10 @@ class Runner:
                         self.say(f"\u26a0\ufe0f Made {d.get('subject') or did}'s videos but couldn't send them: "
                                  f"{str(e)[:200]}. The 4K files are in Drive \u203a Done \u203a Shorts; "
                                  f"/redo {d.get('subject') or ''} tries again.")
+                        self.checkpoint()
                         continue
                     d["status"] = "rendered"
+                    self.checkpoint()
                     continue
                 for r in results:
                     vid = new_id(self.state, "v")
@@ -892,6 +918,7 @@ class Runner:
                     uses = self.state["style_uses"]
                     uses[r["name"]] = uses.get(r["name"], 0) + 1
                 d["status"] = "rendered"
+                self.checkpoint()
         if done_now and not any(x["status"] == "queued" for x in self.state["drawings"].values()):
             bank = self.bank().get("drops")
             extra = f" Bank: {bank} videos \u2248 {bank // self.per_day('drops')} days of drops." if bank else ""
@@ -1024,7 +1051,17 @@ def run(phase: str) -> None:
                          "(expected digits, a colon, then ~35 letters/numbers). Re-paste it.")
     token = m.group(0)
     state, config = load_state(), load_config()
-    runner = Runner(Bot(token), state, config, clients=make_clients(config), drive=make_drive(config))
+    if phase == "alert":                       # the workflow failed or timed out: tell the owner
+        owner = os.environ.get("TELEGRAM_OWNER_ID") or state.get("owner_chat_id")
+        if owner:
+            url = (f"{os.environ.get('GITHUB_SERVER_URL', 'https://github.com')}/"
+                   f"{os.environ.get('GITHUB_REPOSITORY', '')}/actions/runs/{os.environ.get('GITHUB_RUN_ID', '')}")
+            what = os.environ.get("ALERT_WHAT", "bot run")
+            Bot(token).send_message(int(owner), f"\u26a0\ufe0f The {what} stopped with an error. Finished work is "
+                                                 f"kept; anything left over is retried on the next run.\nDetails: {url}")
+        return
+    runner = Runner(Bot(token), state, config, clients=make_clients(config), drive=make_drive(config),
+                    checkpoint=lambda: save_state(state))
     if phase == "tiktok-connect":
         try:
             tiktok_connect(runner, config)
@@ -1036,6 +1073,12 @@ def run(phase: str) -> None:
             check(runner)
         finally:
             save_state(state)
+        return
+    if phase == "tidy-drive":
+        from . import tidy
+        if not runner.drive:
+            raise SystemExit("Drive isn't connected")
+        runner.say(tidy.run(runner.drive, state))
         return
     try:
         needs_render = False

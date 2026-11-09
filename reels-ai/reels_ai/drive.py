@@ -47,6 +47,7 @@ def _stem(name: str) -> str:
 
 def parse_name(name: str) -> tuple[str | None, dict]:
     """'Sasuke - ink only - continued.MOV' -> ('Sasuke', {'pencil': False, 'continued': True}).
+    '3 - Kakashi.MOV' (a page's 3rd drawing) -> ('Kakashi', {}).
 
     The character is everything before the first ' - ' (camera names like IMG_1234 give None,
     a trailing take number is dropped). Tags after it tell the editor how the piece was drawn;
@@ -54,6 +55,9 @@ def parse_name(name: str) -> tuple[str | None, dict]:
     stem = _stem(name)
     parts = [p.strip() for p in re.split(r"\s+[-\u2013\u2014]\s+|\s*\[|\]\s*", stem) if p and p.strip()]
     hints: dict = {}
+    number = re.compile(r"(part|pt|session|take|clip|drawing)?\s*#?\d+", re.I)
+    if len(parts) > 1 and number.fullmatch(parts[0]) and not any(rx.match(parts[1]) for rx, _ in TAGS):
+        parts = parts[1:]          # '3 - Kakashi - ink only': a page's 3rd drawing, named Kakashi
     head = parts[0] if parts else ""
     for part in parts[1:]:
         for tag in re.split(r"\s*[,+&]\s*", part):
@@ -64,7 +68,7 @@ def parse_name(name: str) -> tuple[str | None, dict]:
                 hints[hit[0]] = hit[1]
             else:
                 hints.setdefault("unknown", []).append(tag.strip())
-    if not head or CAMERA.match(head) or re.fullmatch(r"(part|pt|session|take|clip)?\s*#?\d+", head, re.I):
+    if not head or CAMERA.match(head) or number.fullmatch(head):
         return None, hints
     head = re.sub(r"[ _\-]*(\(\d+\)|\d+)$", "", head).replace("_", " ").strip()
     return (head[:60] or None), hints
@@ -78,7 +82,7 @@ def subject_from_name(name: str) -> str | None:
 def part_number(name: str) -> int | None:
     """Order of a session inside a LongDraw folder: '1.MOV', 'Part 2', 'Sasuke 03', '04 - pencil'."""
     stem = _stem(name)
-    m = (re.search(r"(?:part|pt|session|take|clip|#)\s*#?(\d+)", stem, re.I)
+    m = (re.search(r"(?:part|pt|session|take|clip|drawing|#)\s*#?(\d+)", stem, re.I)
          or re.match(r"\s*(\d+)", stem)
          or re.search(r"(\d+)\s*$", re.split(r"\s+[-\u2013\u2014]\s+", stem)[0]))
     return int(m.group(1)) if m else None
@@ -207,6 +211,10 @@ class Drive:
     def move(self, file_id: str, to_folder: str, from_folder: str) -> None:
         self._req("PATCH", f"{self.api}/files/{file_id}",
                   {"addParents": to_folder, "removeParents": from_folder, "fields": "id"}, body={})
+
+    def trash(self, file_id: str) -> None:
+        """Move a file to Drive's Trash (restorable for 30 days). The bot never deletes outright."""
+        self._req("PATCH", f"{self.api}/files/{file_id}", {"fields": "id"}, body={"trashed": True})
 
     def media_url(self, file_id: str) -> str:
         return f"{self.api}/files/{file_id}?alt=media"

@@ -448,6 +448,120 @@ class AlbumSizeTest(unittest.TestCase):
         self.assertEqual(sum(k == "video" for k, _, _ in bot.sent), 6)
 
 
+class ReliabilityTest(FakeVariantsMixin, unittest.TestCase):
+    def test_memory_saved_after_each_drawing(self):
+        bot, state = FakeBot(), fresh_state()
+        saves = []
+        r = Runner(bot, state, load_config(), clock=Clock(datetime(2026, 11, 7, tzinfo=timezone.utc)),
+                   checkpoint=lambda: saves.append({d: x["status"] for d, x in state["drawings"].items()}))
+        src = Path(tempfile.mkdtemp()) / "in.mp4"
+        src.write_bytes(b"raw")
+        bot.push(**msg(OWNER, text="hi"))
+        for i in range(3):
+            bot.files[f"raw{i}"] = src
+            bot.push(**msg(OWNER, video={"file_id": f"raw{i}", "file_unique_id": f"u{i}", "file_size": 9},
+                           caption=f"Char{i}"))
+        r.poll()
+        self.stub_render(r)
+        self.assertEqual(len(saves), 3)
+        self.assertEqual([list(x.values()).count("rendered") for x in saves], [1, 2, 3])
+
+    def test_failure_alert(self):
+        import reels_ai.bot as botmod
+        sent = []
+
+        class B:
+            def __init__(self, token):
+                pass
+
+            def send_message(self, chat, text, **kw):
+                sent.append((chat, text))
+        tmp = Path(tempfile.mkdtemp()) / "state.json"
+        tmp.write_text(json.dumps({"owner_chat_id": 4242}))
+        env = {"TELEGRAM_BOT_TOKEN": "123456789:" + "A" * 35, "GITHUB_REPOSITORY": "o/r", "GITHUB_RUN_ID": "77"}
+        old_env = {k: os.environ.get(k) for k in env}
+        os.environ.update(env)
+        real_bot, real_load = botmod.Bot, botmod.load_state
+        botmod.Bot, botmod.load_state = B, (lambda: {**json.loads(json.dumps(EMPTY)), **json.loads(tmp.read_text())})
+        try:
+            botmod.run("alert")
+        finally:
+            botmod.Bot, botmod.load_state = real_bot, real_load
+            for k, v in old_env.items():
+                if v is None:
+                    os.environ.pop(k, None)
+                else:
+                    os.environ[k] = v
+        self.assertEqual(sent[0][0], 4242)
+        self.assertIn("actions/runs/77", sent[0][1])
+
+
+class RetireAndTidyTest(FakeVariantsMixin, unittest.TestCase):
+    def test_retired_drawings_leave_the_bank(self):
+        bot, state = FakeBot(), fresh_state()
+        cfg = load_config()
+        cfg["timezone"] = "UTC"
+        cfg["bank"]["retired"] = []
+        clock = Clock(datetime(2026, 11, 7, 9, tzinfo=timezone.utc))
+        r = Runner(bot, state, cfg, clock=clock)
+        src = Path(tempfile.mkdtemp()) / "in.mp4"
+        src.write_bytes(b"raw")
+        bot.push(**msg(OWNER, text="hi"))
+        for i, name in enumerate(["Shinobi Undercover Manga", "Naruto"]):
+            bot.files[f"raw{i}"] = src
+            bot.push(**msg(OWNER, video={"file_id": f"raw{i}", "file_unique_id": f"u{i}", "file_size": 9},
+                           caption=name))
+        r.poll()
+        self.stub_render(r)
+        self.assertEqual(r.bank()["drops"], 10)
+        cfg["bank"]["retired"] = ["Shinobi Undercover"]
+        self.assertEqual(r.bank()["drops"], 5)
+        for day in range(4):
+            clock.t = datetime(2026, 11, 7, 20, tzinfo=timezone.utc) + timedelta(days=day)
+            r.poll()
+        dropped = [v for v in state["variants"].values() if v.get("dropped_at")]
+        self.assertTrue(dropped)
+        self.assertTrue(all(state["drawings"][v["drawing"]]["subject"] == "Naruto" for v in dropped))
+        bot.push(**msg(OWNER, text="/redo shinobi"))
+        r.poll()
+        self.assertTrue(any("No finished drawing" in t for t in bot.texts()))
+
+    def test_tidy_trashes_only_leftovers(self):
+        from reels_ai import tidy
+
+        class D:
+            def __init__(self):
+                self.trashed = []
+
+            def folder(self, path):
+                return "id:" + path
+
+            def list(self, fid, kind="video"):
+                if kind == "folder":
+                    return [{"id": "f1", "name": "Naruto"}]
+                return [
+                    {"id": "LIVE1aaaaaaa", "name": "Naruto - Speedrun (redo).mp4", "size": "100"},
+                    {"id": "CRASHaaaaaaa", "name": "Naruto - Speedrun (redo).mp4", "size": "100"},   # crashed run
+                    {"id": "OLDaaaaaaaaa", "name": "Naruto - Speedrun.mp4", "size": "100"},          # replaced
+                    {"id": "OTHERDRAWING", "name": "Naruto - One take.mp4", "size": "100"},          # unknown: keep
+                    {"id": "POSTEDaaaaaa", "name": "Naruto - Ink only.mp4", "size": "100"},
+                ]
+
+            def trash(self, fid):
+                self.trashed.append(fid)
+
+        def link(i):
+            return f"https://drive.google.com/file/d/{i}/view"
+        state = {"variants": {
+            "v1": {"status": "approved", "full_link": link("LIVE1aaaaaaa")},
+            "v2": {"status": "replaced", "full_link": link("OLDaaaaaaaaa")},
+            "v3": {"status": "posted", "full_link": link("POSTEDaaaaaa")}}}
+        d = D()
+        msg_ = tidy.run(d, state)
+        self.assertEqual(sorted(d.trashed), ["CRASHaaaaaaa", "OLDaaaaaaaaa"])
+        self.assertIn("moved 2 duplicate", msg_)
+
+
 class StyleLearningTest(unittest.TestCase):
     def test_winning_styles_come_round_more_and_weakest_is_skipped(self):
         cfg = load_config()
@@ -1508,7 +1622,8 @@ class UploadOnceAndStorageTest(FakeVariantsMixin, unittest.TestCase):
                 "id:Inbox": [{"id": "i1", "name": "Goku.MOV", "mimeType": "video/quicktime", "size": "4000000000"}],
                 "id:Longform": [{"id": "p1", "name": "Shinobi Page", "mimeType": "folder"},
                                 {"id": "fin", "name": "Finished", "mimeType": "folder"}],
-                "p1": [{"id": "s1", "name": "Naruto.MOV", "mimeType": "video/quicktime", "size": "9000000000"}],
+                "p1": [{"id": "s1", "name": "Naruto.MOV", "mimeType": "video/quicktime", "size": "9000000000"},
+                       {"id": "s2", "name": "2.MOV", "mimeType": "video/quicktime", "size": "1000000000"}],
                 "id:Inbox/Processed": [{"id": "x", "name": "old.MOV", "mimeType": "video/quicktime",
                                         "size": "60000000000"}],
                 "id:Longform/Finished": [{"id": "f1", "name": "Old Page", "mimeType": "folder"}],
@@ -1541,18 +1656,21 @@ class UploadOnceAndStorageTest(FakeVariantsMixin, unittest.TestCase):
         r.poll()
         r.poll()                                                         # second poll: nothing new
         drawings = {x["drive_id"]: x for x in state["drawings"].values()}
-        self.assertEqual(set(drawings), {"i1", "s1"})                    # Finished folder ignored
+        self.assertEqual(set(drawings), {"i1", "s1", "s2"})              # Finished folder ignored
+        self.assertEqual(drawings["s2"]["subject"], "Shinobi Page")      # unnamed drawing: the page names it
+        self.assertEqual(drawings["s2"]["hints"], {"continued": True})   # 2nd drawing: page already has ink
+        self.assertNotIn("continued", drawings["s1"].get("hints", {}))
         self.assertTrue(drawings["s1"]["keep_in_place"])
         self.assertEqual(sum("new recording" in t for t in bot.texts()), 1)
         notice = [t for t in bot.texts() if "new recording" in t][0]
         self.assertIn("Longform › Shinobi Page", notice)
-        self.assertIn("Naruto.MOV → Shinobi Page", notice)                 # the folder names the piece
+        self.assertIn("Naruto.MOV → Naruto", notice)                       # a named file names the drawing
         src = Path(tempfile.mkdtemp()) / "raw.mp4"
         src.write_bytes(b"x")
         r.drive_source = lambda dd, tmp: src
         self.stub_render(r)
         self.assertEqual(d.moves, ["i1"])                                # only the Inbox file moved
-        self.assertIn("id:Done/Shorts/Shinobi Page", d.ups)
+        self.assertIn("id:Done/Shorts/Naruto", d.ups)
 
     def test_monthly_storage_note(self):
         bot, state, d = FakeBot(), fresh_state(), self.D()

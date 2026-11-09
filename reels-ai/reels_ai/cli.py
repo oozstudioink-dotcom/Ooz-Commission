@@ -44,7 +44,7 @@ def main() -> None:
     m.add_argument("--keep-work", action="store_true")
     m.set_defaults(func=make)
     b = sub.add_parser("bot", help="one run of the Telegram approval bot")
-    b.add_argument("--phase", choices=["poll", "render", "all", "check", "tiktok-connect"], default="all",
+    b.add_argument("--phase", choices=["poll", "render", "all", "check", "tiktok-connect", "alert", "tidy-drive"], default="all",
                    help="check = read-only connection test of the social accounts")
     b.set_defaults(func=bot)
     lf = sub.add_parser("longform", help="build a LongDraw from Drive > Longform > PROJECT")

@@ -275,6 +275,8 @@ class NamingTest(unittest.TestCase):
         self.assertEqual(parse_name("IMG_0157.MOV"), (None, {}))
         self.assertEqual(parse_name("3.MOV"), (None, {}))
         self.assertEqual(parse_name("Luffy - blah.MOV")[1], {"unknown": ["blah"]})
+        self.assertEqual(parse_name("3 - Kakashi - ink only.MOV"), ("Kakashi", {"pencil": False}))
+        self.assertEqual(parse_name("3 - ink only.MOV"), (None, {"pencil": False}))
         self.assertEqual(describe_hints({"pencil": False, "continued": True}), "ink only · continued page")
 
     def test_longdraw_parts_in_number_order(self):

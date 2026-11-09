@@ -57,3 +57,9 @@ jobs:
         run: |
           if [ -d /mnt/longform ] && [ -w /mnt/longform ]; then export LONGFORM_WORK=/mnt/longform; fi
           python -m reels_ai longform --project "$PROJECT"
+
+      - name: Alert on failure
+        if: failure() || cancelled()
+        env:
+          ALERT_WHAT: LongDraw job
+        run: python -m reels_ai bot --phase alert || true

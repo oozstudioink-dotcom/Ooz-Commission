@@ -114,8 +114,11 @@ def run(project: str) -> None:
             from .youtube import YouTube
             yt = YouTube(*env)
             try:
-                y = yt.upload_file(res["video"], title, desc, tags, lcfg.get("privacy", "public"))
+                y = yt.upload_file(res["video"], title, desc, tags, lcfg.get("privacy", "private"))
                 lines.append(f"YouTube: {y['permalink']}")
+                if lcfg.get("privacy", "private") == "private":
+                    lines.append("\U0001f512 Uploaded privately. When you're ready: YouTube Studio \u203a this video "
+                                 "\u203a Visibility \u203a Schedule (pick your LongDraw slot).")
                 if y.get("note"):
                     lines.append(f"⚠️ {y['note']}")
                 try:

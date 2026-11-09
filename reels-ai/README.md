@@ -86,6 +86,31 @@ Sessions uploaded to `Longform/<project>/` are also turned into Shorts automatic
 stay in place for the LongDraw (`[drive] shorts_from_longform`). A monthly Telegram note reports
 how much space processed raws use (`storage_alert_gb`); nothing is ever deleted by the bot.
 
+## The page workflow (one sketchbook page = one LongDraw, each drawing = Shorts)
+
+```
+Ooz Reels/Longform/
+  Naruto Page/            <- one sketchbook page (theme or character)
+    1 - Naruto.MOV        <- one recording per drawing, numbered in order
+    2 - Kakashi.MOV
+    3 - ink only.MOV      <- no name: the page name is used
+    ...
+```
+
+- Each drawing becomes its own set of Shorts within the hour of uploading (named after the file's
+  character, else the page). Drawings 2, 3, ... are treated as `continued` automatically (the page
+  already has ink), so only that drawing's new ink is timed and framed.
+- When the page is done, `/longform Naruto Page` joins the drawings in number order into the LongDraw;
+  chapters read `Kakashi (Part 2)` etc.
+
+## Retiring drawings and tidying Drive
+
+- `config.toml` → `[bank] retired = ["Shinobi Undercover"]`: drawings whose name or file name contains
+  one of these are never dropped, re-made (`/redo`) or rendered again. Their files stay in Drive.
+- `Run workflow → tidy-drive` moves leftover duplicate Shorts in `Done/Shorts/` (old versions replaced by
+  `/redo`, copies from a crashed run) to Drive's Trash, restorable for 30 days. It goes by the bot's
+  memory, never by file name alone, and keeps every video in the bank or already posted.
+
 ## Naming your recordings
 
 The name tells the bot what you drew and how (Drive files and Telegram captions alike):
@@ -141,7 +166,8 @@ It then adds:
 - a beat tape: shuffled, loudness-matched to -16 LUFS, crossfaded and looped
 - chapters and the LongDraw thumbnail (`EP. NN`; numbering continues from Done/Longform)
 
-It uploads to `Done/Longform/EP NN - <project>/` and to YouTube (private until Google's audit;
+It uploads to `Done/Longform/EP NN - <project>/` and to YouTube as private (`[longform] privacy`;
+you schedule it in YouTube Studio;
 the custom thumbnail needs a phone-verified channel), messages you the links, and moves the
 project folder to `Longform/Finished/`. Panel text lives in `config.toml` → `[panels]`.
 

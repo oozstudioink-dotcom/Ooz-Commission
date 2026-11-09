@@ -8,9 +8,9 @@ on:
   workflow_dispatch:
     inputs:
       task:
-        description: "run = normal bot run; check = test social connections (posts nothing); tiktok-connect = finish TikTok sign-in"
+        description: "run = normal bot run; check = test social connections (posts nothing); tiktok-connect = finish TikTok sign-in; tidy-drive = move duplicate Shorts in Drive to the Trash"
         type: choice
-        options: [run, check, tiktok-connect]
+        options: [run, check, tiktok-connect, tidy-drive]
         default: run
       code:
         description: "tiktok-connect only: the code shown on the TikTok connect page"
@@ -58,6 +58,10 @@ jobs:
         if: inputs.task == 'check'
         run: python -m reels_ai bot --phase check
 
+      - name: Tidy Drive (duplicates to the Trash)
+        if: inputs.task == 'tidy-drive'
+        run: python -m reels_ai bot --phase tidy-drive
+
       - name: Connect TikTok (one time)
         if: inputs.task == 'tiktok-connect'
         env:
@@ -67,7 +71,7 @@ jobs:
       # Fast path: stdlib only. Reads Telegram, handles taps, posts what's due.
       - name: Poll Telegram
         id: poll
-        if: inputs.task != 'check' && inputs.task != 'tiktok-connect'
+        if: inputs.task != 'check' && inputs.task != 'tiktok-connect' && inputs.task != 'tidy-drive'
         run: python -m reels_ai bot --phase poll
 
       # Slow path, only when a new timelapse arrived.
@@ -80,6 +84,7 @@ jobs:
 
       - name: Render variants and send for approval
         if: steps.poll.outputs.render == 'true'
+        timeout-minutes: 52        # stop in time for "Save bot state" (each finished drawing is already saved)
         run: python -m reels_ai bot --phase render
 
       - name: Save bot state
@@ -100,3 +105,10 @@ jobs:
             sleep $((i * 3))
           done
           echo "::error::Could not save bot state"; exit 1
+
+      # Tell the owner in Telegram when a run crashes or times out (otherwise it fails silently).
+      - name: Alert on failure
+        if: failure() || cancelled()
+        env:
+          ALERT_WHAT: bot run
+        run: python -m reels_ai bot --phase alert || true
