@@ -361,3 +361,47 @@ class DriveMemoryTest(unittest.TestCase):
         self.assertEqual(again["owner_chat_id"], 7)
         with self.assertRaises(memory.MemoryError_):            # Drive down: stop, don't start blank
             memory.DriveMemory(self.FakeDrive(fail=True)).load(local)
+
+
+class DriveDownloadTest(unittest.TestCase):
+    """Real HTTP: a downloaded file's body must actually be read (it came back empty once)."""
+
+    def test_read_text_and_download_return_the_body(self):
+        import json
+        import os
+        import tempfile
+        import threading
+        from http.server import BaseHTTPRequestHandler, HTTPServer
+        from pathlib import Path
+
+        from reels_ai.drive import Drive
+        body = json.dumps({"owner_chat_id": 7, "drawings": {"d1": {}}}).encode() * 1
+
+        class H(BaseHTTPRequestHandler):
+            def log_message(self, *a):
+                pass
+
+            def do_POST(self):                                       # token endpoint
+                self.rfile.read(int(self.headers["Content-Length"]))
+                out = json.dumps({"access_token": "T"}).encode()
+                self.send_response(200)
+                self.end_headers()
+                self.wfile.write(out)
+
+            def do_GET(self):
+                self.send_response(200)
+                self.send_header("Content-Length", str(len(body)))
+                self.end_headers()
+                self.wfile.write(body)
+
+        srv = HTTPServer(("127.0.0.1", 0), H)
+        threading.Thread(target=srv.serve_forever, daemon=True).start()
+        self.addCleanup(srv.shutdown)
+        os.environ["NO_PROXY"] = os.environ["no_proxy"] = "127.0.0.1"
+        d = Drive("id", "secret", "refresh")
+        base = f"http://127.0.0.1:{srv.server_port}"
+        d.token_url, d.api = base + "/token", base
+        self.assertEqual(json.loads(d.read_text("f1"))["owner_chat_id"], 7)
+        dst = Path(tempfile.mkdtemp()) / "x.json"
+        d.download("f1", dst)
+        self.assertEqual(dst.read_bytes(), body)

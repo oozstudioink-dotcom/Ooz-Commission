@@ -151,8 +151,10 @@ class Drive:
             if e.code == 403 and "insufficient" in msg.lower():
                 msg += " - the Google token is missing the Drive permission; regenerate it with the drive scope"
             raise DriveError(msg) from None
+        if raw:
+            return r                            # still open: the caller reads (and closes) it
         with r:
-            return r if raw else json.load(r)
+            return json.load(r)
 
     # ------------------------------------------------------------------ folders/files
     def _find(self, name: str, parent: str | None, folder: bool) -> dict | None:
@@ -216,8 +218,8 @@ class Drive:
         return self._find(name, folder_id, folder=False)
 
     def read_text(self, file_id: str) -> str:
-        r = self._req("GET", self.media_url(file_id), raw=True)
-        return r.read().decode("utf-8")
+        with self._req("GET", self.media_url(file_id), raw=True) as r:
+            return r.read().decode("utf-8")
 
     def write_text(self, name: str, folder_id: str, text: str, file_id: str | None = None,
                    mime: str = "application/json") -> str:
@@ -245,8 +247,7 @@ class Drive:
         return f"{self.api}/files/{file_id}?alt=media"
 
     def download(self, file_id: str, dst: Path) -> Path:
-        r = self._req("GET", self.media_url(file_id), raw=True)
-        with open(dst, "wb") as f:
+        with self._req("GET", self.media_url(file_id), raw=True) as r, open(dst, "wb") as f:
             while chunk := r.read(1 << 20):
                 f.write(chunk)
         return dst
@@ -256,11 +257,11 @@ class Drive:
         """Resumable, chunked upload (works for multi-GB files). Returns {id, webViewLink}."""
         path = Path(path)
         size = path.stat().st_size
-        start = self._req("POST", self.upload_url, {"uploadType": "resumable", "fields": "id,webViewLink"},
-                          body={"name": name or path.name, "parents": [folder_id]},
-                          headers={"X-Upload-Content-Type": mime, "X-Upload-Content-Length": str(size)},
-                          raw=True)
-        session = start.headers["Location"]
+        with self._req("POST", self.upload_url, {"uploadType": "resumable", "fields": "id,webViewLink"},
+                       body={"name": name or path.name, "parents": [folder_id]},
+                       headers={"X-Upload-Content-Type": mime, "X-Upload-Content-Length": str(size)},
+                       raw=True) as start:
+            session = start.headers["Location"]
         with open(path, "rb") as f:
             offset = 0
             while True:
