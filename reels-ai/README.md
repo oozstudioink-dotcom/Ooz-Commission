@@ -171,7 +171,10 @@ Runs hourly on GitHub Actions (`.github/workflows/reels-bot.yml`), free.
    sends you the finished video + caption to upload yourself.
 
 Commands: `/status`, `/queue` (video bank and days of posts it covers), `/redo [name]` (re-make a
-drawing's unsent Shorts with the latest editing; no name = newest), `/pause`, `/resume`, `/help`.
+drawing's unsent Shorts with the latest editing; no name = newest; `/redo all` = every drawing, never
+repeating a style you already posted), `/clear` (deletes recent chat messages: Telegram lets bots delete
+only the last 48 h; older ones via ⋮ → Clear history, which doesn't touch the bot's memory),
+`/pause`, `/resume`, `/help`.
 The bot warns in Telegram when the bank drops below `[bank] warn_below_days`. The first person to message the bot becomes
 its owner; everyone else is ignored. Memory lives in `state/state.json` (committed by the job).
 

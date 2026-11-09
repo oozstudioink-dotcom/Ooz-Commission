@@ -64,6 +64,10 @@ class FakeBot:
     def edit_markup(self, chat_id, message_id, reply_markup):
         self.markups[message_id] = reply_markup
 
+    def delete_messages(self, chat_id, ids):
+        self.deleted = getattr(self, "deleted", []) + list(ids)
+        return max(ids) > getattr(self, "oldest_deletable", 0)
+
     def answer_callback(self, cid, text=""):
         self.sent.append(("answer", None, text))
 
@@ -345,6 +349,30 @@ class RedoTest(DropsFeedTest):
         self.assertEqual(sum(v["status"] == "approved" and not v.get("dropped_at") for v in mine),
                          5 - sent_before + extra)
         self.assertEqual(self.r.bank()["drops"], 15 - 2 + extra)      # swapped one for one, + new styles
+
+    def test_redo_all_requeues_every_drawing_once(self):
+        self.clock.t = datetime(2026, 11, 7, 20, 0, tzinfo=timezone.utc)
+        self.r.poll()                                                 # 2 drops go out
+        self.bot.push(**msg(OWNER, text="/redo all"))
+        self.assertTrue(self.r.poll())
+        self.assertTrue(all(d["status"] == "queued" for d in self.state["drawings"].values()))
+        self.assertTrue(any("Re-making 3 drawing(s)" in t for t in self.bot.texts()))
+        self.stub_render(self.r)
+        live = [v for v in self.state["variants"].values() if v["status"] == "approved" and not v.get("dropped_at")]
+        extra = len(self.cfg["variants"]["styles"]) - 5
+        self.assertEqual(len(live), 15 - 2 + 3 * extra)                # one for one + new styles
+        pairs = [(v["drawing"], v["style"]) for v in self.state["variants"].values()
+                 if v["status"] in ("approved", "posted")]
+        self.assertEqual(len(pairs), len(set(pairs)))                 # no drawing+style twice
+
+    def test_clear_deletes_back_from_the_command(self):
+        self.bot.oldest_deletable = 1000                              # older ids: past 48 h
+        self.bot.push(**msg(OWNER, text="/clear", message_id=1520))
+        self.r.poll()
+        self.assertIn(1520, self.bot.deleted)
+        self.assertIn(1001, self.bot.deleted)
+        self.assertNotIn(5, self.bot.deleted)                        # stops after refusals
+        self.assertTrue(any("Clear history" in t for t in self.bot.texts()))
 
     def test_redo_unknown_name_lists_drawings(self):
         self.bot.push(**msg(OWNER, text="/redo Luffy"))
