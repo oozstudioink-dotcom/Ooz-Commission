@@ -101,7 +101,9 @@ def _first_crossing(curve: np.ndarray, level: float) -> int:
     return int(idx[0]) if len(idx) else len(curve) - 1
 
 
-def analyze(store: FrameStore) -> Analysis:
+def analyze(store: FrameStore, continued: bool = False, pencil: bool | None = None) -> Analysis:
+    """continued: the owner says the page already had ink (only ink drawn in this clip counts).
+    pencil: the owner says whether a pencil sketch came first (None = detect it)."""
     n = len(store)
     scale = AW / store.width
     ah = int(round(store.height * scale))
@@ -155,6 +157,8 @@ def analyze(store: FrameStore) -> Analysis:
         # A session that continues an already-inked page may add only a small share of the
         # page's ink, so judge "enough seen" in pixels, not as a share of all ink on the page.
         seen = mask & (t > 0)
+        if continued:
+            return seen if seen.any() else mask
         return seen if seen.sum() >= max(150, 0.02 * mask.sum()) else mask
 
     ink_obs = observed(ink_t, ink_map)
@@ -240,6 +244,8 @@ def analyze(store: FrameStore) -> Analysis:
     pencil_frac = float((near & ink_obs).sum()) / max(1, int(ink_obs.sum()))
     pencil_phase = ink_start - draw_start
     has_pencil = bool(pencil_frac >= 0.12 or pencil_phase >= max(4 * FPS, 0.2 * (ink_end - draw_start)))
+    if pencil is not None:
+        has_pencil = bool(pencil)                     # the file name says so
 
     usable = hand_score <= max(0.2, 2.5 * float(np.median(hand_score)))
     # ink_end must be a frame where the page is visible

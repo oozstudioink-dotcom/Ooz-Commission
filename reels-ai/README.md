@@ -86,6 +86,21 @@ Sessions uploaded to `Longform/<project>/` are also turned into Shorts automatic
 stay in place for the LongDraw (`[drive] shorts_from_longform`). A monthly Telegram note reports
 how much space processed raws use (`storage_alert_gb`); nothing is ever deleted by the bot.
 
+## Naming your recordings
+
+The name tells the bot what you drew and how (Drive files and Telegram captions alike):
+
+| Name | Means |
+|---|---|
+| `Sasuke.MOV` | character |
+| `Sasuke - ink only.MOV` | straight to ink: no Before / after, never mentions a sketch (also: `no pencil`, `straight ink`) |
+| `Sasuke - pencil.MOV` | sketched first: never claims "no pencil" |
+| `Sasuke - continued.MOV` | the page already had ink: only ink drawn in this recording counts |
+| `Sasuke - ink only - continued.MOV` | tags combine, any order or case; `[ink only]` works too |
+
+No tag: the bot detects it. Camera names (`IMG_1234`) leave the character to Gemini. The Drive
+notice in Telegram shows what was read, e.g. `Sasuke.MOV → Sasuke · ink only`.
+
 ## Google Drive inbox (raw recordings)
 
 Drop raw recordings of any length (4K, portrait or landscape) into Drive › `Ooz Reels/Inbox/`.
@@ -105,7 +120,10 @@ Needs the Drive API enabled in the Google project and a `YT_REFRESH_TOKEN` that 
 
 ## LongDraw (long-form YouTube)
 
-1. Put every raw session for one project in Drive › `Ooz Reels/Longform/<project>/`. Optionally
+1. Put every raw session for one project in Drive › `Ooz Reels/Longform/<project>/`. Name the
+   folder after the piece (`Sasuke`, tags work too: `Sasuke - ink only`) and the sessions `1.MOV`,
+   `2.MOV`, … (or `Part 1`, `Sasuke 01`): they're joined in number order (2 before 10), chapters read
+   `Part 1`, `Part 2`, and the Shorts made from them are named after the folder. Optionally
    add the finished page as `YT_Longform_Finished_Art_Panel.jpg` for the thumbnail.
 2. Royalty-free beats go in `Beats/`, and the commissions advert animation in `Side Panels/`
    (exported at full size on black; it is placed pixel for pixel and never enlarged).

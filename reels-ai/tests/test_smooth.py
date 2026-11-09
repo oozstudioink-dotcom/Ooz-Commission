@@ -263,3 +263,51 @@ class ContinuedPageTest(unittest.TestCase):
         self.assertGreater(a.ink_start, 150, a.ink_start)
         self.assertGreater(a.peak_idx, 150, a.peak_idx)
         self.assertGreater(a.ink_end, 450, a.ink_end)
+
+
+class NamingTest(unittest.TestCase):
+    def test_tags_in_names(self):
+        from reels_ai.drive import describe_hints, parse_name
+        self.assertEqual(parse_name("Sasuke - ink only - continued.MOV"),
+                         ("Sasuke", {"pencil": False, "continued": True}))
+        self.assertEqual(parse_name("Goku vs Frieza - Pencil.mov"), ("Goku vs Frieza", {"pencil": True}))
+        self.assertEqual(parse_name("Naruto [no pencil].MOV"), ("Naruto", {"pencil": False}))
+        self.assertEqual(parse_name("IMG_0157.MOV"), (None, {}))
+        self.assertEqual(parse_name("3.MOV"), (None, {}))
+        self.assertEqual(parse_name("Luffy - blah.MOV")[1], {"unknown": ["blah"]})
+        self.assertEqual(describe_hints({"pencil": False, "continued": True}), "ink only · continued page")
+
+    def test_longdraw_parts_in_number_order(self):
+        from reels_ai.drive import session_order
+        from reels_ai.longform import subject_title
+        files = [{"name": n, "createdTime": t} for n, t in
+                 [("10.MOV", "1"), ("2.MOV", "5"), ("1.MOV", "9"), ("Part 3.mov", "0"), ("extra.mov", "0")]]
+        self.assertEqual([f["name"] for f in sorted(files, key=session_order)],
+                         ["1.MOV", "2.MOV", "Part 3.mov", "10.MOV", "extra.mov"])
+        self.assertEqual(subject_title("2.MOV", 1), "Part 2")
+        self.assertEqual(subject_title("IMG_0157.MOV", 4), "Session 5")
+
+    def test_hints_override_detection(self):
+        import subprocess
+        import tempfile
+        from pathlib import Path
+
+        import cv2
+
+        from reels_ai.analyze import analyze
+        from reels_ai.media import FrameStore
+        tmp = Path(tempfile.mkdtemp())
+        page = np.full((640, 360, 3), 232, np.uint8)
+        vw = cv2.VideoWriter(str(tmp / "p.avi"), cv2.VideoWriter_fourcc(*"MJPG"), 30, (360, 640))
+        for i in range(240):
+            if 30 < i < 220:
+                k = i - 30
+                cv2.line(page, (40 + (k % 20) * 14, 100 + (k // 20) * 30),
+                         (50 + (k % 20) * 14, 120 + (k // 20) * 30), (20, 20, 20), 2)
+            vw.write(page)
+        vw.release()
+        subprocess.run(["ffmpeg", "-v", "error", "-y", "-i", str(tmp / "p.avi"), "-pix_fmt", "yuv420p",
+                        str(tmp / "p.mp4")], check=True)
+        store = FrameStore(tmp / "p.mp4")
+        self.assertTrue(analyze(store, pencil=True).has_pencil)
+        self.assertFalse(analyze(store, pencil=False).has_pencil)

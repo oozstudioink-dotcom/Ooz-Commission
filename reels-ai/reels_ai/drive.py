@@ -32,13 +32,73 @@ def _clean(s: str) -> str:
     return re.sub(r"\s+", "", s or "")
 
 
+CAMERA = re.compile(r"(IMG|VID|MVI|DSC|PXL|GOPR|DJI|RPReplay|Screen ?Recording)([ _\-]|\d|$)", re.I)
+TAGS = [   # (pattern, hint) - written after " - " in a file or folder name, any order/case
+    (re.compile(r"^(ink[ -]?only|no[ -]?pencil|no[ -]?sketch|straight([ -]?to)?[ -]?ink|ink)$", re.I),
+     ("pencil", False)),
+    (re.compile(r"^(pencil|pencils|sketch|sketched|pencil[ -]?first)$", re.I), ("pencil", True)),
+    (re.compile(r"^(continued|cont|continue|continuing|same[ -]?page)$", re.I), ("continued", True)),
+]
+
+
+def _stem(name: str) -> str:
+    return re.sub(r"\.[A-Za-z0-9]{2,4}$", "", name or "").strip()
+
+
+def parse_name(name: str) -> tuple[str | None, dict]:
+    """'Sasuke - ink only - continued.MOV' -> ('Sasuke', {'pencil': False, 'continued': True}).
+
+    The character is everything before the first ' - ' (camera names like IMG_1234 give None,
+    a trailing take number is dropped). Tags after it tell the editor how the piece was drawn;
+    unknown tags are kept in hints['unknown'] so the bot can say it didn't understand them."""
+    stem = _stem(name)
+    parts = [p.strip() for p in re.split(r"\s+[-\u2013\u2014]\s+|\s*\[|\]\s*", stem) if p and p.strip()]
+    hints: dict = {}
+    head = parts[0] if parts else ""
+    for part in parts[1:]:
+        for tag in re.split(r"\s*[,+&]\s*", part):
+            if not tag:
+                continue
+            hit = next((h for rx, h in TAGS if rx.match(tag.strip())), None)
+            if hit:
+                hints[hit[0]] = hit[1]
+            else:
+                hints.setdefault("unknown", []).append(tag.strip())
+    if not head or CAMERA.match(head) or re.fullmatch(r"(part|pt|session|take|clip)?\s*#?\d+", head, re.I):
+        return None, hints
+    head = re.sub(r"[ _\-]*(\(\d+\)|\d+)$", "", head).replace("_", " ").strip()
+    return (head[:60] or None), hints
+
+
 def subject_from_name(name: str) -> str | None:
     """'Shinobi Undercover 2.MOV' -> 'Shinobi Undercover'; camera names like IMG_1234 -> None."""
-    stem = re.sub(r"\.[A-Za-z0-9]{2,4}$", "", name or "").strip()
-    if not stem or re.match(r"(IMG|VID|MVI|DSC|PXL|GOPR|DJI|RPReplay|Screen ?Recording)([ _\-]|\d|$)", stem, re.I):
-        return None
-    stem = re.sub(r"[ _\-]*(\(\d+\)|\d+)$", "", stem).replace("_", " ").strip()
-    return stem[:60] or None
+    return parse_name(name)[0]
+
+
+def part_number(name: str) -> int | None:
+    """Order of a session inside a LongDraw folder: '1.MOV', 'Part 2', 'Sasuke 03', '04 - pencil'."""
+    stem = _stem(name)
+    m = (re.search(r"(?:part|pt|session|take|clip|#)\s*#?(\d+)", stem, re.I)
+         or re.match(r"\s*(\d+)", stem)
+         or re.search(r"(\d+)\s*$", re.split(r"\s+[-\u2013\u2014]\s+", stem)[0]))
+    return int(m.group(1)) if m else None
+
+
+def session_order(f: dict) -> tuple:
+    """Sort key: numbered parts in ascending number order (2 before 10), then by upload time."""
+    n = part_number(f.get("name", ""))
+    return (n is None, n if n is not None else 0, f.get("createdTime", ""), f.get("name", ""))
+
+
+def describe_hints(hints: dict) -> str:
+    bits = []
+    if hints.get("pencil") is False:
+        bits.append("ink only")
+    elif hints.get("pencil") is True:
+        bits.append("pencil first")
+    if hints.get("continued"):
+        bits.append("continued page")
+    return " \u00b7 ".join(bits)
 
 
 class Drive:

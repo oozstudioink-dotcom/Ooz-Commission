@@ -12,6 +12,7 @@ import time
 from pathlib import Path
 
 from .drive import Drive
+from .drive import parse_name, session_order
 from .longform import Session, build, episode_from_names, subject_title, youtube_text
 from .state import load_config, load_state
 from .telegram import Bot
@@ -55,7 +56,9 @@ def run(project: str) -> None:
     if not videos:
         _notify(f"⚠️ “{folder['name']}” has no videos yet.")
         raise SystemExit(1)
-    videos.sort(key=lambda f: (f.get("createdTime", ""), f["name"]))
+    videos.sort(key=session_order)            # 1, 2, ... 10 by the number in the name, then upload time
+    title_name = parse_name(folder["name"])[0] or folder["name"]   # 'Sasuke - ink only' -> 'Sasuke'
+    _notify("\U0001f4cb Session order: " + ", ".join(f["name"] for f in videos))
 
     done = drive.folder("Done/Longform")
     episode = episode_from_names([f["name"] for f in drive.list(done, "folder")],
@@ -91,10 +94,10 @@ def run(project: str) -> None:
                              headers=f"Authorization: Bearer {drive.token()}\r\n")
             sessions.append(s)
 
-        res = build(sessions, work / "out", folder["name"], episode, lcfg, beats, advert, pcfg, art,
+        res = build(sessions, work / "out", title_name, episode, lcfg, beats, advert, pcfg, art,
                     log=print)
         mins = res["seconds"] / 60
-        title, desc, tags = youtube_text(folder["name"], episode, res["chapters"], pcfg, res["speed"],
+        title, desc, tags = youtube_text(title_name, episode, res["chapters"], pcfg, res["speed"],
                                          res["raw"], res.get("tracks"), lcfg.get("music_source", "YouTube Audio Library"))
 
         ep_folder = drive.folder(f"Done/Longform/EP {episode:02d} - {folder['name']}")

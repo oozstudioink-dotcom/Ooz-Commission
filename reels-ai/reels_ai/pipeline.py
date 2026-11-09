@@ -106,11 +106,14 @@ def make_variants(src: Path, out_root: Path, names: list[str] | None = None, see
                   subject: str | None = None, audio: Path | None = None, sheets: bool = False,
                   keep_work: bool = False, review_page: bool = True,
                   copy: dict | None = None, max_width: int = 1080, raw_input: RawInput | None = None,
-                  raw_duration: float | None = None) -> tuple[Path, list[dict]]:
+                  raw_duration: float | None = None, hints: dict | None = None) -> tuple[Path, list[dict]]:
     """Analyse `src` and render the requested variants. Returns (output dir, results).
 
     raw_input / raw_duration: where the original recording is when `src` is only a sampled
-    proxy of it (Drive). Without them `src` itself is the original."""
+    proxy of it (Drive). Without them `src` itself is the original.
+    hints: from the file name ('Sasuke - ink only - continued'): pencil True/False, continued."""
+    hints = hints or {}
+    how = {"continued": bool(hints.get("continued")), "pencil": hints.get("pencil")}
     src = Path(src).expanduser().resolve()
     out_dir = Path(out_root).resolve() / src.stem
     (out_dir / "variants").mkdir(parents=True, exist_ok=True)
@@ -121,7 +124,7 @@ def make_variants(src: Path, out_root: Path, names: list[str] | None = None, see
     norm = normalize(src, work, keep_wide=True, max_wide_h=max(1440, max_width * 16 // 9), max_w=max_width)
     print(f"normalized {src.name} -> {norm['width']}x{norm['height']} (x{norm['speedup']:.1f} speed)")
     store = FrameStore(work)
-    a = analyze(store)
+    a = analyze(store, **how)
     wide = store.width / store.height > 9 / 16 + 0.02
     frame_filter = ""
     if not wide:
@@ -136,7 +139,7 @@ def make_variants(src: Path, out_root: Path, names: list[str] | None = None, see
         work.unlink(missing_ok=True)
         vert.rename(work)
         store = FrameStore(work)
-        a = analyze(store)
+        a = analyze(store, **how)
         norm.update(width=store.width, height=store.height, landscape_crop=crop)
     (out_dir / "analysis.json").write_text(json.dumps({**norm, **a.to_dict()}, indent=2))
     print("beats (s):", a.to_dict()["seconds"])
