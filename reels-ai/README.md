@@ -36,7 +36,8 @@ Options: `--variants reveal_first ink_only` (pick some), `--seed 2` (different h
 - **the end of the inking** waits for fine linework too, not just bold fills, so videos don't
   jump to the finished piece while details are still being inked.
 
-**Smooth motion:** frames are never shown twice in a row. When a variant speeds up, the frames it
+**Smooth motion:** frames are never shown twice in a row. Blends only mix the page: the hand and arm
+come solid from the newest frame, so a sweeping arm leaves no see-through copies. When a variant speeds up, the frames it
 skips are blended into the frame it shows (up to 6, newest weighted most), so ink builds up
 smoothly and the hand glides. When a recording has fewer frames than the edit needs (long Drive
 recordings are sampled at a few frames per real second), neighbouring frames cross-fade instead of
@@ -93,7 +94,9 @@ Each run:
 - picks up new files once and streams them from Drive: they're never downloaded whole.
   Recordings of 15 min or more use keyframes only (iPhone: about 1 per second, so 30 min becomes
   a ~60 s timelapse); shorter ones are sampled evenly.
-- **Landscape** recordings get a full-height vertical crop centred on the new ink.
+- **Landscape** recordings get a full-height vertical crop centred on the new ink. When the new
+  work is spread wider than that (a small drawing off to one side), the frame widens to take in
+  all of it, shown on a blurred copy of itself, so nothing you drew is cut off.
 - Makes the usual variants. Then it moves the raw file to `Inbox/Processed/` and backs the
   variants up to `Done/Shorts/<character>/`. It never deletes your files.
 
