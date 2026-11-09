@@ -405,3 +405,27 @@ class DriveDownloadTest(unittest.TestCase):
         dst = Path(tempfile.mkdtemp()) / "x.json"
         d.download("f1", dst)
         self.assertEqual(dst.read_bytes(), body)
+
+
+class ResilienceTest(unittest.TestCase):
+    def test_drive_retries_google_hiccups(self):
+        import urllib.error
+
+        import reels_ai.drive as drive
+        calls = []
+
+        def flaky():
+            calls.append(1)
+            if len(calls) < 3:
+                raise urllib.error.HTTPError("u", 502, "Bad Gateway", {}, None)
+            return "ok"
+        self.assertEqual(drive._retry(flaky, wait=0), "ok")
+        with self.assertRaises(urllib.error.HTTPError):               # a real error isn't retried
+            drive._retry(lambda: (_ for _ in ()).throw(urllib.error.HTTPError("u", 404, "nf", {}, None)), wait=0)
+
+    def test_missing_style_is_replaced_not_dropped(self):
+        from reels_ai.pipeline import swap_out
+        self.assertEqual(swap_out(["process_cuts", "one_take", "speedrun"], "process_cuts"),
+                         ["one_take", "speedrun", "reveal_first"])
+        self.assertNotIn("before_after", swap_out(["before_after", "one_take", "reveal_first", "detail_zoom",
+                                                   "ink_only", "speedrun"], "before_after", pencil=False))
