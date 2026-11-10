@@ -2136,3 +2136,30 @@ class PageRecognitionTest(unittest.TestCase):
         if H is not None and ref < 120:                           # nudged frame is shifted back
             self.assertAlmostEqual(H[0, 2], -9, delta=3)
             self.assertAlmostEqual(H[1, 2], 6, delta=3)
+
+
+class DriveReadRetryTest(unittest.TestCase):
+    def test_cut_off_download_is_retried(self):
+        import http.client
+        from unittest import mock
+        import reels_ai.drive as drv
+        calls = {"n": 0}
+
+        class Resp:
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *a):
+                return False
+
+            def read(self):
+                calls["n"] += 1
+                if calls["n"] == 1:
+                    raise http.client.IncompleteRead(b"x" * 10, 90)
+                return b'{"ok": 1}'
+
+        d = drv.Drive("c", "s", "r")
+        with mock.patch.object(d, "_req", return_value=None, side_effect=lambda *a, **k: Resp()), \
+                mock.patch("time.sleep"):
+            self.assertEqual(d.read_text("f"), '{"ok": 1}')
+        self.assertEqual(calls["n"], 2)
