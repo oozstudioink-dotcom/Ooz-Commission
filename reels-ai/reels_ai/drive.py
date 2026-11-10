@@ -6,6 +6,7 @@ whole: ffmpeg streams them straight from Drive and keeps only what it needs.
 """
 from __future__ import annotations
 
+import http.client
 import json
 import re
 import subprocess
@@ -119,7 +120,8 @@ def _retry(fn, tries: int = 4, wait: float = 3.0):
         except urllib.error.HTTPError as e:
             if e.code not in RETRY_CODES or attempt == tries - 1:
                 raise
-        except (urllib.error.URLError, ConnectionError, TimeoutError, OSError) as e:
+        except (urllib.error.URLError, ConnectionError, TimeoutError, OSError,
+                http.client.HTTPException) as e:                # IncompleteRead: download cut off
             if isinstance(e, urllib.error.HTTPError) or attempt == tries - 1:
                 raise
         time.sleep(wait * (2 ** attempt))
@@ -252,8 +254,10 @@ class Drive:
         return self._find(name, folder_id, folder=False)
 
     def read_text(self, file_id: str) -> str:
-        with self._req("GET", self.media_url(file_id), raw=True) as r:
-            return r.read().decode("utf-8")
+        def get() -> str:                                   # the whole download is retried, so a
+            with self._req("GET", self.media_url(file_id), raw=True) as r:   # cut-off read tries again
+                return r.read().decode("utf-8")
+        return _retry(get)
 
     def write_text(self, name: str, folder_id: str, text: str, file_id: str | None = None,
                    mime: str = "application/json") -> str:
