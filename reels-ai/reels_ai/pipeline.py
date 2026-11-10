@@ -11,7 +11,7 @@ from typing import Callable
 import cv2
 import numpy as np
 
-from .analyze import analyze
+from .analyze import analyze, analyze_spaced
 from .media import FPS, FrameStore, crop_vertical, longest_stretch, normalize, page_changes, trim
 from .variants import CUT_SECONDS, RECIPES, build, pick_moments, render
 
@@ -211,11 +211,13 @@ def make_variants(src: Path, out_root: Path, names: list[str] | None = None, see
     total = raw_duration or norm["source_duration"]
     scale = total / max(norm["source_duration"], 1e-6)
     raw = raw_input or (lambda t0: ["-ss", f"{t0:.3f}", "-i", str(src)])
+    stride = 1
     t_first, real_dt = offset / FPS * norm["speedup"] * scale, norm["speedup"] * scale / FPS
     if real_dt > SPARSE_DT and not (proxy and raw_input is None):
         dense = densify(raw, t_first, t_first + len(store) * real_dt, (store.width, store.height),
                         _pixels(src), len(store), out_dir / "work_dense.mp4")
         if dense is not None:
+            stride = max(1, round(len(dense) / len(store)))   # analyse at the old spacing
             store, real_dt = dense, (len(store) * real_dt) / len(dense)
             work.unlink(missing_ok=True)
             (out_dir / "work_dense.mp4").rename(work)
@@ -224,7 +226,7 @@ def make_variants(src: Path, out_root: Path, names: list[str] | None = None, see
         real_dt = None
     store.real_dt = real_dt
     norm["real_seconds_per_frame"] = real_dt and round(real_dt, 3)
-    a = analyze(store, **how)
+    a = analyze_spaced(store, stride, **how)
     wide = store.width / store.height > 9 / 16 + 0.02
     frame_filter = ""
     if not wide:
@@ -240,7 +242,7 @@ def make_variants(src: Path, out_root: Path, names: list[str] | None = None, see
         vert.rename(work)
         store = FrameStore(work)
         store.real_dt = real_dt
-        a = analyze(store, **how)
+        a = analyze_spaced(store, stride, **how)
         norm.update(width=store.width, height=store.height, landscape_crop=crop)
     (out_dir / "analysis.json").write_text(json.dumps({**norm, **a.to_dict()}, indent=2))
     print("beats (s):", a.to_dict()["seconds"])
