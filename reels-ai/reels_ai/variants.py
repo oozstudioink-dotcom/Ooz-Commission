@@ -444,6 +444,16 @@ def smear_ok(store, win: Window) -> bool:
     return (max(idx) - min(idx)) * dt <= SMEAR_MAX_S
 
 
+def _soft(mask: np.ndarray) -> np.ndarray:
+    """0/255 mask -> 0..1 with feathered edges (blurred at a small size, so it's quick)."""
+    h, w = mask.shape[:2]
+    sw = 240
+    small = cv2.resize(mask, (sw, max(1, round(h * sw / w))), interpolation=cv2.INTER_AREA)
+    small = cv2.erode(small, np.ones((3, 3), np.uint8))           # keep the hand's edge out
+    small = cv2.GaussianBlur(small.astype(np.float32) / 255.0, (0, 0), 2.0)
+    return cv2.resize(small, (w, h), interpolation=cv2.INTER_LINEAR)
+
+
 def mix(store, win: Window, smear: bool = False) -> np.ndarray:
     """Weighted blend of source frames for smooth ink, without ghost arms or doubled drawings.
 
@@ -466,9 +476,13 @@ def mix(store, win: Window, smear: bool = False) -> np.ndarray:
         img = _aligned(store, i, newest)
         if img is None:
             continue
-        mask = None if smear else cv2.bitwise_and(clear, _no_hand(store, i))
         total += wt
-        cv2.accumulateWeighted(img, acc, wt / total, mask=mask)
+        if smear:
+            cv2.accumulateWeighted(img, acc, wt / total)
+            continue
+        # soft-edged: a hard mask scaled up from the small hand map left blocky squares
+        alpha = _soft(cv2.bitwise_and(clear, _no_hand(store, i))) * (wt / total)
+        acc += (img.astype(np.float32) - acc) * alpha[..., None]
     return cv2.convertScaleAbs(acc)
 
 
