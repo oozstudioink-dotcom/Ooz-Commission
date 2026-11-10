@@ -2163,3 +2163,49 @@ class DriveReadRetryTest(unittest.TestCase):
                 mock.patch("time.sleep"):
             self.assertEqual(d.read_text("f"), '{"ok": 1}')
         self.assertEqual(calls["n"], 2)
+
+
+class InventoryTest(unittest.TestCase):
+    def setUp(self):
+        self.bot, self.state = FakeBot(), fresh_state()
+        self.state["owner_chat_id"] = OWNER
+        self.r = Runner(self.bot, self.state, load_config())
+        dr = self.state["drawings"]
+        dr["d1"] = {"source": "drive", "drive_name": "Lets+Go+LIVE!.mp4", "subject": "Deku", "status": "rendered",
+                    "part": {"label": "2 of 5"}, "received": "2026-11-10"}
+        dr["d2"] = {"source": "drive", "drive_name": "Kakashi.MOV", "subject": "Kakashi", "status": "rendered",
+                    "received": "2026-11-09"}
+        dr["d3"] = {"source": "drive", "drive_name": "Lets+Go+LIVE!.mp4", "subject": "Deku", "status": "queued",
+                    "part": {"label": "5 of 5"}, "received": "2026-11-10"}
+        vs = self.state["variants"]
+        vs["v1"] = {"drawing": "d1", "style": "speedrun", "seconds": 8.7, "status": "pending", "message_id": 11}
+        vs["v2"] = {"drawing": "d1", "style": "one_take", "seconds": 13.1, "status": "approved", "message_id": 12}
+        vs["v3"] = {"drawing": "d2", "style": "one_take", "seconds": 12.0, "status": "approved", "message_id": 13,
+                    "dropped_at": "2026-11-09T22:00:00+00:00"}
+        vs["v4"] = {"drawing": "d2", "style": "reveal_first", "seconds": 10.0, "status": "skipped", "message_id": 14}
+
+    def test_inventory_lists_drawings_and_shorts_with_ids(self):
+        text = "\n".join(self.r.inventory_text())
+        self.assertIn("3 drawings", text)
+        self.assertIn("d1 Deku · drawing 2 of 5", text)
+        self.assertIn("v1 Speedrun", text)
+        self.assertIn("d3 Deku · drawing 5 of 5 — being made", text)
+        self.assertIn("✅ 1 kept", text)
+        self.assertIn("\U0001f4e4 1 dropped", text)
+
+    def test_delete_and_undelete(self):
+        self.r.delete_command("v1 v3 d3")
+        vs, dr = self.state["variants"], self.state["drawings"]
+        self.assertEqual(vs["v1"]["status"], "deleted")
+        self.assertNotEqual(vs["v3"]["status"], "deleted")                 # already dropped: history
+        self.assertEqual(dr["d3"]["status"], "deleted")                     # won't be made
+        self.assertIn(11, getattr(self.bot, "deleted", []))
+        self.assertTrue(any("already dropped" in t for t in self.bot.texts()))
+        self.r.delete_command("v1 d3", undo=True)
+        self.assertEqual(vs["v1"]["status"], "pending")
+        self.assertEqual(dr["d3"]["status"], "queued")
+
+    def test_delete_by_name_asks_for_ids(self):
+        self.r.delete_command("Lets Go")
+        self.assertTrue(any("Which ones?" in t and "d1" in t and "d3" in t for t in self.bot.texts()))
+        self.assertEqual(self.state["drawings"]["d1"]["status"], "rendered")
