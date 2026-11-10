@@ -508,3 +508,44 @@ class SmearTest(unittest.TestCase):
         store = [b, a, a, a]
         out = mix(store, ((0, 0.25), (1, 0.25), (2, 0.25), (3, 0.25)), smear=True)
         self.assertTrue(120 < out[0, 0, 0] < 250)        # the hand is a soft blur, not solid or gone
+
+
+class SamePageTest(unittest.TestCase):
+    """A stretch that runs into another page (a flip the hands hid) is cut back to one page."""
+
+    def test_flip_at_the_end_is_cut_and_one_page_is_kept(self):
+        import cv2
+        from reels_ai.media import same_page
+        rng = np.random.default_rng(3)
+        def strokes(k):                                          # short pen strokes, like a drawing
+            out = []
+            for _ in range(k):
+                x, y = (int(v) for v in rng.integers(30, 330, 2))
+                dx, dy = (int(v) for v in rng.integers(-40, 40, 2))
+                out.append((x, y, x + dx, y + dy))
+            return out
+
+        lines_a, lines_b = strokes(25), strokes(25)
+
+        def page(lines):
+            img = np.full((640, 360, 3), 245, np.uint8)
+            for x1, y1, x2, y2 in lines:
+                cv2.line(img, (x1, y1 * 16 // 9), (x2, y2 * 16 // 9), (20, 20, 20), 5)
+            return img
+
+        frames = [page(lines_a[:5 + i // 5]) for i in range(100)] + [page(lines_b)] * 30
+        cut = same_page(_Shim(frames), 0, len(frames) - 1, log=lambda *a: None)
+        self.assertEqual(cut[0], 0)
+        self.assertTrue(90 <= cut[1] < 100, cut)
+        one = [page(lines_a[:5 + i // 5]) for i in range(100)]
+        self.assertEqual(same_page(_Shim(one), 0, 99, log=lambda *a: None), (0, 99))
+
+
+class _Shim(list):
+    @property
+    def width(self):
+        return self[0].shape[1]
+
+    @property
+    def height(self):
+        return self[0].shape[0]
