@@ -366,6 +366,39 @@ class Runner:
         return make_proxy(self.drive.media_url(d["drive_id"]), self.drive.token(),
                           tmp / f"{d['drive_id']}.mp4", dur, max_side=3840 if self.shorts_4k else 2560)
 
+    def may_split(self, d: dict) -> bool:
+        """Look for separate drawings on the page, unless you already split them yourself: a
+        numbered video in a LongDraw page folder ('3 - Kakashi.MOV') is one drawing."""
+        if not self.cfg["variants"].get("split_drawings", True):
+            return False
+        from .drive import CAMERA, _stem, part_number
+        name = d.get("drive_name") or ""
+        numbered = part_number(name) is not None and not CAMERA.match(_stem(name))   # not IMG_4412
+        return not (str(d.get("drive_where") or "").startswith("Longform") and numbered)
+
+    def split_page(self, did: str, d: dict, src: Path, tmp: Path, raw_duration: float | None,
+                   max_width: int) -> None:
+        """One page with several separate drawings (a head close-up, two figures ...): each gets
+        its own Shorts, framed on it and covering the time it was drawn. This drawing becomes the
+        first; the others are queued after it. Done once per recording."""
+        from .pipeline import find_parts
+        d["split_done"] = True
+        try:
+            parts = find_parts(src, tmp / "parts", max_width=max_width, raw_duration=raw_duration)
+        except Exception as e:  # noqa: BLE001 - splitting is a bonus: render the page as one
+            print(f"warn: couldn't look for separate drawings: {e}")
+            return
+        if len(parts) < 2:
+            return
+        d["part"] = parts[0]
+        keep = {k: v for k, v in d.items() if k not in ("status", "error", "beats", "part")}
+        for p in parts[1:]:
+            self.state["drawings"][new_id(self.state, "d")] = {**keep, "part": p, "status": "queued"}
+        name = d.get("subject") or d.get("drive_name") or did
+        self.say(f"\U0001f5bc Found {len(parts)} separate drawings on the {name} page. Making Shorts for "
+                 "each one, framed on it: this one first, the others on the next renders.")
+        self.checkpoint()
+
     def drive_raw(self, d: dict) -> dict:
         """How Process cuts read short real-speed moments straight from the original on Drive."""
         if not self.drive:
@@ -1021,6 +1054,16 @@ class Runner:
                 out[s] = out.get(s, 1.0) * (0.4 + 1.2 * fb.get("liked", 0) / n)
         return out
 
+    def _queued_drawings(self):
+        """Each drawing once, in order, including ones added while rendering (split pages)."""
+        done: set[str] = set()
+        while True:
+            nxt = next(((k, v) for k, v in list(self.state["drawings"].items()) if k not in done), None)
+            if nxt is None:
+                return
+            done.add(nxt[0])
+            yield nxt
+
     def render(self, work_root: Path | None = None) -> None:
         from .pipeline import make_variants   # heavy imports only in this phase
 
@@ -1030,7 +1073,7 @@ class Runner:
         budget = float(self.cfg.get("shorts", {}).get("max_render_minutes", 40)) * 60
         started = _time.time()
         done_now = 0
-        for did, d in self.state["drawings"].items():
+        for did, d in self._queued_drawings():         # also picks up drawings a split page adds
             if d["status"] != "queued":
                 continue
             if self.retired(d):                      # listed in [bank] retired: not made any more
@@ -1057,12 +1100,15 @@ class Runner:
                     if d.get("source") == "drive" and not raw and "process_cuts" in styles:
                         from .pipeline import swap_out                      # needs the original:
                         styles = swap_out(styles, "process_cuts")              # make another style
+                    if d.get("source") == "drive" and not d.get("split_done") and self.may_split(d):
+                        self.split_page(did, d, src, tmp, raw.get("raw_duration"), 2160 if big else 1080)
                     out_dir, results = make_variants(src, tmp / "out", styles,
                                                      seed=int(did[1:]), subject=d["subject"],
                                                      review_page=False, copy=copy,
                                                      max_width=2160 if big else 1080,
                                                      hints=d.get("hints"),
-                                                     proxy=d.get("source") == "drive", **raw)
+                                                     proxy=d.get("source") == "drive",
+                                                     part=d.get("part"), **raw)
                 except Exception as e:  # noqa: BLE001 - report any failure to the owner
                     d["status"] = "failed"
                     d["error"] = str(e)[:300]
@@ -1101,7 +1147,8 @@ class Runner:
                         note = "Tap \u2705 Keep to add it to your drops, \u274c Skip if you don't like it."
                     else:
                         note = "Waiting for your OK."
-                    text = (f"\U0001f3ac {STYLE_LABELS[r['name']]} · {r['seconds']:.0f}s · {vid}\n"
+                    text = (f"\U0001f3ac {STYLE_LABELS[r['name']]} · {r['seconds']:.0f}s · {vid}"
+                    f"{' · drawing ' + d['part']['label'] if d.get('part') else ''}\n"
                             f"Hook: “{r['hook']}”\n\n{r['caption']}\n\n{note}")
                     if links.get(r["name"]):
                         text += f"\n\U0001f39e Full quality: {links[r['name']]}"

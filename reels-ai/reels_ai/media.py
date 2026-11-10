@@ -308,6 +308,36 @@ def same_page(store: "FrameStore", first: int, last: int, win: int = 6, tol: flo
     return nf, nl
 
 
+def crop_box(src: Path, dst: Path, box: tuple[float, float, float, float], max_w: int = 1080,
+             margin: float = 0.06) -> dict:
+    """Cut a 9:16 window around one drawing on the page (box: x0, y0, x1, y1 as fractions).
+
+    The window takes in the whole box plus a little room, as large as it needs to be (never
+    past the frame), and is scaled to a vertical working size. Returns the ffmpeg filter (in
+    iw/ih terms, so it fits the original recording too) and the window."""
+    info = probe(src)
+    W, H = info["width"], info["height"]
+    x0, y0, x1, y1 = box
+    bw, bh = (x1 - x0 + 2 * margin) * W, (y1 - y0 + 2 * margin) * H
+    ch = min(H, max(bh, bw * 16 / 9))
+    cw = ch * 9 / 16
+    if cw > W:
+        cw, ch = W, W * 16 / 9
+    cw, ch = int(cw) // 2 * 2, int(ch) // 2 * 2
+    cx, cy = (x0 + x1) / 2 * W, (y0 + y1) / 2 * H
+    x = int(round(min(max(cx - cw / 2, 0), W - cw)))
+    y = int(round(min(max(cy - ch / 2, 0), H - ch)))
+    ow = min(max_w, W if W / H <= 9 / 16 + 0.02 else int(H * 9 / 16)) // 2 * 2
+    oh = int(round(ow * 16 / 9)) // 2 * 2
+    xf, yf, wf, hf = x / W, y / H, cw / W, ch / H
+    vf = (f"crop=trunc(iw*{wf:.5f}/2)*2:trunc(ih*{hf:.5f}/2)*2:trunc(iw*{xf:.5f}):trunc(ih*{yf:.5f}),")
+    subprocess.run(["ffmpeg", "-v", "error", "-y", "-i", str(src), "-an", "-vf",
+                    f"{vf}scale={ow}:{oh}:flags=lanczos,setsar=1",
+                    "-c:v", "libx264", "-crf", "14", "-preset", "fast", "-pix_fmt", "yuv420p", str(dst)],
+                   check=True)
+    return {"filter": vf, "width": ow, "height": oh, "crop": (x, y, cw, ch)}
+
+
 def longest_stretch(n: int, cuts: list[int]) -> tuple[int, int]:
     """The longest run of frames between page changes: (first, last)."""
     edges = [0] + sorted(cuts) + [n]

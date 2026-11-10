@@ -11,9 +11,9 @@ from typing import Callable
 import cv2
 import numpy as np
 
-from .analyze import analyze, analyze_spaced
-from .media import (FPS, FrameStore, crop_vertical, longest_stretch, normalize, page_changes, same_page,
-                    trim)
+from .analyze import analyze, analyze_spaced, find_subjects
+from .media import (FPS, FrameStore, crop_box, crop_vertical, longest_stretch, normalize, page_changes,
+                    same_page, trim)
 from .variants import CUT_SECONDS, RECIPES, build, pick_moments, render
 
 FALLBACK_ORDER = ["one_take", "reveal_first", "detail_zoom", "ink_only", "speedrun", "before_after"]
@@ -170,26 +170,8 @@ def densify(raw: RawInput, t0: float, t1: float, size: tuple[int, int], src_px: 
     return store
 
 
-def make_variants(src: Path, out_root: Path, names: list[str] | None = None, seed: int = 1,
-                  subject: str | None = None, audio: Path | None = None, sheets: bool = False,
-                  keep_work: bool = False, review_page: bool = True,
-                  copy: dict | None = None, max_width: int = 1080, raw_input: RawInput | None = None,
-                  raw_duration: float | None = None, hints: dict | None = None,
-                  proxy: bool = False) -> tuple[Path, list[dict]]:
-    """Analyse `src` and render the requested variants. Returns (output dir, results).
-
-    raw_input / raw_duration: where the original recording is when `src` is only a sampled
-    proxy of it (Drive). Without them `src` itself is the original - unless `proxy`: then the
-    real time between frames is unknown, and the hand isn't motion-blurred (it could ghost).
-    hints: from the file name ('Sasuke - ink only - continued'): pencil True/False, continued."""
-    hints = hints or {}
-    how = {"continued": bool(hints.get("continued")), "pencil": hints.get("pencil")}
-    src = Path(src).expanduser().resolve()
-    out_dir = Path(out_root).resolve() / src.stem
-    (out_dir / "variants").mkdir(parents=True, exist_ok=True)
-    (out_dir / "thumbs").mkdir(exist_ok=True)
-
-    t0 = time.time()
+def _one_page(src: Path, out_dir: Path, max_width: int) -> tuple[Path, FrameStore, dict, int]:
+    """Working copy of the recording, cut to the one page that was drawn on most."""
     work = out_dir / "work.mp4"
     norm = normalize(src, work, keep_wide=True, max_wide_h=max(1440, max_width * 16 // 9), max_w=max_width)
     print(f"normalized {src.name} -> {norm['width']}x{norm['height']} (x{norm['speedup']:.1f} speed)")
@@ -211,12 +193,71 @@ def make_variants(src: Path, out_root: Path, names: list[str] | None = None, see
         store = FrameStore(work)
         offset = first
         norm["page_changes"] = cuts
+    return work, store, norm, offset
+
+
+def find_parts(src: Path, out_root: Path, max_width: int = 1080, raw_duration: float | None = None) -> list[dict]:
+    """The separate drawings on the page of a recording, as parts make_variants can render one
+    by one: [{"t0", "t1": recording seconds, "box": (x0, y0, x1, y1) fractions, "label"}].
+    [] when the page holds one drawing."""
+    src = Path(src).expanduser().resolve()
+    out_dir = Path(out_root).resolve() / (src.stem + "_parts")
+    out_dir.mkdir(parents=True, exist_ok=True)
+    work, store, norm, offset = _one_page(src, out_dir, max_width)
+    subjects = find_subjects(store)
+    work.unlink(missing_ok=True)
+    if len(subjects) < 2:
+        return []
+    scale = (raw_duration or norm["source_duration"]) / max(norm["source_duration"], 1e-6)
+    dt = norm["speedup"] * scale / FPS
+    parts = [{"t0": round((offset + s["frames"][0]) * dt, 2), "t1": round((offset + s["frames"][1] + 1) * dt, 2),
+              "box": list(s["box"]), "label": f"{k + 1} of {len(subjects)}"} for k, s in enumerate(subjects)]
+    print(f"{len(parts)} separate drawings on this page: " +
+          ", ".join(f"{p['label']} at {p['t0'] / 60:.1f}-{p['t1'] / 60:.1f} min" for p in parts))
+    return parts
+
+
+def make_variants(src: Path, out_root: Path, names: list[str] | None = None, seed: int = 1,
+                  subject: str | None = None, audio: Path | None = None, sheets: bool = False,
+                  keep_work: bool = False, review_page: bool = True,
+                  copy: dict | None = None, max_width: int = 1080, raw_input: RawInput | None = None,
+                  raw_duration: float | None = None, hints: dict | None = None,
+                  proxy: bool = False, part: dict | None = None) -> tuple[Path, list[dict]]:
+    """Analyse `src` and render the requested variants. Returns (output dir, results).
+
+    raw_input / raw_duration: where the original recording is when `src` is only a sampled
+    proxy of it (Drive). Without them `src` itself is the original - unless `proxy`: then the
+    real time between frames is unknown, and the hand isn't motion-blurred (it could ghost).
+    hints: from the file name ('Sasuke - ink only - continued'): pencil True/False, continued.
+    part: one drawing of several on the page, from find_parts(): only its time, framed on it."""
+    hints = hints or {}
+    how = {"continued": bool(hints.get("continued")), "pencil": hints.get("pencil")}
+    src = Path(src).expanduser().resolve()
+    out_dir = Path(out_root).resolve() / src.stem
+    (out_dir / "variants").mkdir(parents=True, exist_ok=True)
+    (out_dir / "thumbs").mkdir(exist_ok=True)
+
+    t0 = time.time()
+    work, store, norm, offset = _one_page(src, out_dir, max_width)
     # real recording time of a working-copy frame
     total = raw_duration or norm["source_duration"]
     scale = total / max(norm["source_duration"], 1e-6)
     raw = raw_input or (lambda t0: ["-ss", f"{t0:.3f}", "-i", str(src)])
     stride = 1
     t_first, real_dt = offset / FPS * norm["speedup"] * scale, norm["speedup"] * scale / FPS
+    if part:
+        # one drawing of several on the page: only the time it was being drawn ...
+        f0 = int(max(0, min(len(store) - 2, (part["t0"] - t_first) / real_dt)))
+        f1 = int(max(f0 + 1, min(len(store) - 1, (part["t1"] - t_first) / real_dt)))
+        print(f"drawing {part.get('label', '')}: frames {f0}-{f1} of the page")
+        if (f0, f1) != (0, len(store) - 1):
+            cut = out_dir / "work_part.mp4"
+            trim(work, cut, f0, f1)
+            work.unlink(missing_ok=True)
+            cut.rename(work)
+            store = FrameStore(work)
+            t_first += f0 * real_dt
+            norm["part_frames"] = [f0, f1]
     if real_dt > SPARSE_DT and not (proxy and raw_input is None):
         dense = densify(raw, t_first, t_first + len(store) * real_dt, (store.width, store.height),
                         _pixels(src), len(store), out_dir / "work_dense.mp4")
@@ -228,13 +269,25 @@ def make_variants(src: Path, out_root: Path, names: list[str] | None = None, see
             norm["dense_frames"] = len(store)
     if proxy and raw_input is None:
         real_dt = None
+    was_wide = store.width / store.height > 9 / 16 + 0.02
+    part_filter = ""
+    if part:
+        # ... and framed on that drawing
+        boxed = out_dir / "work_box.mp4"
+        cb = crop_box(work, boxed, tuple(part["box"]), max_w=max_width)
+        work.unlink(missing_ok=True)
+        boxed.rename(work)
+        store = FrameStore(work)
+        part_filter = cb["filter"]
+        norm.update(width=store.width, height=store.height, part_box=list(part["box"]))
     store.real_dt = real_dt
     norm["real_seconds_per_frame"] = real_dt and round(real_dt, 3)
     a = analyze_spaced(store, stride, **how)
     wide = store.width / store.height > 9 / 16 + 0.02
     frame_filter = ""
-    if not wide:
+    if not was_wide:
         frame_filter = "crop=iw:'min(ih,trunc(iw*16/9/2)*2)',"          # taller than 9:16: centre
+    frame_filter += part_filter
     if wide:
         # Landscape recording: cut a vertical frame around this clip's drawing, then re-analyse.
         vert = out_dir / "work_vertical.mp4"

@@ -312,3 +312,104 @@ def analyze_spaced(store, k: int, **kw) -> Analysis:
         detail_end=at(a.detail_end), hand_score=hand.round(4).tolist(), ink_progress=a.ink_progress,
         window_frames=a.window_frames * k, usable=usable, has_pencil=a.has_pencil,
         work_center=a.work_center, work_span=a.work_span)
+
+
+def find_subjects(store, max_k: int = 4, min_share: float = 0.1, min_sil: float = 0.5) -> list[dict]:
+    """Separate drawings on one page (e.g. a head close-up, a figure, a second figure), found
+    by WHERE their ink is on the finished page and WHEN it went down: drawings made one after
+    another in different spots form separate groups.
+
+    Returns [{"box": (x0, y0, x1, y1) as fractions of the frame, "frames": (first, last)}],
+    earliest first; [] when the page reads as one drawing."""
+    n = len(store)
+    win = max(1, int(round(WINDOW_S * FPS)))
+    if n < 12 * win:
+        return []
+    ah = int(round(store.height * AW / store.width))
+    grays, hands, hs = [], [], np.zeros(n, np.float32)
+    bg, bh = [], []
+    for i in range(n):
+        small = cv2.resize(store[i], (AW, ah), interpolation=cv2.INTER_AREA)
+        hand = _skin(small)
+        hs[i] = hand.mean()
+        bg.append(cv2.cvtColor(small, cv2.COLOR_BGR2GRAY))
+        bh.append(hand)
+        if len(bg) == win or i == n - 1:
+            grays.append(np.median(np.stack(bg), axis=0).astype(np.uint8))
+            hm = np.mean(np.stack(bh), axis=0) > 0.3
+            hands.append(cv2.dilate(hm.astype(np.uint8), np.ones((15, 15), np.uint8)) > 0)
+            bg, bh = [], []
+    nw = len(grays)
+    tail = max(1, int(n * 0.2))
+    ok = np.nonzero(hs[n - tail:] <= hs[n - tail:].min() + 0.005)[0]
+    reveal = cv2.cvtColor(cv2.resize(store[int(n - tail + ok[-1])], (AW, ah), interpolation=cv2.INTER_AREA),
+                          cv2.COLOR_BGR2GRAY)
+    d = _darkness(reveal)
+    thr = max(60.0, float(np.percentile(d[d > 20], 75))) if (d > 20).any() else 60.0
+    ink_map = d > thr * 0.6                                   # every inked line on the finished page
+    ink_t = _inked_at([_darkness(g) > thr * 0.6 for g in grays], hands, ink_map)
+    mark_map = (d > 18) & ~ink_map
+    mark_t = _inked_at([_darkness(g) > 12 for g in grays], hands, mark_map)
+
+    ys, xs = np.nonzero(ink_t > 0)                            # lines we saw go down in this clip
+    if len(xs) < 300:
+        return []
+    rng = np.random.default_rng(0)
+    pick = rng.choice(len(xs), size=min(len(xs), 6000), replace=False)
+    xs, ys, ts = xs[pick], ys[pick], ink_t[ys[pick], xs[pick]]
+    feat = np.stack([xs / AW, ys / AW, 0.7 * ts / nw], axis=1).astype(np.float32)
+
+    def silhouette(lab: np.ndarray, k: int) -> float:
+        s = rng.choice(len(feat), size=min(len(feat), 1500), replace=False)
+        f, l = feat[s], lab[s]
+        dist = np.sqrt(((f[:, None, :] - f[None, :, :]) ** 2).sum(-1))
+        a = np.array([dist[i, l == l[i]].sum() / max(1, (l == l[i]).sum() - 1) for i in range(len(f))])
+        b = np.array([min(dist[i, l == c].mean() for c in range(k) if c != l[i] and (l == c).any())
+                      for i in range(len(f))])
+        return float(np.mean((b - a) / np.maximum(a, b).clip(1e-6)))
+
+    best = None
+    crit = (cv2.TERM_CRITERIA_EPS + cv2.TERM_CRITERIA_MAX_ITER, 50, 1e-3)
+    for k in range(2, max_k + 1):
+        _, lab, _ = cv2.kmeans(feat, k, None, crit, 4, cv2.KMEANS_PP_CENTERS)
+        lab = lab.ravel()
+        shares = np.bincount(lab, minlength=k) / len(lab)
+        if shares.min() < min_share:
+            continue
+        sil = silhouette(lab, k)
+        if sil >= min_sil and (best is None or sil > best[0] + 0.02):
+            best = (sil, k, lab)
+    if best is None:
+        return []
+    _, k, lab = best
+    W, H = AW, ah
+    parts = []
+    for c in range(k):
+        m = lab == c
+        x0, x1 = np.percentile(xs[m], [2, 98])
+        y0, y1 = np.percentile(ys[m], [2, 98])
+        box = (x0 / W, y0 / H, x1 / W, y1 / H)
+        # its pencil sketch comes first: start at the earliest marks inside its box
+        bx = (slice(int(y0), int(y1) + 1), slice(int(x0), int(x1) + 1))
+        mt = mark_t[bx]
+        starts = [np.percentile(ts[m], 2)]
+        if (mt > 0).sum() > 100:
+            starts.append(np.percentile(mt[mt > 0], 5))
+        w0 = max(0, int(min(starts)) - 1)
+        w1 = min(nw, int(np.percentile(ts[m], 98)) + 1)
+        parts.append({"box": tuple(round(float(v), 4) for v in box),
+                      "frames": (int(w0 * win), int(min(n - 1, w1 * win)))})
+    # two groups on top of each other are one drawing in two phases, not two drawings
+    for a in range(k):
+        for b in range(a + 1, k):
+            if _iou(parts[a]["box"], parts[b]["box"]) > 0.5:
+                return []
+    return sorted(parts, key=lambda p: p["frames"][0])
+
+
+def _iou(a, b) -> float:
+    ix = max(0.0, min(a[2], b[2]) - max(a[0], b[0]))
+    iy = max(0.0, min(a[3], b[3]) - max(a[1], b[1]))
+    inter = ix * iy
+    union = (a[2] - a[0]) * (a[3] - a[1]) + (b[2] - b[0]) * (b[3] - b[1]) - inter
+    return inter / union if union > 0 else 0.0

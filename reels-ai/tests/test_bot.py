@@ -1863,3 +1863,113 @@ class UploadOnceAndStorageTest(FakeVariantsMixin, unittest.TestCase):
         clock.t = datetime(2027, 1, 1, 9, tzinfo=timezone.utc)
         r.poll()
         self.assertEqual(sum("Monthly storage check" in t for t in bot.texts()), 2)    # under 50 GB: quiet
+
+
+class SplitPageTest(FakeVariantsMixin, unittest.TestCase):
+    """A page with several separate drawings becomes one drawing (and one set of Shorts) each."""
+
+    def test_page_with_three_drawings_queues_three(self):
+        import reels_ai.pipeline as pipeline
+
+        class D:
+            def folder(self, p=""):
+                return "id:" + p
+
+            def move(self, *a):
+                pass
+
+            def upload(self, path, folder, name=None, mime="video/mp4"):
+                return {"id": "u", "webViewLink": "https://drive/u"}
+
+            def media_url(self, fid):
+                return f"https://drive/{fid}"
+
+            def token(self):
+                return "AT"
+
+            fresh_token = token
+
+        bot, state = FakeBot(), fresh_state()
+        state["owner_chat_id"] = OWNER
+        cfg = load_config()
+        cfg["timezone"] = "UTC"
+        cfg["approval"]["mode"] = "approve"
+        r = Runner(bot, state, cfg, clock=Clock(datetime(2026, 11, 8, 9, tzinfo=timezone.utc)), drive=D())
+        src = Path(tempfile.mkdtemp()) / "raw.mp4"
+        src.write_bytes(b"x")
+        r.drive_source = lambda d, tmp: src
+        state["drawings"]["d1"] = {"source": "drive", "drive_id": "f1", "drive_name": "Lets+Go+LIVE!.mp4",
+                                   "subject": "Deku", "status": "queued", "duration": 2100}
+        state["next_id"] = 2
+        parts = [{"t0": 60.0 * k, "t1": 60.0 * k + 50, "box": [0.1, 0.1, 0.5, 0.5], "label": f"{k + 1} of 3"}
+                 for k in range(3)]
+        calls = []
+        real = pipeline.find_parts
+        pipeline.find_parts = lambda *a, **kw: calls.append(1) or parts
+        try:
+            self.stub_render(r)
+        finally:
+            pipeline.find_parts = real
+        drawings = state["drawings"]
+        self.assertEqual(len(drawings), 3, (bot.texts(), drawings))
+        self.assertEqual(sorted(d["part"]["label"] for d in drawings.values()), ["1 of 3", "2 of 3", "3 of 3"])
+        self.assertTrue(all(d["split_done"] for d in drawings.values()))
+        self.assertEqual(len(calls), 1)                                  # looked once, not per part
+        self.assertTrue(any("3 separate drawings" in t for t in bot.texts()))
+        captions = [c for k, _, c in bot.sent if k == "video"]
+        self.assertTrue(any("drawing 2 of 3" in c for c in captions), captions[:2])
+
+    def test_numbered_longdraw_videos_are_not_split(self):
+        r = Runner(FakeBot(), fresh_state(), load_config())
+        self.assertFalse(r.may_split({"drive_where": "Longform \u203a Page 3", "drive_name": "3 - Kakashi.MOV"}))
+        self.assertTrue(r.may_split({"drive_where": "Longform \u203a Deku", "drive_name": "Lets+Go+LIVE!.mp4",
+                                     "keep_in_place": True}))                  # a /redo keeps it in place
+        self.assertTrue(r.may_split({"drive_where": "Longform \u203a Deku", "drive_name": "IMG_4412.MOV"}))
+        self.assertTrue(r.may_split({"drive_where": "Inbox", "drive_name": "2 - Goku.MOV"}))
+
+
+class FindSubjectsTest(unittest.TestCase):
+    """Three drawings in three spots, made one after another, are found as three subjects."""
+
+    @staticmethod
+    def page(n=270, centres=((110, 170), (120, 470), (260, 330)), seed=1):
+        rng = np.random.default_rng(seed)
+        groups = []
+        for cx, cy in centres:
+            g = []
+            for _ in range(40):
+                x, y = cx + int(rng.integers(-60, 60)), cy + int(rng.integers(-60, 60))
+                dx, dy = (int(v) for v in rng.integers(-30, 30, 2))
+                g.append((x, y, x + dx, y + dy))
+            groups.append(g)
+        per = n // len(groups)
+        frames = _Frames()
+        for i in range(n):
+            img = np.full((640, 360, 3), 240, np.uint8)
+            cur, j = divmod(i, per)
+            for gi, grp in enumerate(groups):
+                upto = len(grp) if gi < cur else (int(len(grp) * (j + 1) / per) if gi == cur else 0)
+                for x1, y1, x2, y2 in grp[:upto]:
+                    cv2.line(img, (x1, y1), (x2, y2), (25, 25, 25), 3)
+            if cur < len(groups):
+                cx, cy = centres[cur]
+                cv2.ellipse(img, (cx + 40, cy + 60), (45, 70), 30, 0, 360, (90, 130, 190), -1)
+            frames.append(img)
+        return frames
+
+    def test_three_drawings(self):
+        from reels_ai.analyze import find_subjects
+        subs = find_subjects(self.page())
+        self.assertEqual(len(subs), 3)
+        centres = [((b[0] + b[2]) / 2 * 360, (b[1] + b[3]) / 2 * 640) for b in (s["box"] for s in subs)]
+        for (cx, cy), (ex, ey) in zip(centres, ((110, 170), (120, 470), (260, 330))):  # in drawing order
+            self.assertLess(abs(cx - ex), 50)
+            self.assertLess(abs(cy - ey), 50)
+
+    def test_one_drawing_stays_one(self):
+        from reels_ai.analyze import find_subjects
+        self.assertEqual(find_subjects(self.page(centres=((180, 320),))), [])
+
+
+class _Frames(list):
+    width, height = 360, 640
