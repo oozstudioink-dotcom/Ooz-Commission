@@ -384,6 +384,13 @@ class RedoTest(DropsFeedTest):
         self.assertTrue(any("No finished drawing" in t for t in self.bot.texts()))
         self.assertTrue(any("Deku" in t and "Goku" in t for t in self.bot.texts()))
 
+    def test_redo_matches_names_loosely(self):
+        did = next(iter(self.state["drawings"]))
+        self.state["drawings"][did]["drive_name"] = "Lets+Go+LIVE!+2026.mp4"
+        self.bot.push(**msg(OWNER, text="/redo lets go"))
+        self.r.poll()
+        self.assertEqual(self.state["drawings"][did]["status"], "queued")
+
     def test_redo_without_name_takes_newest(self):
         self.bot.push(**msg(OWNER, text="/redo"))
         self.r.poll()

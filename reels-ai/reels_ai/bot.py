@@ -186,11 +186,11 @@ class Runner:
     def redo(self, name: str) -> None:
         """Re-render a drawing's Shorts (e.g. after the editing improves). Unsent old versions
         leave the bank so the new ones replace them; already-dropped ones are untouched."""
-        want = name.lower()
+        want = _norm_name(name)
         found = [(did, d) for did, d in self.state["drawings"].items()
                  if d["status"] in ("rendered", "failed") and not self.retired(d)
-                 and (not want or want in (d.get("subject") or "").lower()
-                      or want in (d.get("drive_name") or "").lower())]
+                 and (not want or want in _norm_name(d.get("subject") or "")
+                      or want in _norm_name(d.get("drive_name") or ""))]
         if not found:
             names = sorted({d.get("subject") or d.get("drive_name") or did
                             for did, d in self.state["drawings"].items() if d["status"] == "rendered"})
@@ -677,9 +677,9 @@ class Runner:
     # ------------------------------------------------------------------ drops (manual posting)
     def retired(self, d: dict | None) -> bool:
         """Drawings you've used enough ([bank] retired in config.toml): no more drops or redos."""
-        names = [n.lower() for n in self.cfg.get("bank", {}).get("retired", []) + self.state.get("retired", [])
+        names = [_norm_name(n) for n in self.cfg.get("bank", {}).get("retired", []) + self.state.get("retired", [])
                  if n.strip()]
-        text = f"{(d or {}).get('subject') or ''} {(d or {}).get('drive_name') or ''}".lower()
+        text = _norm_name(f"{(d or {}).get('subject') or ''} {(d or {}).get('drive_name') or ''}")
         return any(n in text for n in names)
 
     def retired_variant(self, v: dict) -> bool:
@@ -1182,6 +1182,13 @@ class Runner:
                     "posts": {}, **({"full_link": links[r["name"]]} if (links or {}).get(r["name"]) else {})}
                 uses = self.state["style_uses"]
                 uses[r["name"]] = uses.get(r["name"], 0) + 1
+
+
+def _norm_name(text: str) -> str:
+    """For matching names you type: 'Lets+Go+LIVE!', 'Lets_Go live' and 'lets go' all match."""
+    import urllib.parse
+    text = urllib.parse.unquote_plus(text or "").lower()
+    return " ".join(re.sub(r"[^a-z0-9]+", " ", text).split())
 
 
 def strip_guessed_names(copy: dict) -> dict:
