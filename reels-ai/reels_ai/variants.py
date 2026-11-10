@@ -428,12 +428,29 @@ def _aligned(store, i: int, ref: int) -> np.ndarray | None:
     return cv2.warpAffine(img, m, (img.shape[1], img.shape[0]), borderMode=cv2.BORDER_REPLICATE)
 
 
-def mix(store, win: Window) -> np.ndarray:
+SMEAR_MAX_S = 2.0   # blend the hand too (motion blur) when a window spans at most this much real time
+SMEAR_DT = 0.4     # ... from frames at most this far apart (a frame a second would ghost)
+SMEAR_MIN = 3       # ... and holds at least this many frames (fewer = separate see-through arms)
+
+
+def smear_ok(store, win: Window) -> bool:
+    """Dense frames close together in real time: averaging them, hand included, gives the soft
+    long-exposure smear of a real timelapse (the hand glides). Sparse frames would give ghost
+    arms instead, so those keep the hand solid."""
+    dt = getattr(store, "real_dt", None)
+    if not dt or dt > SMEAR_DT or len(win) < SMEAR_MIN:
+        return False
+    idx = [i for i, _ in win]
+    return (max(idx) - min(idx)) * dt <= SMEAR_MAX_S
+
+
+def mix(store, win: Window, smear: bool = False) -> np.ndarray:
     """Weighted blend of source frames for smooth ink, without ghost arms or doubled drawings.
 
     - Each frame counts by its weight (in-between frames of a slow-down really are in between).
     - Older frames only count where neither they nor the newest frame show a hand, so the hand and
-      arm come solid from the newest frame.
+      arm come solid from the newest frame - unless `smear`: frames are dense, so everything is
+      averaged and the moving hand becomes motion blur, like a long-exposure timelapse.
     - Each older frame is lined up with the newest first, so a paper or phone that moved a little
       doesn't double the drawing; a frame that doesn't line up isn't blended at all."""
     if len(win) == 1:
@@ -441,7 +458,7 @@ def mix(store, win: Window) -> np.ndarray:
     weights = dict(win)
     newest = max(weights)
     acc = store[newest].astype(np.float32)
-    clear = _no_hand(store, newest)
+    clear = None if smear else _no_hand(store, newest)
     total = weights[newest]
     for i, wt in sorted(win):
         if i == newest or wt <= 0:
@@ -449,7 +466,7 @@ def mix(store, win: Window) -> np.ndarray:
         img = _aligned(store, i, newest)
         if img is None:
             continue
-        mask = cv2.bitwise_and(clear, _no_hand(store, i))
+        mask = None if smear else cv2.bitwise_and(clear, _no_hand(store, i))
         total += wt
         cv2.accumulateWeighted(img, acc, wt / total, mask=mask)
     return cv2.convertScaleAbs(acc)
@@ -481,7 +498,7 @@ def render(plan: Plan, store: FrameStore, out: Path, audio: Path | None = None,
         if key not in graded:
             if len(graded) > 8:
                 graded.clear()
-            img = mix(stores[src], win)
+            img = mix(stores[src], win, smear_ok(stores[src], win))
             if img.shape[:2] != (h, w):
                 img = cv2.resize(img, (w, h), interpolation=cv2.INTER_AREA)
             graded[key] = fx.grade(img, plan.grade)

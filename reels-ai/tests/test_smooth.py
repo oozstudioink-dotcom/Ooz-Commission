@@ -487,3 +487,24 @@ class PageChangeTest(unittest.TestCase):
         subprocess.run(["ffmpeg", "-v", "error", "-y", "-i", str(tmp / "g.avi"), "-pix_fmt", "yuv420p",
                         str(tmp / "g.mp4")], check=True)
         self.assertEqual(page_changes(FrameStore(tmp / "g.mp4")), [])
+
+
+class SmearTest(unittest.TestCase):
+    """The hand is motion-blurred only from dense frames; sparse ones keep it solid (no ghost arms)."""
+
+    def test_smear_only_for_dense_frames(self):
+        from reels_ai.variants import smear_ok
+        win = ((10, 0.1), (11, 0.2), (12, 0.3), (13, 0.4))
+        self.assertTrue(smear_ok(SimpleNamespace(real_dt=0.2), win))      # 0.6 s of drawing
+        self.assertFalse(smear_ok(SimpleNamespace(real_dt=0.8), win))     # a frame a second: ghosts
+        self.assertFalse(smear_ok(SimpleNamespace(real_dt=None), win))    # unknown: play safe
+        self.assertFalse(smear_ok(SimpleNamespace(real_dt=0.2), win[:2]))  # two frames: double arm
+        self.assertFalse(smear_ok(SimpleNamespace(real_dt=0.2), ((0, 0.5), (5, 0.2), (20, 0.3))))
+
+    def test_smear_blends_the_hand(self):
+        a = np.full((8, 8, 3), 255, np.uint8)
+        b = a.copy()
+        b[:, :4] = (60, 90, 160)                         # skin-coloured "hand" on the left
+        store = [b, a, a, a]
+        out = mix(store, ((0, 0.25), (1, 0.25), (2, 0.25), (3, 0.25)), smear=True)
+        self.assertTrue(120 < out[0, 0, 0] < 250)        # the hand is a soft blur, not solid or gone
