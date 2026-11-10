@@ -261,3 +261,54 @@ def analyze(store: FrameStore, continued: bool = False, pencil: bool | None = No
         hand_score=hand_score.round(4).tolist(), ink_progress=ink_prog.round(4).tolist(),
         window_frames=win, usable=usable.tolist(), has_pencil=has_pencil,
     )
+
+
+class _Every:
+    """Every k-th frame of a store (read-only view)."""
+
+    def __init__(self, store, k: int):
+        self.store, self.k = store, k
+        self.width, self.height = store.width, store.height
+
+    def __len__(self) -> int:
+        return (len(self.store) + self.k - 1) // self.k
+
+    def __getitem__(self, i: int):
+        return self.store[min(int(i) * self.k, len(self.store) - 1)]
+
+
+def analyze_spaced(store, k: int, **kw) -> Analysis:
+    """Analyse every k-th frame, then map the result back onto all frames.
+
+    A page re-read densely for smooth rendering is analysed at the spacing the beats were tuned
+    on (where inking starts and ends, the reveal), so the dense frames only change how smooth the
+    Short looks, never which part of the drawing it shows."""
+    if k <= 1:
+        return analyze(store, **kw)
+    a = analyze(_Every(store, k), **kw)
+    n = len(store)
+
+    def at(i: int) -> int:
+        return int(min(n - 1, max(0, i * k)))
+
+    def spread(vals: list) -> list:
+        return [vals[min(len(vals) - 1, i // k)] for i in range(n)]
+
+    hand = np.array(spread(a.hand_score), np.float32)
+    usable = spread(a.usable)
+    # reveal: the dense frame with the least hand around the chosen one
+    lo, hi = at(a.reveal_idx - 1), at(a.reveal_idx + 1)
+    scores = []
+    for i in range(lo, hi + 1):
+        small = cv2.resize(store[i], (AW, int(round(store.height * AW / store.width))),
+                           interpolation=cv2.INTER_AREA)
+        scores.append(float(_skin(small).mean()))
+    reveal = lo + int(np.argmin(scores)) if scores else at(a.reveal_idx)
+    return Analysis(
+        n_frames=n, fps=a.fps, width=a.width, height=a.height,
+        draw_start=at(a.draw_start), sketch_idx=at(a.sketch_idx), ink_start=at(a.ink_start),
+        ink_end=at(a.ink_end), peak_idx=at(a.peak_idx), reveal_idx=max(reveal, at(a.ink_end)) if a.reveal_idx >= a.ink_end else reveal,
+        detail_box=a.detail_box, focus=a.focus, detail_start=at(a.detail_start),
+        detail_end=at(a.detail_end), hand_score=hand.round(4).tolist(), ink_progress=a.ink_progress,
+        window_frames=a.window_frames * k, usable=usable, has_pencil=a.has_pencil,
+        work_center=a.work_center, work_span=a.work_span)
