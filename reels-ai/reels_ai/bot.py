@@ -368,7 +368,15 @@ class Runner:
 
     def drive_raw(self, d: dict) -> dict:
         """How Process cuts read short real-speed moments straight from the original on Drive."""
-        if not (self.drive and d.get("duration")):
+        if not self.drive:
+            return {}
+        if not d.get("duration"):                 # Drive didn't say: ask the file itself
+            try:
+                from .drive import remote_duration
+                d["duration"] = remote_duration(self.drive.media_url(d["drive_id"]), self.drive.token())
+            except Exception:  # noqa: BLE001 - unknown length: no raw reads, nothing worse
+                d["duration"] = None
+        if not d.get("duration"):
             return {}
         url, token = self.drive.media_url(d["drive_id"]), self.drive.fresh_token()
         return {"raw_duration": float(d["duration"]),
@@ -1053,7 +1061,8 @@ class Runner:
                                                      seed=int(did[1:]), subject=d["subject"],
                                                      review_page=False, copy=copy,
                                                      max_width=2160 if big else 1080,
-                                                     hints=d.get("hints"), **raw)
+                                                     hints=d.get("hints"),
+                                                     proxy=d.get("source") == "drive", **raw)
                 except Exception as e:  # noqa: BLE001 - report any failure to the owner
                     d["status"] = "failed"
                     d["error"] = str(e)[:300]

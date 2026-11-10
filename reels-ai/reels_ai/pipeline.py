@@ -59,6 +59,17 @@ def process_cuts_clips(a, frame_filter: str, raw_input: RawInput, src_time: Call
     return clips
 
 
+def _pixels(path: Path) -> int:
+    """Width x height of a video (the working copy's source stands in for the original)."""
+    out = subprocess.run(["ffprobe", "-v", "error", "-select_streams", "v:0", "-show_entries",
+                          "stream=width,height", "-of", "csv=p=0", str(path)],
+                         capture_output=True, text=True).stdout.strip().split(",")
+    try:
+        return int(out[0]) * int(out[1])
+    except (ValueError, IndexError):
+        return 3840 * 2160
+
+
 def _thumb(path: Path, at: float, dst: Path) -> None:
     cap = cv2.VideoCapture(str(path))
     n = cap.get(cv2.CAP_PROP_FRAME_COUNT)
@@ -113,15 +124,62 @@ h2{{font-size:16px;margin:10px 0 4px;text-transform:capitalize}} small{{color:va
     return p
 
 
+DENSE_DT = 0.2            # aim for a frame every 0.2 s of real drawing on the page that's used
+SPARSE_DT = 0.3           # re-read the page when the working copy is sparser than this
+DENSE_MAX = 5400          # frames on one page
+DENSE_PIXELS = 2700 * 2160 * 3840      # RAM: no more pixels than a 4K working copy already holds
+DECODE_BUDGET = 15 * 60 * 3840 * 2160  # seconds x pixels of original to decode (~15 min of 4K)
+
+
+def densify(raw: RawInput, t0: float, t1: float, size: tuple[int, int], src_px: int, have: int,
+            dst: Path) -> FrameStore | None:
+    """Re-read real time t0..t1 of the original recording at ~DENSE_DT, at the working size.
+
+    Long recordings are first read sparsely (about a frame a second) to stay fast. Squeezing a
+    page into a Short then jumps the hand a second of drawing per frame: stop-motion. Dense
+    frames let each Short frame blend the moments in between - the hand smears and glides like a
+    real timelapse. Returns None when it wouldn't add frames or would be too slow to decode."""
+    w, h = size
+    span = t1 - t0
+    n = int(min(DENSE_MAX, span / DENSE_DT, DENSE_PIXELS / (w * h)))
+    if span <= 0 or n < have * 1.3:
+        return None
+    if span * src_px > DECODE_BUDGET:
+        print(f"page is {span / 60:.0f} min of {src_px / 1e6:.1f} MP video: too long to re-read densely")
+        return None
+    cmd = (["ffmpeg", "-v", "error", "-y"] + raw(t0) +
+           ["-t", f"{span:.3f}", "-an", "-vf",
+            f"fps={n / span:.5f},scale={w}:{h}:force_original_aspect_ratio=increase:flags=lanczos,"
+            f"crop={w}:{h},setsar=1,setpts=N/{FPS}/TB",
+            "-r", str(FPS), "-c:v", "libx264", "-crf", "14", "-preset", "veryfast", "-pix_fmt", "yuv420p",
+            str(dst)])
+    t = time.time()
+    res = subprocess.run(cmd, capture_output=True, text=True)
+    if res.returncode != 0 or not dst.exists() or dst.stat().st_size == 0:
+        print(f"warn: dense re-read failed: {(res.stderr or '').strip()[-200:]}")
+        return None
+    try:
+        store = FrameStore(dst)
+    except RuntimeError:
+        return None
+    if len(store) < have * 1.3 or (store.width, store.height) != (w, h):
+        return None
+    print(f"re-read the page densely: {have} -> {len(store)} frames "
+          f"({span / len(store):.2f} s apart, {time.time() - t:.0f}s)")
+    return store
+
+
 def make_variants(src: Path, out_root: Path, names: list[str] | None = None, seed: int = 1,
                   subject: str | None = None, audio: Path | None = None, sheets: bool = False,
                   keep_work: bool = False, review_page: bool = True,
                   copy: dict | None = None, max_width: int = 1080, raw_input: RawInput | None = None,
-                  raw_duration: float | None = None, hints: dict | None = None) -> tuple[Path, list[dict]]:
+                  raw_duration: float | None = None, hints: dict | None = None,
+                  proxy: bool = False) -> tuple[Path, list[dict]]:
     """Analyse `src` and render the requested variants. Returns (output dir, results).
 
     raw_input / raw_duration: where the original recording is when `src` is only a sampled
-    proxy of it (Drive). Without them `src` itself is the original.
+    proxy of it (Drive). Without them `src` itself is the original - unless `proxy`: then the
+    real time between frames is unknown, and the hand isn't motion-blurred (it could ghost).
     hints: from the file name ('Sasuke - ink only - continued'): pencil True/False, continued."""
     hints = hints or {}
     how = {"continued": bool(hints.get("continued")), "pencil": hints.get("pencil")}
@@ -149,6 +207,23 @@ def make_variants(src: Path, out_root: Path, names: list[str] | None = None, see
         store = FrameStore(work)
         offset = first
         norm["page_changes"] = cuts
+    # real recording time of a working-copy frame
+    total = raw_duration or norm["source_duration"]
+    scale = total / max(norm["source_duration"], 1e-6)
+    raw = raw_input or (lambda t0: ["-ss", f"{t0:.3f}", "-i", str(src)])
+    t_first, real_dt = offset / FPS * norm["speedup"] * scale, norm["speedup"] * scale / FPS
+    if real_dt > SPARSE_DT and not (proxy and raw_input is None):
+        dense = densify(raw, t_first, t_first + len(store) * real_dt, (store.width, store.height),
+                        _pixels(src), len(store), out_dir / "work_dense.mp4")
+        if dense is not None:
+            store, real_dt = dense, (len(store) * real_dt) / len(dense)
+            work.unlink(missing_ok=True)
+            (out_dir / "work_dense.mp4").rename(work)
+            norm["dense_frames"] = len(store)
+    if proxy and raw_input is None:
+        real_dt = None
+    store.real_dt = real_dt
+    norm["real_seconds_per_frame"] = real_dt and round(real_dt, 3)
     a = analyze(store, **how)
     wide = store.width / store.height > 9 / 16 + 0.02
     frame_filter = ""
@@ -164,6 +239,7 @@ def make_variants(src: Path, out_root: Path, names: list[str] | None = None, see
         work.unlink(missing_ok=True)
         vert.rename(work)
         store = FrameStore(work)
+        store.real_dt = real_dt
         a = analyze(store, **how)
         norm.update(width=store.width, height=store.height, landscape_crop=crop)
     (out_dir / "analysis.json").write_text(json.dumps({**norm, **a.to_dict()}, indent=2))
@@ -177,11 +253,10 @@ def make_variants(src: Path, out_root: Path, names: list[str] | None = None, see
         print("no pencil stage: before_after swapped for", spare[:1] or "nothing")
     clips = None
     if "process_cuts" in names:
-        total = raw_duration or norm["source_duration"]
-        scale = total / max(norm["source_duration"], 1e-6)
-        raw = raw_input or (lambda t0: ["-ss", f"{t0:.3f}", "-i", str(src)])
-        shift = offset / FPS * norm["speedup"]                  # trimmed to one page: back to its clock
-        clips = process_cuts_clips(a, frame_filter, raw, lambda s: (s + shift) * scale, norm["speedup"], total,
+        # working-copy seconds -> frame -> real recording time (one page, maybe re-read densely)
+        clips = process_cuts_clips(a, frame_filter, raw,
+                                   lambda s: t_first + s * FPS / norm["speedup"] * (real_dt or norm["speedup"] * scale / FPS),
+                                   norm["speedup"], total,
                                  out_dir, (store.width, store.height))
         if len(clips) < 4:
             names = swap_out(names, "process_cuts", a.has_pencil)
