@@ -25,6 +25,7 @@ jobs:
       run:
         working-directory: reels-ai
     env:
+      PYTHONUNBUFFERED: "1"         # progress shows in the log as it happens
       TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
       YT_CLIENT_ID: ${{ secrets.YT_CLIENT_ID }}
       YT_CLIENT_SECRET: ${{ secrets.YT_CLIENT_SECRET }}

@@ -474,8 +474,18 @@ class ReliabilityTest(FakeVariantsMixin, unittest.TestCase):
                            caption=f"Char{i}"))
         r.poll()
         self.stub_render(r)
-        self.assertEqual(len(saves), 3)
-        self.assertEqual([list(x.values()).count("rendered") for x in saves], [1, 2, 3])
+        self.assertEqual(len(saves), 6)                     # before (an attempt) and after each drawing
+        self.assertEqual([list(x.values()).count("rendered") for x in saves[1::2]], [1, 2, 3])
+
+    def test_a_recording_that_times_out_twice_is_set_aside(self):
+        bot, state = FakeBot(), fresh_state()
+        state["owner_chat_id"] = OWNER
+        r = Runner(bot, state, load_config(), clock=Clock(datetime(2026, 11, 7, tzinfo=timezone.utc)))
+        state["drawings"]["d1"] = {"source": "drive", "drive_id": "f1", "drive_name": "Lets+Go+LIVE!.mp4",
+                                   "subject": None, "status": "queued", "attempts": 2}
+        self.stub_render(r)
+        self.assertEqual(state["drawings"]["d1"]["status"], "failed")
+        self.assertTrue(any("longer than a whole run twice" in t for t in bot.texts()))
 
     def test_failure_alert(self):
         import reels_ai.bot as botmod
