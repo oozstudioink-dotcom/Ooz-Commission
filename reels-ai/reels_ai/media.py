@@ -380,10 +380,19 @@ def drawn_stretch(store: "FrameStore", cuts: list[int], log=print) -> tuple[int,
     return best[1], best[2]
 
 
-def contact_sheet(store: "FrameStore", dst: Path, seconds_per_frame: float, used: tuple[int, int],
-                  cols: int = 6, rows: int = 4) -> Path:
-    """A grid of frames across the recording with their times; the part used is outlined green."""
+def contact_sheet(store: "FrameStore", dst: Path, seconds_per_frame: float, span: tuple[int, int],
+                  cols: int = 6, rows: int = 4, used: set | None = None) -> Path:
+    """A grid of frames across the recording with their times; the frames used are outlined green."""
+    import bisect
     n = len(store)
+    kept = sorted(used) if used else None
+
+    def is_used(i: int) -> bool:
+        if kept is None:
+            return span[0] <= i <= span[1]
+        j = bisect.bisect_left(kept, i)
+        return any(0 <= q < len(kept) and abs(kept[q] - i) <= 2 for q in (j - 1, j))
+
     idx = np.linspace(0, n - 1, cols * rows).astype(int)
     tw = 180
     th = int(round(store.height * tw / store.width))
@@ -391,13 +400,13 @@ def contact_sheet(store: "FrameStore", dst: Path, seconds_per_frame: float, used
     for k, i in enumerate(idx):
         r, c = divmod(k, cols)
         img = cv2.resize(store[int(i)], (tw, th), interpolation=cv2.INTER_AREA)
-        if used[0] <= i <= used[1]:
+        if is_used(i):
             cv2.rectangle(img, (0, 0), (tw - 1, th - 1), (60, 220, 60), 6)
         y, x = r * (th + 30), c * tw
         sheet[y:y + th, x:x + tw] = img
         s = int(i * seconds_per_frame)
         cv2.putText(sheet, f"{s // 60}:{s % 60:02d}", (x + 6, y + th + 22), cv2.FONT_HERSHEY_SIMPLEX, 0.7,
-                    (60, 220, 60) if used[0] <= i <= used[1] else (230, 230, 230), 2, cv2.LINE_AA)
+                    (60, 220, 60) if is_used(i) else (230, 230, 230), 2, cv2.LINE_AA)
     cv2.imwrite(str(dst), sheet, [cv2.IMWRITE_JPEG_QUALITY, 85])
     return dst
 
@@ -414,3 +423,243 @@ def trim(src: Path, dst: Path, first: int, last: int) -> None:
                     f"select='between(n,{first},{last})',setpts=N/{FPS}/TB", "-r", str(FPS),
                     "-c:v", "libx264", "-crf", "14", "-preset", "fast", "-pix_fmt", "yuv420p", str(dst)],
                    check=True)
+
+
+# ---------------------------------------------------------------- page recognition
+class PageMatcher:
+    """Recognises one page in any frame, like panorama stitching: distinctive points of its lines
+    (corners, crossings, a signature) are matched, and a consistent geometric fit (homography)
+    says it's the same page, and how it moved or zoomed relative to the reference frame.
+    Other pages, flips and close-ups of something else don't fit."""
+
+    WIDTH = 540
+
+    def __init__(self, ref: np.ndarray):
+        self.size = (ref.shape[1], ref.shape[0])
+        self.s = self.WIDTH / ref.shape[1]
+        self.small = (self.WIDTH, int(round(ref.shape[0] * self.s)))
+        self.orb = cv2.ORB_create(2500, fastThreshold=12)
+        self.kp, self.des = self.features(ref)
+        self.bf = cv2.BFMatcher(cv2.NORM_HAMMING)
+
+    def features(self, img: np.ndarray):
+        g = cv2.cvtColor(cv2.resize(img, (self.WIDTH, int(round(img.shape[0] * self.s)))), cv2.COLOR_BGR2GRAY)
+        g = cv2.createCLAHE(2.0, (8, 8)).apply(g)
+        return self.orb.detectAndCompute(g, None)
+
+    def fit(self, kp, des, kp2, des2) -> np.ndarray | None:
+        """Homography (small coords) taking points of (kp, des) onto (kp2, des2), or None."""
+        if des is None or des2 is None or len(kp) < 20 or len(kp2) < 20:
+            return None
+        good = []
+        for pair in self.bf.knnMatch(des, des2, k=2):
+            if len(pair) == 2 and pair[0].distance < 0.75 * pair[1].distance:
+                good.append(pair[0])
+        if len(good) < 15:
+            return None
+        src = np.float32([kp[m.queryIdx].pt for m in good])
+        dst = np.float32([kp2[m.trainIdx].pt for m in good])
+        H, mask = cv2.findHomography(src, dst, cv2.RANSAC, 5.0)
+        if H is None or mask is None:
+            return None
+        inl = int(mask.sum())
+        if inl < 25 or inl < 0.2 * len(good):
+            return None
+        det = float(np.linalg.det(H[:2, :2]))
+        if not 0.35 < det < 3.0 or abs(H[2, 0]) > 0.002 or abs(H[2, 1]) > 0.002:
+            return None                                        # a wild fit: not really the page
+        # a fit that says the camera moved a lot needs much stronger evidence than "same place"
+        # (a pencil page against its inked self can give a few dozen chance agreements)
+        if _moved(H, self.small) > 0.05 and (inl < 80 or inl < 0.4 * len(good)):
+            return None
+        return H
+
+    def to_full(self, H: np.ndarray) -> np.ndarray:
+        S = np.diag([self.s, self.s, 1.0])
+        return np.linalg.inv(S) @ H @ S
+
+    def match(self, img: np.ndarray) -> np.ndarray | None:
+        kp, des = self.features(img)
+        H = self.fit(kp, des, self.kp, self.des)
+        return None if H is None else self.to_full(H)
+
+
+def _moved(H: np.ndarray, size: tuple[int, int]) -> float:
+    """How far a homography moves the frame's corners, as a share of its width."""
+    w, h = size
+    pts = np.float32([[0, 0], [w, 0], [0, h], [w, h]]).reshape(-1, 1, 2)
+    return float(np.abs(cv2.perspectiveTransform(pts, H) - pts).max() / w)
+
+
+def choose_page(store: "FrameStore", a: int, b: int, k: int = 36) -> int | None:
+    """The frame that best shows the page being drawn in a..b: the page seen most often there
+    (other pages flipped to are seen briefly), its latest clear view (the most ink)."""
+    from .analyze import _skin
+    idx = sorted(set(np.linspace(a, b, k).astype(int).tolist()))
+    if len(idx) < 4:
+        return None
+    m = PageMatcher(store[idx[-1]])
+    feats, hand = [], []
+    for i in idx:
+        img = store[i]
+        feats.append(m.features(img))
+        hand.append(float(_skin(cv2.resize(img, (128, 228))).mean()))
+    same = np.zeros((len(idx), len(idx)), bool)
+    for x in range(len(idx)):
+        for y in range(x + 1, len(idx)):
+            ok = m.fit(*feats[x], *feats[y]) is not None
+            same[x, y] = same[y, x] = ok
+    score = same.sum(1)
+    if score.max() < 2:
+        return None
+    best = max(range(len(idx)), key=lambda z: (score[z], z))       # the page seen most; later wins ties
+    # the same view of it (not a zoomed-in close-up or a moved camera): that's the shot to keep
+    size = (PageMatcher.WIDTH, int(round(store.height * PageMatcher.WIDTH / store.width)))
+    group = [best]
+    for z in range(len(idx)):
+        if z != best and same[best, z]:
+            H = m.fit(*feats[z], *feats[best])
+            if H is not None and _moved(H, size) < 0.05:
+                group.append(z)
+    group.sort()
+    late = group[len(group) // 2:]                                 # the most finished views ...
+    pick = min(late, key=lambda z: (hand[z], -z))                  # ... with the least hand in the way
+    return idx[pick]
+
+
+def track_page(store: "FrameStore", matcher: PageMatcher, frames: list[int], log=print,
+               max_move: float = 0.12, others: list | None = None) -> list[tuple[int, np.ndarray]]:
+    """Every frame of `frames` that shows the page, with the homography onto the reference.
+    Frames that match the reference directly are kept; around them, frames are followed from
+    neighbour to neighbour (the start of a drawing has too few lines to match the finished
+    page). Flips, other pages and blank paper drop out."""
+    feats: dict[int, tuple] = {}
+
+    def feat(i):
+        if i not in feats:
+            feats[i] = matcher.features(store[i])
+        return feats[i]
+
+    direct: dict[int, np.ndarray] = {}
+    for i in frames:
+        kp, des = feat(i)
+        H = matcher.fit(kp, des, matcher.kp, matcher.des)
+        if H is not None:
+            direct[i] = H
+    if not direct:
+        return []
+    kept = dict(direct)
+    pos = {f: n for n, f in enumerate(frames)}
+    size = (PageMatcher.WIDTH, int(round(store.height * matcher.s)))
+    # follow the page backwards (and forwards) from frames that matched, through neighbours
+    for step in (-1, 1):
+        for start in sorted(direct, reverse=step < 0):
+            n, misses, last = pos[start], 0, start
+            while misses < 25:
+                n += step
+                if n < 0 or n >= len(frames):
+                    break
+                i = frames[n]
+                if i in kept:
+                    last, misses = i, 0
+                    continue
+                kp, des = feat(i)
+                kp2, des2 = feat(last)
+                H = matcher.fit(kp, des, kp2, des2)
+                if H is None:
+                    misses += 1
+                    continue
+                # frame -> neighbour -> reference; a neighbour in the same place keeps its fit
+                # (multiplying hundreds of tiny measuring errors would drift)
+                kept[i] = kept[last] if _moved(H, size) < 0.01 else kept[last] @ H
+                last, misses = i, 0
+            if len(feats) > 4000:
+                feats.clear()
+    size = (PageMatcher.WIDTH, int(round(store.height * matcher.s)))
+    out, other_view = [], 0
+    for i in frames:
+        if i not in kept:
+            continue
+        if _moved(kept[i], size) > max_move:                     # a close-up or another angle: a
+            other_view += 1                                        # different shot, not stretched in
+            if others is not None:
+                others.append(i)
+            continue
+        out.append((i, matcher.to_full(kept[i])))
+    log(f"page recognition: {len(out)} of {len(frames)} frames show the page "
+        f"({len(direct)} matched it directly; {other_view} from another view left out)")
+    return out
+
+
+def write_page(store: "FrameStore", track: list[tuple[int, np.ndarray]], size: tuple[int, int], dst: Path) -> bool:
+    """Write the tracked frames, each lined up with the reference (paper moves and zooms undone).
+    Returns whether anything had to be lined up."""
+    w, h = size
+    moved = sum(_moved(H, size) > 0.01 for _, H in track) > 0.1 * len(track)   # really moved, not noise
+    p = subprocess.Popen(["ffmpeg", "-v", "error", "-y", "-f", "rawvideo", "-pix_fmt", "bgr24", "-s", f"{w}x{h}",
+                          "-r", str(FPS), "-i", "-", "-an", "-c:v", "libx264", "-crf", "14", "-preset", "fast",
+                          "-pix_fmt", "yuv420p", str(dst)], stdin=subprocess.PIPE)
+    for i, H in track:
+        img = store[i]
+        if moved and _moved(H, size) > 0.01:
+            img = cv2.warpPerspective(img, H, (w, h), flags=cv2.INTER_LINEAR, borderMode=cv2.BORDER_REPLICATE)
+        p.stdin.write(np.ascontiguousarray(img).tobytes())
+    p.stdin.close()
+    p.wait()
+    return moved
+
+
+def fill_track(store: "FrameStore", track: list[tuple[int, np.ndarray]], cuts: list[int], lo: int, hi: int,
+               max_gap: int = 90, log=print) -> list[tuple[int, np.ndarray]]:
+    """Frames recognition missed but that belong with the page: gaps between recognised frames
+    (a hand over the page) and, before the first one, the pencil stage - frames with no more ink
+    than the page had then (an old finished page flipped to has more). Never across a page change,
+    never after the last recognised frame (where the flipping usually is)."""
+    if not track:
+        return track
+    H = dict(track)
+    edges = [lo] + sorted(c for c in cuts if lo < c <= hi) + [hi + 1]
+
+    from .analyze import _skin
+
+    def ink(i: int) -> np.ndarray:
+        small = cv2.resize(store[i], (128, 228), interpolation=cv2.INTER_AREA)
+        g = cv2.cvtColor(small, cv2.COLOR_BGR2GRAY).astype(np.float32)
+        paper = cv2.GaussianBlur(cv2.dilate(g, np.ones((9, 9), np.uint8)), (0, 0), 4)
+        hand = cv2.dilate(_skin(small).astype(np.uint8), np.ones((9, 9), np.uint8)) > 0   # not ink
+        return ((paper - g) > 75) & ~hand
+
+    def earlier_state(i: int, ref: np.ndarray) -> bool:
+        """Frame i could be this page before ref: no more ink, and its ink where ref has ink."""
+        k = ink(i)
+        if k.mean() > ref.mean() * 1.1 + 0.002:
+            return False
+        if k.sum() < 0.002 * k.size:                         # barely anything drawn yet
+            return True
+        grown = cv2.dilate(ref.astype(np.uint8), np.ones((7, 7), np.uint8)) > 0
+        return float((k & ~grown).sum()) / float(k.sum()) < 0.3
+
+    added = 0
+    for a, b in zip(edges, edges[1:]):
+        rec = sorted(i for i in H if a <= i < b)
+        if not rec:
+            continue
+        for x, y in zip(rec, rec[1:]):                       # gaps inside the stretch
+            if 1 < y - x <= max_gap:
+                for i in range(x + 1, y):
+                    H[i] = H[x]
+                    added += 1
+        ref = ink(rec[0])                                     # the pencil stage before it
+        fails = 0
+        for i in range(rec[0] - 1, a - 1, -1):
+            if not earlier_state(i, ref):                     # the pen or a shadow can fool one
+                fails += 1                                     # frame; a run of them is a page
+                if fails > 8:
+                    break
+                continue
+            fails = 0
+            H[i] = H[rec[0]]
+            added += 1
+    if added:
+        log(f"page recognition: +{added} frames (hand in the way, pencil stage)")
+    return sorted(H.items())
