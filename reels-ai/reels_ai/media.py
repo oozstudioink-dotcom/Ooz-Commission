@@ -542,38 +542,37 @@ def track_page(store: "FrameStore", matcher: PageMatcher, frames: list[int], log
 
     direct: dict[int, np.ndarray] = {}
     for i in frames:
-        kp, des = feat(i)
+        kp, des = matcher.features(store[i])                 # not cached: thousands of frames
         H = matcher.fit(kp, des, matcher.kp, matcher.des)
         if H is not None:
             direct[i] = H
     if not direct:
         return []
     kept = dict(direct)
-    pos = {f: n for n, f in enumerate(frames)}
     size = (PageMatcher.WIDTH, int(round(store.height * matcher.s)))
-    # follow the page backwards (and forwards) from frames that matched, through neighbours
-    for step in (-1, 1):
-        for start in sorted(direct, reverse=step < 0):
-            n, misses, last = pos[start], 0, start
-            while misses < 25:
-                n += step
-                if n < 0 or n >= len(frames):
-                    break
-                i = frames[n]
-                if i in kept:
-                    last, misses = i, 0
-                    continue
-                kp, des = feat(i)
-                kp2, des2 = feat(last)
-                H = matcher.fit(kp, des, kp2, des2)
-                if H is None:
-                    misses += 1
-                    continue
-                # frame -> neighbour -> reference; a neighbour in the same place keeps its fit
-                # (multiplying hundreds of tiny measuring errors would drift)
-                kept[i] = kept[last] if _moved(H, size) < 0.01 else kept[last] @ H
-                last, misses = i, 0
-            if len(feats) > 4000:
+    # follow the page backwards (and forwards) from frames that matched, through neighbours:
+    # one pass each way, so every frame is compared at most twice
+    for order in (frames[::-1], frames):
+        last, gap = None, 0
+        for i in order:
+            if i in kept:
+                last, gap = i, 0
+                continue
+            if last is None:
+                continue
+            gap += 1
+            if gap > 25:                                  # lost it: wait for the next match
+                continue
+            kp, des = feat(i)
+            kp2, des2 = feat(last)
+            H = matcher.fit(kp, des, kp2, des2)
+            if H is None:
+                continue
+            # frame -> neighbour -> reference; a neighbour in the same place keeps its fit
+            # (multiplying hundreds of tiny measuring errors would drift)
+            kept[i] = kept[last] if _moved(H, size) < 0.01 else kept[last] @ H
+            last, gap = i, 0
+            if len(feats) > 3000:
                 feats.clear()
     size = (PageMatcher.WIDTH, int(round(store.height * matcher.s)))
     out, other_view = [], 0

@@ -274,6 +274,7 @@ class Runner:
         replaced = len(unsent)
         d.update(status="queued", redo=True, keep_in_place=True, redo_styles=styles or None)
         d.pop("error", None)
+        d.pop("attempts", None)
         return replaced, styles
 
     def clear_chat(self, upto: int) -> None:
@@ -1245,6 +1246,18 @@ class Runner:
                 left = sum(1 for x in self.state["drawings"].values() if x["status"] == "queued")
                 self.say(f"\u23f3 Rendered {done_now} drawing(s) this run; {left} more continue on the next run.")
                 return
+            # a recording that made two runs run out of time is set aside, so it can't block every run
+            d["attempts"] = d.get("attempts", 0) + 1
+            if d["attempts"] > 2:
+                d["status"] = "failed"
+                d["error"] = "took longer than a whole run twice"
+                name = d.get("subject") or d.get("drive_name") or did
+                self.say(f"\u26a0\ufe0f {name} took longer than a whole run twice, so I've set it aside "
+                         "for now. /redo it with the minutes you drew in (e.g. /redo "
+                         f"{name} 16-34) to make it from just that part.")
+                self.checkpoint()
+                continue
+            self.checkpoint()                         # remembered even if this run times out
             with tempfile.TemporaryDirectory(dir=work_root) as tmp:
                 tmp = Path(tmp)
                 try:
@@ -1276,6 +1289,7 @@ class Runner:
                     self.checkpoint()
                     continue
                 d["beats"] = self.beats_summary(out_dir, results)
+                d.pop("attempts", None)
                 self.send_pages_sheet(d, out_dir)
                 links = {}
                 if d.get("source") == "drive" and self.drive:
