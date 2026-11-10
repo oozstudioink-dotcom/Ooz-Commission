@@ -364,7 +364,18 @@ def ink_added(store: "FrameStore", a: int, b: int, k: int = 6) -> float:
     return float(grown.mean())
 
 
-def drawn_stretch(store: "FrameStore", cuts: list[int], log=print) -> tuple[int, int]:
+def steady_growth(store: "FrameStore", a: int, b: int) -> bool:
+    """Drawing adds ink a bit at a time: in at least two quarters of the stretch. A flip or a
+    page being moved around changes everything in one moment."""
+    if b - a < 40:
+        return False
+    q = np.linspace(a, b, 5).astype(int)
+    parts = [ink_added(store, int(x), int(y)) for x, y in zip(q, q[1:])]
+    total = sum(parts)
+    return total > 0 and sum(p > 0.15 * total for p in parts) >= 2
+
+
+def drawn_stretch(store: "FrameStore", cuts: list[int], log=print, scored_out: list | None = None) -> tuple[int, int]:
     """Of the stretches between page changes, the one where you drew: the most ink added.
     (The longest one can be an old page you were showing on a livestream.)"""
     n = len(store)
@@ -373,6 +384,8 @@ def drawn_stretch(store: "FrameStore", cuts: list[int], log=print) -> tuple[int,
     if not spans:
         return longest_stretch(n, cuts)
     scored = [(ink_added(store, a, b), a, b) for a, b in spans]
+    if scored_out is not None:
+        scored_out.extend(scored)
     best = max(scored)
     if best[0] < 0.002:                       # nobody drew anywhere we can see: longest it is
         return longest_stretch(n, cuts)
