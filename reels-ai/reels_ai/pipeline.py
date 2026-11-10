@@ -12,8 +12,9 @@ import cv2
 import numpy as np
 
 from .analyze import analyze, analyze_spaced, find_subjects
-from .media import (FPS, FrameStore, contact_sheet, crop_box, crop_vertical, drawn_stretch, normalize,
-                    page_changes, same_page, trim)
+from .media import (FPS, FrameStore, PageMatcher, choose_page, contact_sheet, crop_box, crop_vertical,
+                    drawn_stretch, fill_track, ink_added, normalize, page_changes, same_page, track_page, trim,
+                    write_page)
 from .variants import CUT_SECONDS, RECIPES, build, pick_moments, render
 
 FALLBACK_ORDER = ["one_take", "reveal_first", "detail_zoom", "ink_only", "speedrun", "before_after"]
@@ -170,68 +171,130 @@ def densify(raw: RawInput, t0: float, t1: float, size: tuple[int, int], src_px: 
     return store
 
 
+class Page:
+    """The working copy cut to the page you drew on: which proxy frames it holds, and how to
+    recognise that page in other frames (the dense re-read)."""
+
+    def __init__(self, work: Path, store: FrameStore, norm: dict, src_idx: list[int], dt: float,
+                 matcher: PageMatcher | None = None, ref: int | None = None, others: list[int] | None = None):
+        self.work, self.store, self.norm, self.src_idx, self.dt = work, store, norm, src_idx, dt
+        self.matcher, self.ref, self.others = matcher, ref, others or []
+
+    def time(self, f: int) -> float:
+        """Recording seconds of working-copy frame f."""
+        return self.src_idx[int(min(max(f, 0), len(self.src_idx) - 1))] * self.dt
+
+
 def _one_page(src: Path, out_dir: Path, max_width: int, window: list | None = None,
-              scale: float = 1.0) -> tuple[Path, FrameStore, dict, int]:
+              scale: float = 1.0, ref_time: float | None = None) -> Page:
     """Working copy of the recording, cut to the one page that was drawn on.
 
-    window: [start, end] in recording seconds that you chose (/redo <name> 16-34): used as is.
-    Otherwise, when the recording shows several pages (a livestream), the stretch where ink was
-    added is used, and a contact sheet of the whole recording (pages.jpg/pages.json) shows which."""
+    The page is RECOGNISED in every frame (PageMatcher): frames of other pages, flips and other
+    views are left out wherever they are, and small paper or camera moves are lined up.
+    window: [start, end] in recording seconds that you chose (/redo <name> 16-34).
+    ref_time: the frame (recording seconds) that shows the page/view to use (find_parts).
+    A contact sheet of the recording (pages.jpg/pages.json) shows which frames were used."""
     work = out_dir / "work.mp4"
     norm = normalize(src, work, keep_wide=True, max_wide_h=max(1440, max_width * 16 // 9), max_w=max_width)
     print(f"normalized {src.name} -> {norm['width']}x{norm['height']} (x{norm['speedup']:.1f} speed)")
     store = FrameStore(work)
     dt = norm["speedup"] * scale / FPS                        # recording seconds per frame
     n = len(store)
+    lo, hi = 0, n - 1
     if window:
-        first = int(max(0, min(n - 2, window[0] / dt)))
-        last = int(max(first + 1, min(n - 1, window[1] / dt)))
-        print(f"your choice: {window[0] / 60:.1f}-{window[1] / 60:.1f} min = frames {first}-{last}")
-        cuts = []
-    else:
-        # several pages in one recording (a livestream flipping between pages): use the stretch
-        # you drew on, so frames from different pages are never blended together
-        cuts = page_changes(store)
-        first, last = drawn_stretch(store, cuts) if cuts else (0, n - 1)
-        if cuts:
-            print(f"{len(cuts)} page change(s); using frames {first}-{last} of {n} (the page drawn on)")
-        # a flip the hands hid from page_changes (end of a livestream): keep only the same page
-        first, last = same_page(store, first, last)
-        if cuts or (first, last) != (0, n - 1):
-            contact_sheet(store, out_dir / "pages.jpg", dt, (first, last))
-            (out_dir / "pages.json").write_text(json.dumps({"used": [round(first * dt), round((last + 1) * dt)],
-                                                            "total": round(n * dt)}))
-    if (first, last) != (0, n - 1):
-        part = out_dir / "work_page.mp4"
-        trim(work, part, first, last)
+        lo = int(max(0, min(n - 2, window[0] / dt)))
+        hi = int(max(lo + 1, min(n - 1, window[1] / dt)))
+        print(f"your choice: {window[0] / 60:.1f}-{window[1] / 60:.1f} min = frames {lo}-{hi}")
+    # where the drawing happened: between page flips, the stretch where ink was added
+    cuts = page_changes(store) if not window else []
+    first, last = drawn_stretch(store, cuts) if cuts else (lo, hi)
+    if cuts:
+        print(f"{len(cuts)} page change(s); drawing at frames {first}-{last} of {n}")
+    first, last = same_page(store, first, last)
+    ref = None
+    if ref_time is not None:
+        ref = int(min(max(round(ref_time / dt), lo), hi))
+    elif (cuts or window) and last - first >= 40:              # several pages (a livestream): recognise
+        ref = choose_page(store, first, last)                  # the drawn one in every frame
+    keep = list(range(first, last + 1))
+    matcher, others, moved = None, [], False
+    if ref is not None:
+        matcher = PageMatcher(store[ref])
+        track = fill_track(store, track_page(store, matcher, list(range(lo, hi + 1)), others=others),
+                           cuts, lo, hi)
+        if len(track) >= max(30, 0.25 * (last - first + 1)):
+            keep = [i for i, _ in track]
+            page = out_dir / "work_page.mp4"
+            moved = write_page(store, track, (store.width, store.height), page)
+            norm["page_frames"] = len(keep)
+            norm["page_view_ref"] = round(ref * dt, 1)
+        else:
+            print("page recognition found too little; using the drawn stretch as is")
+            matcher, others = None, []
+    if matcher is None and (first, last) != (0, n - 1):
+        page = out_dir / "work_page.mp4"
+        trim(work, page, first, last)
+    if keep != list(range(n)):
+        if cuts or len(keep) < n:
+            contact_sheet(store, out_dir / "pages.jpg", dt, (keep[0], keep[-1]), used=set(keep))
+            (out_dir / "pages.json").write_text(json.dumps({"used": [round(keep[0] * dt), round((keep[-1] + 1) * dt)],
+                                                            "total": round(n * dt), "frames": len(keep), "of": n}))
         work.unlink(missing_ok=True)
-        part.rename(work)
+        (out_dir / "work_page.mp4").rename(work)
         store = FrameStore(work)
         norm["page_changes"] = cuts
-    return work, store, norm, first
+    norm["stabilised"] = moved
+    return Page(work, store, norm, keep, dt, matcher, ref, others)
 
 
 def find_parts(src: Path, out_root: Path, max_width: int = 1080, raw_duration: float | None = None,
                window: list | None = None) -> list[dict]:
-    """The separate drawings on the page of a recording, as parts make_variants can render one
-    by one: [{"t0", "t1": recording seconds, "box": (x0, y0, x1, y1) fractions, "label"}].
-    [] when the page holds one drawing."""
+    """The separate drawings in a recording, as parts make_variants renders one by one:
+    [{"t0", "t1": recording seconds, "box": (x0, y0, x1, y1) fractions, "ref_t", "label"}].
+    Separate drawings on the page you drew on, and the page drawn on from another view (paper
+    moved, a close-up). [] when it's one drawing."""
     src = Path(src).expanduser().resolve()
     out_dir = Path(out_root).resolve() / (src.stem + "_parts")
     out_dir.mkdir(parents=True, exist_ok=True)
     from .media import probe
     src_s = probe(src)["duration"]
-    work, store, norm, offset = _one_page(src, out_dir, max_width, window,
-                                          (raw_duration or src_s) / max(src_s, 1e-6))
-    subjects = find_subjects(store)
-    work.unlink(missing_ok=True)
-    if len(subjects) < 2:
+    full = out_dir / "full.mp4"
+    pg = _one_page(src, out_dir, max_width, window, (raw_duration or src_s) / max(src_s, 1e-6))
+    ref_t = None if pg.ref is None else round(pg.ref * pg.dt, 2)
+    parts = [{"t0": round(pg.time(s["frames"][0]), 2), "t1": round(pg.time(s["frames"][1]) + pg.dt, 2),
+              "box": list(s["box"]), "ref_t": ref_t} for s in find_subjects(pg.store)]
+    # the page drawn on from another view: its own drawing, with its own reference frame
+    views = []
+    if pg.others:
+        normalize(src, full, keep_wide=True, max_wide_h=max(1440, max_width * 16 // 9), max_w=max_width)
+        store = FrameStore(full)
+        runs, cur = [], [pg.others[0]]
+        for i in pg.others[1:]:
+            if i - cur[-1] <= 4:
+                cur.append(i)
+            else:
+                runs.append(cur)
+                cur = [i]
+        runs.append(cur)
+        for r in runs:
+            if len(r) < 40 or ink_added(store, r[0], r[-1]) < 0.003:
+                continue
+            ref = choose_page(store, r[0], r[-1])
+            if ref is not None:
+                views.append({"t0": round(r[0] * pg.dt, 2), "t1": round((r[-1] + 1) * pg.dt, 2),
+                              "box": [0, 0, 1, 1], "ref_t": round(ref * pg.dt, 2)})
+        full.unlink(missing_ok=True)
+    if views and not parts:                                   # the main view is one drawing too
+        parts = [{"t0": round(pg.time(0), 2), "t1": round(pg.time(len(pg.src_idx) - 1) + pg.dt, 2),
+                  "box": [0, 0, 1, 1], "ref_t": ref_t}]
+    parts += views
+    pg.work.unlink(missing_ok=True)
+    if len(parts) < 2:
         return []
-    scale = (raw_duration or norm["source_duration"]) / max(norm["source_duration"], 1e-6)
-    dt = norm["speedup"] * scale / FPS
-    parts = [{"t0": round((offset + s["frames"][0]) * dt, 2), "t1": round((offset + s["frames"][1] + 1) * dt, 2),
-              "box": list(s["box"]), "label": f"{k + 1} of {len(subjects)}"} for k, s in enumerate(subjects)]
-    print(f"{len(parts)} separate drawings on this page: " +
+    parts.sort(key=lambda p: p["t0"])
+    for k, p in enumerate(parts):
+        p["label"] = f"{k + 1} of {len(parts)}"
+    print(f"{len(parts)} separate drawings: " +
           ", ".join(f"{p['label']} at {p['t0'] / 60:.1f}-{p['t1'] / 60:.1f} min" for p in parts))
     return parts
 
@@ -260,18 +323,19 @@ def make_variants(src: Path, out_root: Path, names: list[str] | None = None, see
     t0 = time.time()
     from .media import probe
     src_s = probe(src)["duration"]
-    work, store, norm, offset = _one_page(src, out_dir, max_width, window,
-                                          (raw_duration or src_s) / max(src_s, 1e-6))
-    # real recording time of a working-copy frame
+    pg = _one_page(src, out_dir, max_width, window, (raw_duration or src_s) / max(src_s, 1e-6),
+                   ref_time=(part or {}).get("ref_t"))
+    work, store, norm = pg.work, pg.store, pg.norm
     total = raw_duration or norm["source_duration"]
     scale = total / max(norm["source_duration"], 1e-6)
     raw = raw_input or (lambda t0: ["-ss", f"{t0:.3f}", "-i", str(src)])
     stride = 1
-    t_first, real_dt = offset / FPS * norm["speedup"] * scale, norm["speedup"] * scale / FPS
+    times = [pg.time(f) for f in range(len(store))]          # recording seconds of each frame
     if part:
-        # one drawing of several on the page: only the time it was being drawn ...
-        f0 = int(max(0, min(len(store) - 2, (part["t0"] - t_first) / real_dt)))
-        f1 = int(max(f0 + 1, min(len(store) - 1, (part["t1"] - t_first) / real_dt)))
+        # one drawing of several: only the time it was being drawn ...
+        f0 = next((f for f, s in enumerate(times) if s >= part["t0"] - pg.dt / 2), 0)
+        f1 = max([f for f, s in enumerate(times) if s <= part["t1"]] or [len(times) - 1])
+        f1 = max(f1, min(len(times) - 1, f0 + 1))
         print(f"drawing {part.get('label', '')}: frames {f0}-{f1} of the page")
         if (f0, f1) != (0, len(store) - 1):
             cut = out_dir / "work_part.mp4"
@@ -279,22 +343,40 @@ def make_variants(src: Path, out_root: Path, names: list[str] | None = None, see
             work.unlink(missing_ok=True)
             cut.rename(work)
             store = FrameStore(work)
-            t_first += f0 * real_dt
+            times = times[f0:f1 + 1]
             norm["part_frames"] = [f0, f1]
-    if real_dt > SPARSE_DT and not (proxy and raw_input is None):
-        dense = densify(raw, t_first, t_first + len(store) * real_dt, (store.width, store.height),
-                        _pixels(src), len(store), out_dir / "work_dense.mp4")
+    real_dt = pg.dt
+    if pg.dt > SPARSE_DT and not (proxy and raw_input is None):
+        t_a, t_b = times[0], times[-1] + pg.dt
+        dense = densify(raw, t_a, t_b, (store.width, store.height), _pixels(src), len(store),
+                        out_dir / "work_dense.mp4")
         if dense is not None:
-            stride = max(1, round(len(dense) / len(store)))   # analyse at the old spacing
-            store, real_dt = dense, (len(store) * real_dt) / len(dense)
-            work.unlink(missing_ok=True)
-            (out_dir / "work_dense.mp4").rename(work)
-            norm["dense_frames"] = len(store)
+            ddt = (t_b - t_a) / len(dense)
+            kept = list(range(len(dense)))
+            if pg.matcher is not None:
+                # the dense frames come straight from the recording: recognise the page again
+                track = track_page(dense, pg.matcher, kept)
+                if len(track) >= 1.3 * len(store):
+                    write_page(dense, track, (store.width, store.height), out_dir / "work_dense2.mp4")
+                    kept = [i for i, _ in track]
+                    dense = FrameStore(out_dir / "work_dense2.mp4")
+                    (out_dir / "work_dense.mp4").unlink(missing_ok=True)
+                    (out_dir / "work_dense2.mp4").rename(out_dir / "work_dense.mp4")
+                else:
+                    dense = None
+            if dense is not None:
+                stride = max(1, round(len(dense) / len(store)))   # analyse at the old spacing
+                store = dense
+                times = [t_a + i * ddt for i in kept]
+                real_dt = ddt
+                work.unlink(missing_ok=True)
+                (out_dir / "work_dense.mp4").rename(work)
+                norm["dense_frames"] = len(store)
     if proxy and raw_input is None:
         real_dt = None
     was_wide = store.width / store.height > 9 / 16 + 0.02
     part_filter = ""
-    if part:
+    if part and list(part["box"]) != [0, 0, 1, 1]:
         # ... and framed on that drawing
         boxed = out_dir / "work_box.mp4"
         cb = crop_box(work, boxed, tuple(part["box"]), max_w=max_width)
@@ -334,10 +416,13 @@ def make_variants(src: Path, out_root: Path, names: list[str] | None = None, see
         spare = names[-1:]
         print("no pencil stage: before_after swapped for", spare[:1] or "nothing")
     clips = None
+    if "process_cuts" in names and norm.get("stabilised"):
+        names = swap_out(names, "process_cuts", a.has_pencil)  # raw cuts wouldn't be lined up like the rest
+        print(f"page was lined up (paper/camera moved): made {names[-1]} instead of process_cuts")
     if "process_cuts" in names:
         # working-copy seconds -> frame -> real recording time (one page, maybe re-read densely)
         clips = process_cuts_clips(a, frame_filter, raw,
-                                   lambda s: t_first + s * FPS / norm["speedup"] * (real_dt or norm["speedup"] * scale / FPS),
+                                   lambda s: times[int(min(len(times) - 1, max(0, round(s * FPS / norm["speedup"]))))],
                                    norm["speedup"], total,
                                  out_dir, (store.width, store.height))
         if len(clips) < 4:

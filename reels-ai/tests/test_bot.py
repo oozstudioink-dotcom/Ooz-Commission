@@ -2097,3 +2097,32 @@ class RedoRangeTest(unittest.TestCase):
         r.redo("Lets Go")
         self.assertEqual([d["status"] for d in state["drawings"].values()], ["queued"] * 3)
         self.assertTrue(all("part" in d for d in state["drawings"].values()))
+
+
+class PageRecognitionTest(unittest.TestCase):
+    """The drawn page is recognised in every frame; other pages anywhere in the recording drop out,
+    and a nudged paper is lined back up."""
+
+    def test_other_pages_drop_out_and_moves_are_lined_up(self):
+        from reels_ai.media import PageMatcher, choose_page, track_page
+        drawn = FindSubjectsTest.page(n=180, seed=1)
+        other = FindSubjectsTest.page(n=90, centres=((90, 200), (250, 250), (120, 450), (260, 480)), seed=7)[-1]
+        frames = _Frames()
+        frames += [other] * 30                                   # showing an old page first
+        frames += drawn[:90]
+        frames += [other] * 25                                   # flipping to it mid-stream
+        nudged = [cv2.warpAffine(f, np.float32([[1, 0, 9], [0, 1, -6]]), (360, 640),
+                                 borderMode=cv2.BORDER_REPLICATE) for f in drawn[90:]]
+        frames += nudged                                         # back, paper nudged a little
+        ref = choose_page(frames, 30, len(frames) - 1)
+        self.assertIsNotNone(ref)
+        track = track_page(frames, PageMatcher(frames[ref]), list(range(len(frames))), log=lambda *a: None)
+        kept = {i for i, _ in track}
+        self.assertFalse(kept & set(range(0, 30)))               # the old page, never
+        self.assertFalse(kept & set(range(120, 145)))            # the flip, never
+        self.assertGreater(len(kept & set(range(60, 120))), 40)  # the drawing, yes
+        self.assertGreater(len(kept & set(range(145, 235))), 60)
+        H = dict(track)[200] if 200 in kept else None
+        if H is not None and ref < 120:                           # nudged frame is shifted back
+            self.assertAlmostEqual(H[0, 2], -9, delta=3)
+            self.assertAlmostEqual(H[1, 2], 6, delta=3)
