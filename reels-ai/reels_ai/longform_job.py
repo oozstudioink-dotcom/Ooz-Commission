@@ -75,7 +75,9 @@ def run(project: str) -> None:
         _notify(f"⚠️ “{folder['name']}” has no videos yet.")
         raise SystemExit(1)
     videos.sort(key=session_order)            # 1, 2, ... 10 by the number in the name, then upload time
-    title_name = parse_name(folder["name"])[0] or folder["name"]   # 'Sasuke - ink only' -> 'Sasuke'
+    _subj, _hints = parse_name(folder["name"])   # 'Sasuke - ink only' -> 'Sasuke'
+    title_name = " - ".join([_subj, *_hints.get("unknown", [])]) if _subj else folder["name"]
+    # 'Deku - My Hero Academia' keeps the series name
     _notify("\U0001f4cb Session order: " + ", ".join(f["name"] for f in videos))
 
     done = drive.folder("Done/Longform")

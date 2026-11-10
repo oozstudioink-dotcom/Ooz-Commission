@@ -149,16 +149,22 @@ def _select(keep: list[tuple[float, float]]) -> str:
     return "+".join(f"between(t\\,{a:.2f}\\,{b:.2f})" for a, b in keep)
 
 
+def panel_widths(W: int, H: int) -> tuple[int, int, int]:
+    """Centre video, left panel and right panel widths - all even, as the encoder needs."""
+    vw = int(round(H * 9 / 16)) // 2 * 2
+    pw = (W - vw) // 4 * 2
+    return vw, pw, W - vw - pw
+
+
 def render_session(s: Session, speed: float, out: Path, size: tuple[int, int], cards: list,
                    clock_s: float, work: Path, intro_panels: bool, rotate_s: float = 300.0) -> float:
     W, H = size
     out_s = s.kept / speed
     base = f"[0:v]select='{_select(s.keep)}',setpts=N/({FPS * speed:.5f})/TB,fps={FPS}"
     if s.portrait:
-        vw = int(round(H * 9 / 16)) // 2 * 2
-        pw = (W - vw) // 2
+        vw, pw, rw = panel_widths(W, H)
         left = panels.render_left(work / "left.mp4", pw, H, out_s + 1, intro=intro_panels)
-        right = panels.render_right(work / "right.mp4", W - vw - pw, H, out_s + 1, cards, start_s=clock_s,
+        right = panels.render_right(work / "right.mp4", rw, H, out_s + 1, cards, start_s=clock_s,
                                      rotate_s=rotate_s)
         fc = (f"{base},scale={vw}:{H}:flags=lanczos,setsar=1[c];"
               f"[1:v][c][2:v]hstack=inputs=3:shortest=1[v]")
@@ -281,8 +287,7 @@ def build(sessions: list[Session], out_dir: Path, project: str, episode: int, cf
         speed = choose_speed(kept, lo, hi)
         log(f"total kept {kept / 60:.1f} min -> speed {speed:.2f}x -> {kept / speed / 60:.1f} min")
 
-        vw = int(round(size[1] * 9 / 16)) // 2 * 2
-        cards = panels.build_cards(size[0] - vw - (size[0] - vw) // 2, size[1], panel_cfg, advert, work) \
+        cards = panels.build_cards(panel_widths(*size)[2], size[1], panel_cfg, advert, work) \
             if any(s.portrait for s in sessions) else []
         parts, chapters, clock = [], [], 0.0
         intro = work / "000_intro.mp4"
