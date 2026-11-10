@@ -210,6 +210,8 @@ class Runner:
         same = [(k, x) for k, x in self.state["drawings"].items()
                 if d.get("drive_id") and x.get("drive_id") == d["drive_id"] and k != did
                 and x["status"] in ("rendered", "failed", "queued")]
+        if not window and not d.get("part"):
+            d.pop("split_done", None)                     # look for separate drawings again
         if window:
             # your part of the recording: start over from it as one recording (it may be split again)
             for k, x in same:

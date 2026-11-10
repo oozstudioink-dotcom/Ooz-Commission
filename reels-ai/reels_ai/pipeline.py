@@ -13,7 +13,7 @@ import numpy as np
 
 from .analyze import analyze, analyze_spaced, find_subjects
 from .media import (FPS, FrameStore, PageMatcher, choose_page, contact_sheet, crop_box, crop_vertical,
-                    drawn_stretch, fill_track, ink_added, normalize, page_changes, same_page, track_page, trim,
+                    drawn_stretch, fill_track, ink_added, steady_growth, normalize, page_changes, same_page, track_page, trim,
                     write_page)
 from .variants import CUT_SECONDS, RECIPES, build, pick_moments, render
 
@@ -150,7 +150,7 @@ def densify(raw: RawInput, t0: float, t1: float, size: tuple[int, int], src_px: 
         print(f"page is {span / 60:.0f} min of {src_px / 1e6:.1f} MP video: too long to re-read densely")
         return None
     cmd = (["ffmpeg", "-v", "error", "-y"] + raw(t0) +
-           ["-t", f"{span:.3f}", "-an", "-vf",
+           ["-t", f"{span:.3f}", "-frames:v", str(n), "-an", "-vf",
             f"fps={n / span:.5f},scale={w}:{h}:force_original_aspect_ratio=increase:flags=lanczos,"
             f"crop={w}:{h},setsar=1,setpts=N/{FPS}/TB",
             "-r", str(FPS), "-c:v", "libx264", "-crf", "14", "-preset", "veryfast", "-pix_fmt", "yuv420p",
@@ -179,6 +179,7 @@ class Page:
                  matcher: PageMatcher | None = None, ref: int | None = None, others: list[int] | None = None):
         self.work, self.store, self.norm, self.src_idx, self.dt = work, store, norm, src_idx, dt
         self.matcher, self.ref, self.others = matcher, ref, others or []
+        self.stretches: list = []                          # (ink added, first, last) between flips
 
     def time(self, f: int) -> float:
         """Recording seconds of working-copy frame f."""
@@ -207,7 +208,8 @@ def _one_page(src: Path, out_dir: Path, max_width: int, window: list | None = No
         print(f"your choice: {window[0] / 60:.1f}-{window[1] / 60:.1f} min = frames {lo}-{hi}")
     # where the drawing happened: between page flips, the stretch where ink was added
     cuts = page_changes(store) if not window else []
-    first, last = drawn_stretch(store, cuts) if cuts else (lo, hi)
+    stretches: list = []
+    first, last = drawn_stretch(store, cuts, scored_out=stretches) if cuts else (lo, hi)
     if cuts:
         print(f"{len(cuts)} page change(s); drawing at frames {first}-{last} of {n}")
     first, last = same_page(store, first, last)
@@ -244,7 +246,9 @@ def _one_page(src: Path, out_dir: Path, max_width: int, window: list | None = No
         store = FrameStore(work)
         norm["page_changes"] = cuts
     norm["stabilised"] = moved
-    return Page(work, store, norm, keep, dt, matcher, ref, others)
+    pg = Page(work, store, norm, keep, dt, matcher, ref, others)
+    pg.stretches = stretches
+    return pg
 
 
 def find_parts(src: Path, out_root: Path, max_width: int = 1080, raw_duration: float | None = None,
@@ -263,21 +267,36 @@ def find_parts(src: Path, out_root: Path, max_width: int = 1080, raw_duration: f
     ref_t = None if pg.ref is None else round(pg.ref * pg.dt, 2)
     parts = [{"t0": round(pg.time(s["frames"][0]), 2), "t1": round(pg.time(s["frames"][1]) + pg.dt, 2),
               "box": list(s["box"]), "ref_t": ref_t} for s in find_subjects(pg.store)]
-    # the page drawn on from another view: its own drawing, with its own reference frame
+    # other stretches you drew in (between flips, ink added) and views of the page: each its own
+    # drawing, with its own reference frame
     views = []
-    if pg.others:
+    main = set(pg.src_idx)
+    other_drawn = [(a, b) for s, a, b in pg.stretches
+                   if s >= 0.01 and sum(1 for i in range(a, b + 1) if i in main) < 0.5 * (b - a + 1)]
+    if pg.others or other_drawn:
         normalize(src, full, keep_wide=True, max_wide_h=max(1440, max_width * 16 // 9), max_w=max_width)
         store = FrameStore(full)
-        runs, cur = [], [pg.others[0]]
+        for a, b in other_drawn:
+            if not steady_growth(store, a, b):               # a flip or a page moved around
+                continue
+            ref = choose_page(store, a, b)
+            if ref is not None:
+                views.append({"t0": round(a * pg.dt, 2), "t1": round((b + 1) * pg.dt, 2),
+                              "box": [0, 0, 1, 1], "ref_t": round(ref * pg.dt, 2)})
+        runs, cur = [], [pg.others[0]] if pg.others else []
         for i in pg.others[1:]:
             if i - cur[-1] <= 4:
                 cur.append(i)
             else:
                 runs.append(cur)
                 cur = [i]
-        runs.append(cur)
+        if cur:
+            runs.append(cur)
         for r in runs:
             if len(r) < 40 or ink_added(store, r[0], r[-1]) < 0.003:
+                continue
+            if any(min(v["t1"], (r[-1] + 1) * pg.dt) - max(v["t0"], r[0] * pg.dt) > 0.5 * len(r) * pg.dt
+                   for v in views):                         # already one of the drawn stretches
                 continue
             ref = choose_page(store, r[0], r[-1])
             if ref is not None:
