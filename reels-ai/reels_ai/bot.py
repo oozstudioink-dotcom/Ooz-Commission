@@ -35,7 +35,7 @@ MAX_BOT_DOWNLOAD = 20 * 1024 * 1024   # Telegram bots can only download files up
 HELP = (
     "Send me a drawing timelapse (as a video) and I'll make variants for you to approve.\n"
     "Add the character name as the video's caption, e.g. Naruto.\n\n"
-    "/status  overview\n/longform [project]  build a LongDraw from Drive \u203a Longform (no name = list projects)\n/redo [name]  re-make a drawing's Shorts with the latest editing (no name = newest; all = every drawing)\n/ideas  paste hooks/captions (e.g. from the Gemini app) to mix into new videos\n/retire <name>  never use a drawing again (/unretire to undo)\n/clear  delete recent chat messages (Telegram allows the last 2 days)\n/compile [title]  stitch the drawings since the last compilation into one page video\n/report  stats report now (also sent every Sunday)\n/queue  your video bank and how many days it covers\n/pause  stop all posting\n/resume  start posting again\n/help  this message"
+    "/status  overview\n/longform [project]  build a LongDraw from Drive \u203a Longform (no name = list projects)\n/redo [name] [16-34]  re-make a drawing's Shorts with the latest editing (no name = newest; all = every drawing; minutes 16-34 = use only that part of the recording)\n/name <name>  name the oldest recording I asked about (or reply to my question), e.g. /name Kakashi - ink only\n/ideas  paste hooks/captions (e.g. from the Gemini app) to mix into new videos\n/retire <name>  never use a drawing again (/unretire to undo)\n/clear  delete recent chat messages (Telegram allows the last 2 days)\n/compile [title]  stitch the drawings since the last compilation into one page video\n/report  stats report now (also sent every Sunday)\n/queue  your video bank and how many days it covers\n/pause  stop all posting\n/resume  start posting again\n/help  this message"
 )
 
 
@@ -135,6 +135,9 @@ class Runner:
 
         text = (m.get("text") or "").strip()
         cmd = text.split()[0].split("@")[0].lower() if text.startswith("/") else ""
+        asked = str((m.get("reply_to_message") or {}).get("message_id") or "")
+        if text and not cmd and asked in self.state.get("name_asks", {}):
+            return self.name_drawing(self.state["name_asks"][asked], text)
         if cmd in ("/start", "/help"):
             self.say(HELP)
         elif cmd == "/pause":
@@ -159,7 +162,10 @@ class Runner:
             self.longform_command(text.split(maxsplit=1)[1].strip() if len(text.split(maxsplit=1)) > 1 else "")
         elif cmd == "/redo":
             arg = text.split(maxsplit=1)[1].strip() if len(text.split(maxsplit=1)) > 1 else ""
-            self.redo_all() if arg.lower() == "all" else self.redo(arg)
+            arg, window = _time_range(arg)
+            self.redo_all() if arg.lower() == "all" else self.redo(arg, window)
+        elif cmd == "/name":
+            self.name_command(text.split(maxsplit=1)[1].strip() if len(text.split(maxsplit=1)) > 1 else "")
         elif cmd == "/ideas":
             self.save_ideas(text.split(maxsplit=1)[1] if len(text.split(maxsplit=1)) > 1 else "")
         elif cmd in ("/retire", "/unretire"):
@@ -183,7 +189,7 @@ class Runner:
         elif text:
             self.say("Send me a timelapse video, or /help.")
 
-    def redo(self, name: str) -> None:
+    def redo(self, name: str, window: list | None = None) -> None:
         """Re-render a drawing's Shorts (e.g. after the editing improves). Unsent old versions
         leave the bank so the new ones replace them; already-dropped ones are untouched."""
         want = _norm_name(name)
@@ -200,9 +206,26 @@ class Runner:
                 self.say("Try one of: " + ", ".join(names[:20]))
             return
         did, d = max(found, key=lambda x: (x[1].get("received") or "", int(x[0][1:])))
+        # every drawing made from the same recording (a page split into several drawings)
+        same = [(k, x) for k, x in self.state["drawings"].items()
+                if d.get("drive_id") and x.get("drive_id") == d["drive_id"] and k != did
+                and x["status"] in ("rendered", "failed", "queued")]
+        if window:
+            # your part of the recording: start over from it as one recording (it may be split again)
+            for k, x in same:
+                self.requeue(k, x)
+                x["status"] = "replaced"
+            same = []
+            d["window"] = [round(window[0]), round(window[1])]
+            for key in ("part", "split_done"):
+                d.pop(key, None)
         replaced, styles = self.requeue(did, d)
+        for k, x in same:
+            r2, _ = self.requeue(k, x)
+            replaced += r2
         label = d.get("subject") or d.get("drive_name") or did
-        self.say(f"\U0001f501 Re-making {label} with the latest editing"
+        part = (f" using minutes {_mmss(window[0])}\u2013{_mmss(window[1])} of the recording" if window else "")
+        self.say(f"\U0001f501 Re-making {label}{part} with the latest editing"
                  + (f" ({len(styles)} styles)" if styles else "") + ". It arrives within the hour"
                  + (f"; its {replaced} unsent old version(s) leave the bank." if replaced else "."))
 
@@ -315,6 +338,9 @@ class Runner:
                 "duration": (int(meta["durationMillis"]) / 1000) if meta.get("durationMillis") else None,
                 "size_gb": round(int(f.get("size") or 0) / 1e9, 2), "status": "queued",
                 **({"hints": {k: v for k, v in hints.items() if k != "unknown"}} if hints else {})}
+            if not subject and self.naming_on():
+                self.state["drawings"][did].update(status="naming", name_asked=iso(self.clock()),
+                                                   created=f.get("createdTime"))
             seen.append(f["id"])
             how = describe_hints(hints)
             odd = f" (didn't understand: {', '.join(hints['unknown'])})" if hints.get("unknown") else ""
@@ -329,6 +355,9 @@ class Runner:
                      for where, n in by_place.items()]
             self.say(f"\U0001f4e5 Found {len(new)} new recording(s) in Drive:\n" + "\n".join(lines) +
                      "\nTurning them into 4K Shorts now (LongDraw sessions stay in their folder).")
+            for did, d in self.state["drawings"].items():
+                if d.get("status") == "naming" and not d.get("name_msg"):
+                    self.ask_name(did, d)
 
     # ------------------------------------------------------------------ storage
     def storage_check(self) -> None:
@@ -366,6 +395,126 @@ class Runner:
         return make_proxy(self.drive.media_url(d["drive_id"]), self.drive.token(),
                           tmp / f"{d['drive_id']}.mp4", dur, max_side=3840 if self.shorts_4k else 2560)
 
+    # ------------------------------------------------------------------ naming
+    def naming_on(self) -> bool:
+        return bool(self.cfg.get("naming", {}).get("ask", True))
+
+    def ask_name(self, did: str, d: dict) -> None:
+        """Ask what an unnamed recording (IMG_4412.MOV) is, with a frame from it to recognise it."""
+        bits = [d.get("drive_name") or did]
+        if d.get("duration"):
+            bits.append(f"{d['duration'] / 60:.0f} min")
+        if d.get("created"):
+            try:
+                when = datetime.fromisoformat(str(d["created"]).replace("Z", "+00:00"))
+                bits.append("recorded " + self.local(when).strftime("%a %b %-d, %-I:%M %p"))
+            except ValueError:
+                pass
+        hours = self.cfg.get("naming", {}).get("wait_hours", 12)
+        text = ("\U0001f3f7 What's in this recording?\n" + " \u00b7 ".join(bits) +
+                "\n\nReply to this message with a name, e.g. \u201cKakashi\u201d or "
+                "\u201cKakashi - ink only\u201d. I'll rename the file in Drive and use it for the Shorts. "
+                f"No answer in {hours} h and I make it without a name.")
+        markup = {"inline_keyboard": [[{"text": "\u23ed Skip: no name", "callback_data": f"noname:{did}"}]]}
+        sent = None
+        if self.drive and hasattr(self.bot, "send_photo"):
+            try:
+                with tempfile.TemporaryDirectory() as tmp:
+                    pic = self.drive.thumbnail(d["drive_id"], Path(tmp) / "frame.jpg")
+                    if pic:
+                        sent = self.bot.send_photo(self.owner, pic, caption=text, reply_markup=markup)
+            except Exception as e:  # noqa: BLE001 - a picture is nice to have
+                print(f"warn: no preview for {d.get('drive_name')}: {e}")
+        if sent is None:
+            sent = self.bot.send_message(self.owner, text, reply_markup=markup)
+        d["name_msg"] = sent.get("message_id")
+        self.state.setdefault("name_asks", {})[str(d["name_msg"])] = did
+
+    def name_command(self, text: str) -> None:
+        """/name Kakashi - ink only: names the oldest recording waiting for a name."""
+        waiting = [did for did, d in self.state["drawings"].items() if d.get("status") == "naming"]
+        if not waiting:
+            return self.say("\U0001f3f7 Nothing is waiting for a name. (To name a recording I asked about, "
+                            "reply to my question.)")
+        if not text:
+            return self.say(f"\U0001f3f7 {len(waiting)} recording(s) waiting for a name: reply to my question "
+                            "about each, or send /name <name> for the oldest.")
+        self.name_drawing(waiting[0], text)
+
+    def name_drawing(self, did: str, text: str) -> None:
+        """Your name for a recording: used for its Shorts and as its file name in Drive."""
+        from .drive import parse_name
+        d = self.state["drawings"].get(did)
+        if not d:
+            return self.say("That recording isn't in my list any more.")
+        label = re.sub(r"[\\/:*?\"<>|]+", " ", text).strip()[:80]
+        subject, hints = parse_name(label)
+        if not subject:
+            return self.say(f"\U0001f914 I couldn't find a name in \u201c{text}\u201d. Reply with e.g. "
+                            "\u201cKakashi\u201d or \u201cKakashi - ink only\u201d.")
+        old = d.get("drive_name") or ""
+        ext = old[old.rfind("."):] if "." in old else ""
+        new_name = f"{label}{ext}"
+        renamed = ""
+        if self.drive and d.get("drive_id"):
+            try:
+                self.drive.rename(d["drive_id"], new_name)
+                d["drive_name"] = new_name
+                renamed = f" Renamed in Drive to \u201c{new_name}\u201d."
+            except Exception as e:  # noqa: BLE001
+                print(f"warn: rename {old}: {e}")
+                renamed = " (Couldn't rename the file in Drive, but I'll use the name.)"
+        d["subject"] = subject
+        d["subject_by"] = "you"
+        clean = {k: v for k, v in hints.items() if k != "unknown"}
+        if clean:
+            d["hints"] = {**d.get("hints", {}), **clean}
+        from .drive import describe_hints
+        how = describe_hints(clean)
+        if d.get("status") == "naming":
+            d["status"] = "queued"
+            nxt = " Making its Shorts on the next run."
+        else:
+            nxt = f" Send /redo {subject} to remake its Shorts with the new name."
+        self.say(f"\U0001f3f7 {old or did} \u2192 {subject}{' (' + how + ')' if how else ''}.{renamed}{nxt}")
+
+    def stop_waiting_for_names(self) -> None:
+        """Recordings nobody named within [naming] wait_hours are made without a name."""
+        hours = float(self.cfg.get("naming", {}).get("wait_hours", 12))
+        for did, d in self.state["drawings"].items():
+            if d.get("status") != "naming":
+                continue
+            try:
+                asked = parse(d["name_asked"])
+            except (KeyError, TypeError, ValueError):
+                asked = None
+            if asked is None or self.clock() - asked >= timedelta(hours=hours):
+                d["status"] = "queued"
+
+    def send_pages_sheet(self, d: dict, out_dir: Path) -> None:
+        """A recording that shows several pages (a livestream): show which part was used, so a
+        wrong pick is one /redo away."""
+        sheet, info = out_dir / "pages.jpg", out_dir / "pages.json"
+        if not (sheet.exists() and info.exists()) or (d.get("part") and not d["part"]["label"].startswith("1 ")):
+            return
+        try:
+            used = json.loads(info.read_text())["used"]
+        except (ValueError, KeyError):
+            return
+        name = d.get("subject") or (d.get("drive_name") or "").rsplit(".", 1)[0]
+        mmss = lambda s: f"{int(s) // 60}:{int(s) % 60:02d}"  # noqa: E731
+        text = (f"\U0001f4c4 {d.get('drive_name') or name} shows more than one page. I used "
+                f"{mmss(used[0])}\u2013{mmss(used[1])} (outlined green): the stretch where ink was added.\n"
+                f"Wrong part? Send /redo {name} 16-34 with the minutes you drew in.")
+        try:
+            if hasattr(self.bot, "send_photo"):
+                self.bot.send_photo(self.owner, sheet, caption=text)
+            else:
+                self.say(text)
+        except Exception as e:  # noqa: BLE001
+            print(f"warn: pages sheet: {e}")
+            self.say(text)
+
     def may_split(self, d: dict) -> bool:
         """Look for separate drawings on the page, unless you already split them yourself: a
         numbered video in a LongDraw page folder ('3 - Kakashi.MOV') is one drawing."""
@@ -384,7 +533,8 @@ class Runner:
         from .pipeline import find_parts
         d["split_done"] = True
         try:
-            parts = find_parts(src, tmp / "parts", max_width=max_width, raw_duration=raw_duration)
+            parts = find_parts(src, tmp / "parts", max_width=max_width, raw_duration=raw_duration,
+                               window=d.get("window"))
         except Exception as e:  # noqa: BLE001 - splitting is a bonus: render the page as one
             print(f"warn: couldn't look for separate drawings: {e}")
             return
@@ -561,6 +711,8 @@ class Runner:
     def labelled_subject(self, d: dict) -> str | None:
         """The character only YOU named: file name, page folder or Telegram caption. Never a guess
         (Gemini once called a Sasuke drawing 'Naruto' on several videos)."""
+        if d.get("subject_by") == "you":                     # you named it in Telegram
+            return d.get("subject")
         if d.get("source") != "drive":
             return d.get("subject") if d.get("subject_by") != "ai" else None
         from .drive import parse_name
@@ -598,6 +750,13 @@ class Runner:
         if q["from"]["id"] != self.owner:
             return self.bot.answer_callback(q["id"], "Not yours")
         action, _, vid = (q.get("data") or "").partition(":")
+        if action == "noname":
+            d = self.state["drawings"].get(vid)
+            if d and d.get("status") == "naming":
+                d["status"] = "queued"
+                self.bot.edit_markup(self.owner, q.get("message", {}).get("message_id"),
+                                     label_markup("\u23ed Making it without a name"))
+            return self.bot.answer_callback(q["id"], "OK")
         v = self.state["variants"].get(vid)
         msg = q.get("message", {})
         if action == "noop" or not v:
@@ -1073,6 +1232,7 @@ class Runner:
         budget = float(self.cfg.get("shorts", {}).get("max_render_minutes", 40)) * 60
         started = _time.time()
         done_now = 0
+        self.stop_waiting_for_names()
         for did, d in self._queued_drawings():         # also picks up drawings a split page adds
             if d["status"] != "queued":
                 continue
@@ -1108,7 +1268,7 @@ class Runner:
                                                      max_width=2160 if big else 1080,
                                                      hints=d.get("hints"),
                                                      proxy=d.get("source") == "drive",
-                                                     part=d.get("part"), **raw)
+                                                     part=d.get("part"), window=d.get("window"), **raw)
                 except Exception as e:  # noqa: BLE001 - report any failure to the owner
                     d["status"] = "failed"
                     d["error"] = str(e)[:300]
@@ -1116,6 +1276,7 @@ class Runner:
                     self.checkpoint()
                     continue
                 d["beats"] = self.beats_summary(out_dir, results)
+                self.send_pages_sheet(d, out_dir)
                 links = {}
                 if d.get("source") == "drive" and self.drive:
                     links = self.drive_after(did, d, out_dir, results)
@@ -1238,6 +1399,27 @@ class Runner:
                     "posts": {}, **({"full_link": links[r["name"]]} if (links or {}).get(r["name"]) else {})}
                 uses = self.state["style_uses"]
                 uses[r["name"]] = uses.get(r["name"], 0) + 1
+
+
+def _time_range(arg: str) -> tuple[str, list | None]:
+    """'Lets Go 16-34' -> ('Lets Go', [960, 2040]): minutes, or m:ss ('16:30-34')."""
+    m = re.search(r"(?:^|\s)(\d{1,3}(?::\d{2})?)\s*(?:-|\u2013|to)\s*(\d{1,3}(?::\d{2})?)\s*(?:min|m)?\s*$", arg)
+    if not m:
+        return arg, None
+
+    def sec(s: str) -> float:
+        mm, _, ss = s.partition(":")
+        return int(mm) * 60 + (int(ss) if ss else 0)
+
+    a, b = sec(m.group(1)), sec(m.group(2))
+    if b <= a:
+        return arg, None
+    return arg[:m.start()].strip(), [a, b]
+
+
+def _mmss(s: float) -> str:
+    s = int(s)
+    return f"{s // 60}:{s % 60:02d}" if s % 60 else str(s // 60)
 
 
 def _norm_name(text: str) -> str:

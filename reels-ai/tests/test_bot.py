@@ -1973,3 +1973,127 @@ class FindSubjectsTest(unittest.TestCase):
 
 class _Frames(list):
     width, height = 360, 640
+
+
+class NamingTest(unittest.TestCase):
+    """Unnamed phone recordings (IMG_4412.MOV): the bot asks, your reply names and renames them."""
+
+    def setUp(self):
+        calls = self.calls = {"renamed": []}
+
+        class D:
+            def folder(self, p=""):
+                return "id:" + p
+
+            def list(self, fid, kind="video"):
+                if fid == "id:Inbox" and kind == "video":
+                    return [{"id": "f1", "name": "IMG_4412.MOV", "mimeType": "video/quicktime",
+                             "createdTime": "2026-11-09T23:41:00Z", "videoMediaMetadata": {"durationMillis": "1380000"}},
+                            {"id": "f2", "name": "Goku - ink only.MOV", "mimeType": "video/quicktime"}]
+                return []
+
+            def rename(self, fid, name):
+                calls["renamed"].append((fid, name))
+
+            def thumbnail(self, fid, dst):
+                return None                                   # no preview: asks by text
+
+        self.bot, self.state = FakeBot(), fresh_state()
+        self.state["owner_chat_id"] = OWNER
+        cfg = load_config()
+        cfg["timezone"] = "America/New_York"
+        self.clock = Clock(datetime(2026, 11, 10, 9, tzinfo=timezone.utc))
+        self.r = Runner(self.bot, self.state, cfg, clock=self.clock, drive=D())
+        self.r.check_drive_inbox()
+
+    def drawing(self, fid):
+        return next(d for d in self.state["drawings"].values() if d["drive_id"] == fid)
+
+    def test_asks_only_about_unnamed_recordings(self):
+        self.assertEqual(self.drawing("f1")["status"], "naming")
+        self.assertEqual(self.drawing("f2")["status"], "queued")               # already named
+        asks = [t for t in self.bot.texts() if "What's in this recording" in t]
+        self.assertEqual(len(asks), 1)
+        self.assertIn("IMG_4412.MOV", asks[0])
+        self.assertIn("23 min", asks[0])
+        self.assertIn("recorded Mon Nov 9, 6:41 PM", asks[0])                  # your time zone
+
+    def test_reply_names_renames_and_queues(self):
+        d = self.drawing("f1")
+        self.bot.push(message={"chat": {"id": OWNER, "type": "private"}, "from": {"id": OWNER},
+                               "text": "Kakashi - ink only", "reply_to_message": {"message_id": d["name_msg"]}})
+        self.r.poll()
+        self.assertEqual((d["subject"], d["status"], d["drive_name"]), ("Kakashi", "queued", "Kakashi - ink only.MOV"))
+        self.assertEqual(d["hints"].get("pencil"), False)
+        self.assertEqual(self.calls["renamed"], [("f1", "Kakashi - ink only.MOV")])
+        self.assertEqual(self.r.labelled_subject(d), "Kakashi")
+        self.assertTrue(any("IMG_4412.MOV → Kakashi" in t for t in self.bot.texts()))
+
+    def test_name_command_and_timeout(self):
+        self.r.name_command("Sasuke")
+        self.assertEqual(self.drawing("f1")["subject"], "Sasuke")
+        self.assertEqual(self.drawing("f1")["status"], "queued")
+        self.drawing("f1")["status"] = "naming"
+        self.clock.t += timedelta(hours=13)
+        self.r.stop_waiting_for_names()
+        self.assertEqual(self.drawing("f1")["status"], "queued")
+
+
+class PickThePageTest(unittest.TestCase):
+    """A livestream that shows an old finished page for a long time, then a new drawing on a
+    blank page: the flip is found and the page drawn on is used, not the longest one."""
+
+    def test_drawn_page_wins_over_longest(self):
+        from reels_ai.media import drawn_stretch, page_changes
+        old = FindSubjectsTest.page(n=90, centres=((90, 200), (250, 250), (120, 450), (260, 480)), seed=7)[-1]
+        frames = _Frames()
+        for i in range(400):
+            f = old.copy()
+            if i % 50 < 10:
+                cv2.ellipse(f, (200 + i % 50 * 5, 400), (45, 70), 30, 0, 360, (90, 130, 190), -1)
+            frames.append(f)
+        frames += FindSubjectsTest.page(n=270)
+        cuts = page_changes(frames)
+        self.assertTrue(any(390 <= c <= 410 for c in cuts), cuts)
+        a, b = drawn_stretch(frames, cuts, log=lambda *x: None)
+        self.assertGreaterEqual(a, 390)
+        self.assertGreaterEqual(b, 660)
+
+
+class RedoRangeTest(unittest.TestCase):
+    def test_time_range(self):
+        from reels_ai.bot import _time_range
+        self.assertEqual(_time_range("Lets Go 16-34"), ("Lets Go", [960, 2040]))
+        self.assertEqual(_time_range("Lets Go 16:30-34"), ("Lets Go", [990, 2040]))
+        self.assertEqual(_time_range("Naruto 5 to 9"), ("Naruto", [300, 540]))
+        self.assertEqual(_time_range("3 - Kakashi"), ("3 - Kakashi", None))
+        self.assertEqual(_time_range("all"), ("all", None))
+
+    def test_redo_with_range_starts_over_from_one_recording(self):
+        bot, state = FakeBot(), fresh_state()
+        state["owner_chat_id"] = OWNER
+        r = Runner(bot, state, load_config())
+        for k in (1, 2, 3):
+            state["drawings"][f"d{k}"] = {"source": "drive", "drive_id": "f1", "drive_name": "Lets+Go+LIVE!.mp4",
+                                          "subject": None, "status": "rendered", "split_done": True,
+                                          "part": {"label": f"{k} of 3"}, "received": "2026-11-10"}
+        bot.push(**msg(OWNER, text="/redo Lets Go 16-34"))
+        r.poll()
+        live = {k: d for k, d in state["drawings"].items() if d["status"] == "queued"}
+        self.assertEqual(len(live), 1)
+        d = next(iter(live.values()))
+        self.assertEqual(d["window"], [960, 2040])
+        self.assertNotIn("part", d)
+        self.assertNotIn("split_done", d)
+        self.assertTrue(any("16–34" in t for t in bot.texts()))
+
+    def test_redo_remakes_every_drawing_of_a_split_page(self):
+        bot, state = FakeBot(), fresh_state()
+        state["owner_chat_id"] = OWNER
+        r = Runner(bot, state, load_config())
+        for k in (1, 2, 3):
+            state["drawings"][f"d{k}"] = {"source": "drive", "drive_id": "f1", "drive_name": "Lets+Go+LIVE!.mp4",
+                                          "status": "rendered", "split_done": True, "part": {"label": f"{k} of 3"}}
+        r.redo("Lets Go")
+        self.assertEqual([d["status"] for d in state["drawings"].values()], ["queued"] * 3)
+        self.assertTrue(all("part" in d for d in state["drawings"].values()))

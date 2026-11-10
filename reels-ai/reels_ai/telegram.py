@@ -50,6 +50,11 @@ class Bot:
                                           "reply_markup": reply_markup,
                                           "link_preview_options": {"is_disabled": True}})
 
+    def send_photo(self, chat_id: int, photo: Path, caption: str = "", reply_markup: dict | None = None) -> dict:
+        return self._call("sendPhoto", {"chat_id": chat_id, "caption": caption[:1024],
+                                        "reply_markup": json.dumps(reply_markup) if reply_markup else None},
+                          files={"photo": photo})
+
     def send_video(self, chat_id: int, video: Path | str, caption: str = "",
                    reply_markup: dict | None = None, width: int | None = None,
                    height: int | None = None, duration: int | None = None) -> dict:
