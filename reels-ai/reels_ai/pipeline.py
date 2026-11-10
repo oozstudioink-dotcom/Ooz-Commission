@@ -12,7 +12,8 @@ import cv2
 import numpy as np
 
 from .analyze import analyze, analyze_spaced
-from .media import FPS, FrameStore, crop_vertical, longest_stretch, normalize, page_changes, trim
+from .media import (FPS, FrameStore, crop_vertical, longest_stretch, normalize, page_changes, same_page,
+                    trim)
 from .variants import CUT_SECONDS, RECIPES, build, pick_moments, render
 
 FALLBACK_ORDER = ["one_take", "reveal_first", "detail_zoom", "ink_only", "speedrun", "before_after"]
@@ -197,9 +198,12 @@ def make_variants(src: Path, out_root: Path, names: list[str] | None = None, see
     # stretch on one page, so frames from different pages are never blended together
     offset = 0
     cuts = page_changes(store)
+    first, last = longest_stretch(len(store), cuts) if cuts else (0, len(store) - 1)
     if cuts:
-        first, last = longest_stretch(len(store), cuts)
         print(f"{len(cuts)} page change(s); using frames {first}-{last} of {len(store)} (one page)")
+    # a flip the hands hid from page_changes (end of a livestream): keep only the same page
+    first, last = same_page(store, first, last)
+    if (first, last) != (0, len(store) - 1):
         part = out_dir / "work_page.mp4"
         trim(work, part, first, last)
         work.unlink(missing_ok=True)

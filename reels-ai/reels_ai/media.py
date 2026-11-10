@@ -237,6 +237,77 @@ def page_changes(store: "FrameStore", win: int = 6, threshold: float = 0.5) -> l
     return cuts
 
 
+def same_page(store: "FrameStore", first: int, last: int, win: int = 6, tol: float = 0.45,
+              log=print) -> tuple[int, int]:
+    """Trim frames off either end of first..last that don't show the same page as its middle.
+
+    On one page ink only ever gets added: every line in the middle of the stretch is still there
+    at the end, and every line at the start is already there in the middle. A stretch that runs
+    into another page (a flip at the end of a livestream, where the hands hide the flip from
+    page_changes) breaks that, so those frames are cut. The middle is taken as the page being
+    drawn; small camera shifts are lined up before comparing."""
+    from .analyze import _skin
+    n = last - first + 1
+    if n < 6 * win:
+        return first, last
+    step = max(1, n // 600)                                   # ~600 frames is plenty to judge
+    idx = list(range(first, last + 1, step))
+    gray, hand = [], []
+    for i in idx:
+        small = cv2.resize(store[i], (128, 228), interpolation=cv2.INTER_AREA)
+        gray.append(cv2.cvtColor(small, cv2.COLOR_BGR2GRAY).astype(np.float32))
+        hand.append(_skin(small))
+    grow = np.ones((7, 7), np.uint8)
+
+    def ink(img: np.ndarray, level: float = 40) -> np.ndarray:
+        paper = cv2.GaussianBlur(cv2.dilate(img, np.ones((9, 9), np.uint8)), (0, 0), 4)
+        return (paper - img) > level
+
+    def page(a: int, b: int) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+        g = np.median(np.stack(gray[a:b]), axis=0).astype(np.float32)
+        h = cv2.dilate(np.stack(hand[a:b]).any(axis=0).astype(np.uint8), np.ones((9, 9), np.uint8)) > 0
+        return g, ink(g) & ~h, h
+
+    m = len(idx)
+    ref_g, ref_ink, ref_h = page(int(m * 0.45), max(int(m * 0.45) + 2, int(m * 0.55)))
+    ref_bold = ink(ref_g, 75) & ~ref_h        # real ink only: pencil may be erased later on
+    if ref_ink.sum() < 0.004 * ref_ink.size:                  # nearly blank middle: nothing to judge
+        return first, last
+    win_n = max(2, win // step if step > 1 else win)
+    bad = []
+    for a in range(0, m - win_n + 1, max(1, win_n // 2)):
+        g, k, h = page(a, a + win_n)
+        (dx, dy), resp = cv2.phaseCorrelate(ref_g, g)
+        if resp > 0.1 and abs(dx) < 20 and abs(dy) < 20:      # line the window up with the middle
+            mat = np.float32([[1, 0, -dx], [0, 1, -dy]])
+            k = cv2.warpAffine(k.astype(np.uint8), mat, k.shape[::-1]) > 0
+            h = cv2.warpAffine(h.astype(np.uint8), mat, h.shape[::-1]) > 0
+        seen = ~(h | ref_h)
+        later = a >= m // 2
+        # later frames must keep the middle's lines; earlier frames must have no lines it lacks
+        have, want = (k, ref_bold) if later else (ref_ink, k)
+        want = want & seen
+        if want.sum() < 0.002 * want.size:
+            continue
+        miss = float((want & ~(cv2.dilate(have.astype(np.uint8), grow) > 0)).sum()) / float(want.sum())
+        if miss > tol:
+            bad.append((a, later))
+    if not bad:
+        return first, last
+    lo, hi = 0, m - 1
+    heads = [a for a, later in bad if not later]
+    tails = [a for a, later in bad if later]
+    if heads:
+        lo = max(heads) + win_n
+    if tails:
+        hi = min(tails) - 1
+    if hi - lo < m // 3:                                      # unsure: keep what we had
+        return first, last
+    nf, nl = idx[min(lo, m - 1)], idx[max(hi, 0)]
+    log(f"same page only: kept frames {nf}-{nl} of {first}-{last} (the rest showed another page)")
+    return nf, nl
+
+
 def longest_stretch(n: int, cuts: list[int]) -> tuple[int, int]:
     """The longest run of frames between page changes: (first, last)."""
     edges = [0] + sorted(cuts) + [n]
