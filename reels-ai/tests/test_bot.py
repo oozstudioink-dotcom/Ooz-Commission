@@ -1973,3 +1973,67 @@ class FindSubjectsTest(unittest.TestCase):
 
 class _Frames(list):
     width, height = 360, 640
+
+
+class NamingTest(unittest.TestCase):
+    """Unnamed phone recordings (IMG_4412.MOV): the bot asks, your reply names and renames them."""
+
+    def setUp(self):
+        calls = self.calls = {"renamed": []}
+
+        class D:
+            def folder(self, p=""):
+                return "id:" + p
+
+            def list(self, fid, kind="video"):
+                if fid == "id:Inbox" and kind == "video":
+                    return [{"id": "f1", "name": "IMG_4412.MOV", "mimeType": "video/quicktime",
+                             "createdTime": "2026-11-09T23:41:00Z", "videoMediaMetadata": {"durationMillis": "1380000"}},
+                            {"id": "f2", "name": "Goku - ink only.MOV", "mimeType": "video/quicktime"}]
+                return []
+
+            def rename(self, fid, name):
+                calls["renamed"].append((fid, name))
+
+            def thumbnail(self, fid, dst):
+                return None                                   # no preview: asks by text
+
+        self.bot, self.state = FakeBot(), fresh_state()
+        self.state["owner_chat_id"] = OWNER
+        cfg = load_config()
+        cfg["timezone"] = "America/New_York"
+        self.clock = Clock(datetime(2026, 11, 10, 9, tzinfo=timezone.utc))
+        self.r = Runner(self.bot, self.state, cfg, clock=self.clock, drive=D())
+        self.r.check_drive_inbox()
+
+    def drawing(self, fid):
+        return next(d for d in self.state["drawings"].values() if d["drive_id"] == fid)
+
+    def test_asks_only_about_unnamed_recordings(self):
+        self.assertEqual(self.drawing("f1")["status"], "naming")
+        self.assertEqual(self.drawing("f2")["status"], "queued")               # already named
+        asks = [t for t in self.bot.texts() if "What's in this recording" in t]
+        self.assertEqual(len(asks), 1)
+        self.assertIn("IMG_4412.MOV", asks[0])
+        self.assertIn("23 min", asks[0])
+        self.assertIn("recorded Mon Nov 9, 6:41 PM", asks[0])                  # your time zone
+
+    def test_reply_names_renames_and_queues(self):
+        d = self.drawing("f1")
+        self.bot.push(message={"chat": {"id": OWNER, "type": "private"}, "from": {"id": OWNER},
+                               "text": "Kakashi - ink only", "reply_to_message": {"message_id": d["name_msg"]}})
+        self.r.poll()
+        self.assertEqual((d["subject"], d["status"], d["drive_name"]), ("Kakashi", "queued", "Kakashi - ink only.MOV"))
+        self.assertEqual(d["hints"].get("pencil"), False)
+        self.assertEqual(self.calls["renamed"], [("f1", "Kakashi - ink only.MOV")])
+        self.assertEqual(self.r.labelled_subject(d), "Kakashi")
+        self.assertTrue(any("IMG_4412.MOV → Kakashi" in t for t in self.bot.texts()))
+
+    def test_name_command_and_timeout(self):
+        self.r.name_command("Sasuke")
+        self.assertEqual(self.drawing("f1")["subject"], "Sasuke")
+        self.assertEqual(self.drawing("f1")["status"], "queued")
+        self.drawing("f1")["status"] = "naming"
+        self.clock.t += timedelta(hours=13)
+        self.r.stop_waiting_for_names()
+        self.assertEqual(self.drawing("f1")["status"], "queued")

@@ -15,6 +15,13 @@ drop_times = ["17:00", "17:00"]      # same time twice = both drops at 5 PM
 split = ["tiktok", "youtube", "instagram"]
 post_to = "TikTok \u00b7 Instagram Reels \u00b7 YouTube Shorts"
 
+[naming]
+# A new Drive recording with a camera name (IMG_4412.MOV): the bot sends you a frame from it and
+# asks what it is. Reply with a name ("Kakashi - ink only"): it renames the file in Drive and uses
+# the name for the Shorts. With no answer in wait_hours, it's made without a name.
+ask = true
+wait_hours = 12
+
 [approval]
 # "approve"        : each variant waits for your Post / Skip tap
 # "auto"           : variants go straight into the bank (sent to you as one album per drawing)

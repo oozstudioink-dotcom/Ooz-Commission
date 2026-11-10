@@ -234,6 +234,20 @@ class Drive:
         self._req("PATCH", f"{self.api}/files/{file_id}",
                   {"addParents": to_folder, "removeParents": from_folder, "fields": "id"}, body={})
 
+    def rename(self, file_id: str, name: str) -> None:
+        self._req("PATCH", f"{self.api}/files/{file_id}", {"fields": "id"}, body={"name": name})
+
+    def thumbnail(self, file_id: str, dst: Path) -> Path | None:
+        """Drive's preview frame of a video (None when Drive hasn't made one)."""
+        meta = self._req("GET", f"{self.api}/files/{file_id}", {"fields": "thumbnailLink"})
+        link = (meta or {}).get("thumbnailLink")
+        if not link:
+            return None
+        link = re.sub(r"=s\d+$", "=s800", link)             # a bigger preview than the default
+        with self._req("GET", link, raw=True) as r:
+            Path(dst).write_bytes(r.read())
+        return Path(dst)
+
     def find_file(self, name: str, folder_id: str) -> dict | None:
         return self._find(name, folder_id, folder=False)
 
