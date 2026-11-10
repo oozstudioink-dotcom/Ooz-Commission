@@ -35,7 +35,7 @@ MAX_BOT_DOWNLOAD = 20 * 1024 * 1024   # Telegram bots can only download files up
 HELP = (
     "Send me a drawing timelapse (as a video) and I'll make variants for you to approve.\n"
     "Add the character name as the video's caption, e.g. Naruto.\n\n"
-    "/status  overview\n/longform [project]  build a LongDraw from Drive \u203a Longform (no name = list projects)\n/redo [name]  re-make a drawing's Shorts with the latest editing (no name = newest; all = every drawing)\n/name <name>  name the oldest recording I asked about (or reply to my question), e.g. /name Kakashi - ink only\n/ideas  paste hooks/captions (e.g. from the Gemini app) to mix into new videos\n/retire <name>  never use a drawing again (/unretire to undo)\n/clear  delete recent chat messages (Telegram allows the last 2 days)\n/compile [title]  stitch the drawings since the last compilation into one page video\n/report  stats report now (also sent every Sunday)\n/queue  your video bank and how many days it covers\n/pause  stop all posting\n/resume  start posting again\n/help  this message"
+    "/status  overview\n/longform [project]  build a LongDraw from Drive \u203a Longform (no name = list projects)\n/redo [name] [16-34]  re-make a drawing's Shorts with the latest editing (no name = newest; all = every drawing; minutes 16-34 = use only that part of the recording)\n/name <name>  name the oldest recording I asked about (or reply to my question), e.g. /name Kakashi - ink only\n/ideas  paste hooks/captions (e.g. from the Gemini app) to mix into new videos\n/retire <name>  never use a drawing again (/unretire to undo)\n/clear  delete recent chat messages (Telegram allows the last 2 days)\n/compile [title]  stitch the drawings since the last compilation into one page video\n/report  stats report now (also sent every Sunday)\n/queue  your video bank and how many days it covers\n/pause  stop all posting\n/resume  start posting again\n/help  this message"
 )
 
 
@@ -162,7 +162,8 @@ class Runner:
             self.longform_command(text.split(maxsplit=1)[1].strip() if len(text.split(maxsplit=1)) > 1 else "")
         elif cmd == "/redo":
             arg = text.split(maxsplit=1)[1].strip() if len(text.split(maxsplit=1)) > 1 else ""
-            self.redo_all() if arg.lower() == "all" else self.redo(arg)
+            arg, window = _time_range(arg)
+            self.redo_all() if arg.lower() == "all" else self.redo(arg, window)
         elif cmd == "/name":
             self.name_command(text.split(maxsplit=1)[1].strip() if len(text.split(maxsplit=1)) > 1 else "")
         elif cmd == "/ideas":
@@ -188,7 +189,7 @@ class Runner:
         elif text:
             self.say("Send me a timelapse video, or /help.")
 
-    def redo(self, name: str) -> None:
+    def redo(self, name: str, window: list | None = None) -> None:
         """Re-render a drawing's Shorts (e.g. after the editing improves). Unsent old versions
         leave the bank so the new ones replace them; already-dropped ones are untouched."""
         want = _norm_name(name)
@@ -205,9 +206,26 @@ class Runner:
                 self.say("Try one of: " + ", ".join(names[:20]))
             return
         did, d = max(found, key=lambda x: (x[1].get("received") or "", int(x[0][1:])))
+        # every drawing made from the same recording (a page split into several drawings)
+        same = [(k, x) for k, x in self.state["drawings"].items()
+                if d.get("drive_id") and x.get("drive_id") == d["drive_id"] and k != did
+                and x["status"] in ("rendered", "failed", "queued")]
+        if window:
+            # your part of the recording: start over from it as one recording (it may be split again)
+            for k, x in same:
+                self.requeue(k, x)
+                x["status"] = "replaced"
+            same = []
+            d["window"] = [round(window[0]), round(window[1])]
+            for key in ("part", "split_done"):
+                d.pop(key, None)
         replaced, styles = self.requeue(did, d)
+        for k, x in same:
+            r2, _ = self.requeue(k, x)
+            replaced += r2
         label = d.get("subject") or d.get("drive_name") or did
-        self.say(f"\U0001f501 Re-making {label} with the latest editing"
+        part = (f" using minutes {_mmss(window[0])}\u2013{_mmss(window[1])} of the recording" if window else "")
+        self.say(f"\U0001f501 Re-making {label}{part} with the latest editing"
                  + (f" ({len(styles)} styles)" if styles else "") + ". It arrives within the hour"
                  + (f"; its {replaced} unsent old version(s) leave the bank." if replaced else "."))
 
@@ -473,6 +491,30 @@ class Runner:
             if asked is None or self.clock() - asked >= timedelta(hours=hours):
                 d["status"] = "queued"
 
+    def send_pages_sheet(self, d: dict, out_dir: Path) -> None:
+        """A recording that shows several pages (a livestream): show which part was used, so a
+        wrong pick is one /redo away."""
+        sheet, info = out_dir / "pages.jpg", out_dir / "pages.json"
+        if not (sheet.exists() and info.exists()) or (d.get("part") and not d["part"]["label"].startswith("1 ")):
+            return
+        try:
+            used = json.loads(info.read_text())["used"]
+        except (ValueError, KeyError):
+            return
+        name = d.get("subject") or (d.get("drive_name") or "").rsplit(".", 1)[0]
+        mmss = lambda s: f"{int(s) // 60}:{int(s) % 60:02d}"  # noqa: E731
+        text = (f"\U0001f4c4 {d.get('drive_name') or name} shows more than one page. I used "
+                f"{mmss(used[0])}\u2013{mmss(used[1])} (outlined green): the stretch where ink was added.\n"
+                f"Wrong part? Send /redo {name} 16-34 with the minutes you drew in.")
+        try:
+            if hasattr(self.bot, "send_photo"):
+                self.bot.send_photo(self.owner, sheet, caption=text)
+            else:
+                self.say(text)
+        except Exception as e:  # noqa: BLE001
+            print(f"warn: pages sheet: {e}")
+            self.say(text)
+
     def may_split(self, d: dict) -> bool:
         """Look for separate drawings on the page, unless you already split them yourself: a
         numbered video in a LongDraw page folder ('3 - Kakashi.MOV') is one drawing."""
@@ -491,7 +533,8 @@ class Runner:
         from .pipeline import find_parts
         d["split_done"] = True
         try:
-            parts = find_parts(src, tmp / "parts", max_width=max_width, raw_duration=raw_duration)
+            parts = find_parts(src, tmp / "parts", max_width=max_width, raw_duration=raw_duration,
+                               window=d.get("window"))
         except Exception as e:  # noqa: BLE001 - splitting is a bonus: render the page as one
             print(f"warn: couldn't look for separate drawings: {e}")
             return
@@ -1225,7 +1268,7 @@ class Runner:
                                                      max_width=2160 if big else 1080,
                                                      hints=d.get("hints"),
                                                      proxy=d.get("source") == "drive",
-                                                     part=d.get("part"), **raw)
+                                                     part=d.get("part"), window=d.get("window"), **raw)
                 except Exception as e:  # noqa: BLE001 - report any failure to the owner
                     d["status"] = "failed"
                     d["error"] = str(e)[:300]
@@ -1233,6 +1276,7 @@ class Runner:
                     self.checkpoint()
                     continue
                 d["beats"] = self.beats_summary(out_dir, results)
+                self.send_pages_sheet(d, out_dir)
                 links = {}
                 if d.get("source") == "drive" and self.drive:
                     links = self.drive_after(did, d, out_dir, results)
@@ -1355,6 +1399,27 @@ class Runner:
                     "posts": {}, **({"full_link": links[r["name"]]} if (links or {}).get(r["name"]) else {})}
                 uses = self.state["style_uses"]
                 uses[r["name"]] = uses.get(r["name"], 0) + 1
+
+
+def _time_range(arg: str) -> tuple[str, list | None]:
+    """'Lets Go 16-34' -> ('Lets Go', [960, 2040]): minutes, or m:ss ('16:30-34')."""
+    m = re.search(r"(?:^|\s)(\d{1,3}(?::\d{2})?)\s*(?:-|\u2013|to)\s*(\d{1,3}(?::\d{2})?)\s*(?:min|m)?\s*$", arg)
+    if not m:
+        return arg, None
+
+    def sec(s: str) -> float:
+        mm, _, ss = s.partition(":")
+        return int(mm) * 60 + (int(ss) if ss else 0)
+
+    a, b = sec(m.group(1)), sec(m.group(2))
+    if b <= a:
+        return arg, None
+    return arg[:m.start()].strip(), [a, b]
+
+
+def _mmss(s: float) -> str:
+    s = int(s)
+    return f"{s // 60}:{s % 60:02d}" if s % 60 else str(s // 60)
 
 
 def _norm_name(text: str) -> str:

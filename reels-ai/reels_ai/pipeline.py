@@ -12,8 +12,8 @@ import cv2
 import numpy as np
 
 from .analyze import analyze, analyze_spaced, find_subjects
-from .media import (FPS, FrameStore, crop_box, crop_vertical, longest_stretch, normalize, page_changes,
-                    same_page, trim)
+from .media import (FPS, FrameStore, contact_sheet, crop_box, crop_vertical, drawn_stretch, normalize,
+                    page_changes, same_page, trim)
 from .variants import CUT_SECONDS, RECIPES, build, pick_moments, render
 
 FALLBACK_ORDER = ["one_take", "reveal_first", "detail_zoom", "ink_only", "speedrun", "before_after"]
@@ -170,40 +170,59 @@ def densify(raw: RawInput, t0: float, t1: float, size: tuple[int, int], src_px: 
     return store
 
 
-def _one_page(src: Path, out_dir: Path, max_width: int) -> tuple[Path, FrameStore, dict, int]:
-    """Working copy of the recording, cut to the one page that was drawn on most."""
+def _one_page(src: Path, out_dir: Path, max_width: int, window: list | None = None,
+              scale: float = 1.0) -> tuple[Path, FrameStore, dict, int]:
+    """Working copy of the recording, cut to the one page that was drawn on.
+
+    window: [start, end] in recording seconds that you chose (/redo <name> 16-34): used as is.
+    Otherwise, when the recording shows several pages (a livestream), the stretch where ink was
+    added is used, and a contact sheet of the whole recording (pages.jpg/pages.json) shows which."""
     work = out_dir / "work.mp4"
     norm = normalize(src, work, keep_wide=True, max_wide_h=max(1440, max_width * 16 // 9), max_w=max_width)
     print(f"normalized {src.name} -> {norm['width']}x{norm['height']} (x{norm['speedup']:.1f} speed)")
     store = FrameStore(work)
-    # several pages in one recording (a livestream flipping between pages): keep the longest
-    # stretch on one page, so frames from different pages are never blended together
-    offset = 0
-    cuts = page_changes(store)
-    first, last = longest_stretch(len(store), cuts) if cuts else (0, len(store) - 1)
-    if cuts:
-        print(f"{len(cuts)} page change(s); using frames {first}-{last} of {len(store)} (one page)")
-    # a flip the hands hid from page_changes (end of a livestream): keep only the same page
-    first, last = same_page(store, first, last)
-    if (first, last) != (0, len(store) - 1):
+    dt = norm["speedup"] * scale / FPS                        # recording seconds per frame
+    n = len(store)
+    if window:
+        first = int(max(0, min(n - 2, window[0] / dt)))
+        last = int(max(first + 1, min(n - 1, window[1] / dt)))
+        print(f"your choice: {window[0] / 60:.1f}-{window[1] / 60:.1f} min = frames {first}-{last}")
+        cuts = []
+    else:
+        # several pages in one recording (a livestream flipping between pages): use the stretch
+        # you drew on, so frames from different pages are never blended together
+        cuts = page_changes(store)
+        first, last = drawn_stretch(store, cuts) if cuts else (0, n - 1)
+        if cuts:
+            print(f"{len(cuts)} page change(s); using frames {first}-{last} of {n} (the page drawn on)")
+        # a flip the hands hid from page_changes (end of a livestream): keep only the same page
+        first, last = same_page(store, first, last)
+        if cuts or (first, last) != (0, n - 1):
+            contact_sheet(store, out_dir / "pages.jpg", dt, (first, last))
+            (out_dir / "pages.json").write_text(json.dumps({"used": [round(first * dt), round((last + 1) * dt)],
+                                                            "total": round(n * dt)}))
+    if (first, last) != (0, n - 1):
         part = out_dir / "work_page.mp4"
         trim(work, part, first, last)
         work.unlink(missing_ok=True)
         part.rename(work)
         store = FrameStore(work)
-        offset = first
         norm["page_changes"] = cuts
-    return work, store, norm, offset
+    return work, store, norm, first
 
 
-def find_parts(src: Path, out_root: Path, max_width: int = 1080, raw_duration: float | None = None) -> list[dict]:
+def find_parts(src: Path, out_root: Path, max_width: int = 1080, raw_duration: float | None = None,
+               window: list | None = None) -> list[dict]:
     """The separate drawings on the page of a recording, as parts make_variants can render one
     by one: [{"t0", "t1": recording seconds, "box": (x0, y0, x1, y1) fractions, "label"}].
     [] when the page holds one drawing."""
     src = Path(src).expanduser().resolve()
     out_dir = Path(out_root).resolve() / (src.stem + "_parts")
     out_dir.mkdir(parents=True, exist_ok=True)
-    work, store, norm, offset = _one_page(src, out_dir, max_width)
+    from .media import probe
+    src_s = probe(src)["duration"]
+    work, store, norm, offset = _one_page(src, out_dir, max_width, window,
+                                          (raw_duration or src_s) / max(src_s, 1e-6))
     subjects = find_subjects(store)
     work.unlink(missing_ok=True)
     if len(subjects) < 2:
@@ -222,7 +241,8 @@ def make_variants(src: Path, out_root: Path, names: list[str] | None = None, see
                   keep_work: bool = False, review_page: bool = True,
                   copy: dict | None = None, max_width: int = 1080, raw_input: RawInput | None = None,
                   raw_duration: float | None = None, hints: dict | None = None,
-                  proxy: bool = False, part: dict | None = None) -> tuple[Path, list[dict]]:
+                  proxy: bool = False, part: dict | None = None,
+                  window: list | None = None) -> tuple[Path, list[dict]]:
     """Analyse `src` and render the requested variants. Returns (output dir, results).
 
     raw_input / raw_duration: where the original recording is when `src` is only a sampled
@@ -238,7 +258,10 @@ def make_variants(src: Path, out_root: Path, names: list[str] | None = None, see
     (out_dir / "thumbs").mkdir(exist_ok=True)
 
     t0 = time.time()
-    work, store, norm, offset = _one_page(src, out_dir, max_width)
+    from .media import probe
+    src_s = probe(src)["duration"]
+    work, store, norm, offset = _one_page(src, out_dir, max_width, window,
+                                          (raw_duration or src_s) / max(src_s, 1e-6))
     # real recording time of a working-copy frame
     total = raw_duration or norm["source_duration"]
     scale = total / max(norm["source_duration"], 1e-6)

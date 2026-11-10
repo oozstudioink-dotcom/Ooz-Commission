@@ -211,18 +211,19 @@ def page_changes(store: "FrameStore", win: int = 6, threshold: float = 0.5) -> l
 
     def ink(img: np.ndarray) -> np.ndarray:
         paper = cv2.GaussianBlur(cv2.dilate(img, np.ones((9, 9), np.uint8)), (0, 0), 4)
-        return (paper - img) > 40
+        return (paper - img) > 75                     # dark ink only: pencil may be erased
 
     scores = np.zeros(n)
     for i in range(win, n - win, 2):
         covered = cv2.dilate(hand[i - win:i + win].any(axis=0).astype(np.uint8), np.ones((15, 15), np.uint8)) > 0
         before = ink(np.median(gray[i - win:i], axis=0)) & ~covered
         after = ink(np.median(gray[i:i + win], axis=0)) & ~covered
-        if before.sum() < min_ink or after.sum() < min_ink:
-            continue
-        lost = float((before & ~(cv2.dilate(after.astype(np.uint8), grow) > 0)).sum()) / float(before.sum())
-        new = float((after & ~(cv2.dilate(before.astype(np.uint8), grow) > 0)).sum()) / float(after.sum())
-        scores[i] = scores[i + 1] = min(lost, new)
+        s = 0.0
+        if before.sum() >= min_ink:                   # inked lines vanished: never happens on one page
+            s = float((before & ~(cv2.dilate(after.astype(np.uint8), grow) > 0)).sum()) / float(before.sum())
+        if after.sum() >= 2 * min_ink:                # a lot of finished ink appeared at once
+            s = max(s, float((after & ~(cv2.dilate(before.astype(np.uint8), grow) > 0)).sum()) / float(after.sum()))
+        scores[i] = scores[i + 1] = s
     cuts = []
     i = win
     while i < n - win:
@@ -336,6 +337,69 @@ def crop_box(src: Path, dst: Path, box: tuple[float, float, float, float], max_w
                     "-c:v", "libx264", "-crf", "14", "-preset", "fast", "-pix_fmt", "yuv420p", str(dst)],
                    check=True)
     return {"filter": vf, "width": ow, "height": oh, "crop": (x, y, cw, ch)}
+
+
+def ink_added(store: "FrameStore", a: int, b: int, k: int = 6) -> float:
+    """How much new ink appears between the start and the end of frames a..b (share of the
+    frame). A page you're drawing on gains ink; an old page you're just showing gains none."""
+    from .analyze import _skin
+    if b - a < 2 * k:
+        return 0.0
+
+    def page(idx: list[int]) -> tuple[np.ndarray, np.ndarray]:
+        gs, hs = [], []
+        for i in idx:
+            small = cv2.resize(store[i], (128, 228), interpolation=cv2.INTER_AREA)
+            gs.append(cv2.cvtColor(small, cv2.COLOR_BGR2GRAY).astype(np.float32))
+            hs.append(_skin(small))
+        g = np.median(np.stack(gs), axis=0).astype(np.float32)
+        h = cv2.dilate(np.stack(hs).any(axis=0).astype(np.uint8), np.ones((9, 9), np.uint8)) > 0
+        paper = cv2.GaussianBlur(cv2.dilate(g, np.ones((9, 9), np.uint8)), (0, 0), 4)
+        return (paper - g) > 40, h
+
+    span = max(k, (b - a) // 20)
+    start, h0 = page(list(np.linspace(a, a + span, k).astype(int)))
+    end, h1 = page(list(np.linspace(b - span, b, k).astype(int)))
+    grown = end & ~(cv2.dilate(start.astype(np.uint8), np.ones((5, 5), np.uint8)) > 0) & ~h0 & ~h1
+    return float(grown.mean())
+
+
+def drawn_stretch(store: "FrameStore", cuts: list[int], log=print) -> tuple[int, int]:
+    """Of the stretches between page changes, the one where you drew: the most ink added.
+    (The longest one can be an old page you were showing on a livestream.)"""
+    n = len(store)
+    edges = [0] + sorted(cuts) + [n]
+    spans = [(a, b - 1) for a, b in zip(edges, edges[1:]) if b - a >= max(30, n // 50)]
+    if not spans:
+        return longest_stretch(n, cuts)
+    scored = [(ink_added(store, a, b), a, b) for a, b in spans]
+    best = max(scored)
+    if best[0] < 0.002:                       # nobody drew anywhere we can see: longest it is
+        return longest_stretch(n, cuts)
+    log("pages: " + ", ".join(f"{a}-{b} +{s * 100:.1f}% ink" for s, a, b in scored))
+    return best[1], best[2]
+
+
+def contact_sheet(store: "FrameStore", dst: Path, seconds_per_frame: float, used: tuple[int, int],
+                  cols: int = 6, rows: int = 4) -> Path:
+    """A grid of frames across the recording with their times; the part used is outlined green."""
+    n = len(store)
+    idx = np.linspace(0, n - 1, cols * rows).astype(int)
+    tw = 180
+    th = int(round(store.height * tw / store.width))
+    sheet = np.full((rows * (th + 30), cols * tw, 3), 20, np.uint8)
+    for k, i in enumerate(idx):
+        r, c = divmod(k, cols)
+        img = cv2.resize(store[int(i)], (tw, th), interpolation=cv2.INTER_AREA)
+        if used[0] <= i <= used[1]:
+            cv2.rectangle(img, (0, 0), (tw - 1, th - 1), (60, 220, 60), 6)
+        y, x = r * (th + 30), c * tw
+        sheet[y:y + th, x:x + tw] = img
+        s = int(i * seconds_per_frame)
+        cv2.putText(sheet, f"{s // 60}:{s % 60:02d}", (x + 6, y + th + 22), cv2.FONT_HERSHEY_SIMPLEX, 0.7,
+                    (60, 220, 60) if used[0] <= i <= used[1] else (230, 230, 230), 2, cv2.LINE_AA)
+    cv2.imwrite(str(dst), sheet, [cv2.IMWRITE_JPEG_QUALITY, 85])
+    return dst
 
 
 def longest_stretch(n: int, cuts: list[int]) -> tuple[int, int]:

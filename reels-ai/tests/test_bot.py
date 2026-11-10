@@ -2037,3 +2037,63 @@ class NamingTest(unittest.TestCase):
         self.clock.t += timedelta(hours=13)
         self.r.stop_waiting_for_names()
         self.assertEqual(self.drawing("f1")["status"], "queued")
+
+
+class PickThePageTest(unittest.TestCase):
+    """A livestream that shows an old finished page for a long time, then a new drawing on a
+    blank page: the flip is found and the page drawn on is used, not the longest one."""
+
+    def test_drawn_page_wins_over_longest(self):
+        from reels_ai.media import drawn_stretch, page_changes
+        old = FindSubjectsTest.page(n=90, centres=((90, 200), (250, 250), (120, 450), (260, 480)), seed=7)[-1]
+        frames = _Frames()
+        for i in range(400):
+            f = old.copy()
+            if i % 50 < 10:
+                cv2.ellipse(f, (200 + i % 50 * 5, 400), (45, 70), 30, 0, 360, (90, 130, 190), -1)
+            frames.append(f)
+        frames += FindSubjectsTest.page(n=270)
+        cuts = page_changes(frames)
+        self.assertTrue(any(390 <= c <= 410 for c in cuts), cuts)
+        a, b = drawn_stretch(frames, cuts, log=lambda *x: None)
+        self.assertGreaterEqual(a, 390)
+        self.assertGreaterEqual(b, 660)
+
+
+class RedoRangeTest(unittest.TestCase):
+    def test_time_range(self):
+        from reels_ai.bot import _time_range
+        self.assertEqual(_time_range("Lets Go 16-34"), ("Lets Go", [960, 2040]))
+        self.assertEqual(_time_range("Lets Go 16:30-34"), ("Lets Go", [990, 2040]))
+        self.assertEqual(_time_range("Naruto 5 to 9"), ("Naruto", [300, 540]))
+        self.assertEqual(_time_range("3 - Kakashi"), ("3 - Kakashi", None))
+        self.assertEqual(_time_range("all"), ("all", None))
+
+    def test_redo_with_range_starts_over_from_one_recording(self):
+        bot, state = FakeBot(), fresh_state()
+        state["owner_chat_id"] = OWNER
+        r = Runner(bot, state, load_config())
+        for k in (1, 2, 3):
+            state["drawings"][f"d{k}"] = {"source": "drive", "drive_id": "f1", "drive_name": "Lets+Go+LIVE!.mp4",
+                                          "subject": None, "status": "rendered", "split_done": True,
+                                          "part": {"label": f"{k} of 3"}, "received": "2026-11-10"}
+        bot.push(**msg(OWNER, text="/redo Lets Go 16-34"))
+        r.poll()
+        live = {k: d for k, d in state["drawings"].items() if d["status"] == "queued"}
+        self.assertEqual(len(live), 1)
+        d = next(iter(live.values()))
+        self.assertEqual(d["window"], [960, 2040])
+        self.assertNotIn("part", d)
+        self.assertNotIn("split_done", d)
+        self.assertTrue(any("16–34" in t for t in bot.texts()))
+
+    def test_redo_remakes_every_drawing_of_a_split_page(self):
+        bot, state = FakeBot(), fresh_state()
+        state["owner_chat_id"] = OWNER
+        r = Runner(bot, state, load_config())
+        for k in (1, 2, 3):
+            state["drawings"][f"d{k}"] = {"source": "drive", "drive_id": "f1", "drive_name": "Lets+Go+LIVE!.mp4",
+                                          "status": "rendered", "split_done": True, "part": {"label": f"{k} of 3"}}
+        r.redo("Lets Go")
+        self.assertEqual([d["status"] for d in state["drawings"].values()], ["queued"] * 3)
+        self.assertTrue(all("part" in d for d in state["drawings"].values()))
