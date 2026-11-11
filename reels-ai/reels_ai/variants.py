@@ -270,7 +270,66 @@ def process_cuts(a: Analysis, rng, subject, clips: dict | None = None) -> Plan:
     return p
 
 
+# ---- the "whole process" family: one locked view of the whole page, first line to last, no
+# zooms, wipes or cuts. Modelled on the two edits the artist liked best (one take, reveal first).
+def _process(a: Analysis, dur: float) -> list[float]:
+    """The whole drawing in `dur` seconds: pencils brisk, ink the main part."""
+    start = a.draw_start if a.has_pencil else max(a.draw_start, a.ink_start - FPS // 2)
+    pre = min(2.5, dur * 0.22) if a.has_pencil else 0.0
+    body: list[float] = ramp(a, start, a.ink_start, pre) if pre else []
+    return body + ramp(a, a.ink_start if a.has_pencil else start, a.ink_end, dur - pre)
+
+
+def rewind(a: Analysis, rng, subject) -> Plan:
+    """The finished piece, un-drawn back to the blank page in a blink, then the whole process."""
+    p = Plan("rewind", "Opens on the finished piece, rewinds to the blank page in a second, then "
+             "plays the whole process in one locked shot.", "natural")
+    fwd = _process(a, 9.5)
+    back = fwd[::-1][::max(1, len(fwd) // int(1.0 * FPS))]            # the same footage, backwards, fast
+    body = hold(a.reveal_idx, 0.7) + back + fwd + hold(a.reveal_idx, 1.2)
+    p.shots = shots(body)
+    p.hook = hooks.pick_hook("rewind", rng, subject, round(p.seconds), a.has_pencil)
+    p.texts = [TextCard(p.hook, "tag", 0, 2.2)]
+    return p
+
+
+def chapters(a: Analysis, rng, subject) -> Plan:
+    """The whole process in one locked shot, with a small label for each stage."""
+    p = Plan("chapters", "One locked shot of the whole process with a small label per stage "
+             "(sketch, ink, done).", "natural")
+    body = _process(a, 11.0)
+    done = hold(a.reveal_idx, 1.4)
+    p.shots = shots(body + done)
+    p.hook = hooks.pick_hook("chapters", rng, subject, round(p.seconds), a.has_pencil)
+    t_body = secs(len(body))
+    if a.has_pencil:
+        t_ink = min(2.5, 11.0 * 0.22)
+        p.texts = [TextCard("1. Sketch", "tag", 0, t_ink), TextCard("2. Ink", "tag", t_ink, t_body),
+                   TextCard("3. Done", "tag", t_body, p.seconds)]
+    else:
+        p.texts = [TextCard("1. Ink", "tag", 0, t_body), TextCard("2. Done", "tag", t_body, p.seconds)]
+    return p
+
+
+def last_lines(a: Analysis, rng, subject) -> Plan:
+    """The whole process quickly, easing down so the final strokes are savoured, then a long look."""
+    p = Plan("last_lines", "The whole process in one locked shot that slows for the final "
+             "strokes and holds on the finished piece.", "natural")
+    span = max(2, a.ink_end - a.ink_start)
+    late = a.ink_end - int(span * 0.22)                                # the last fifth of the inking
+    start = a.draw_start if a.has_pencil else max(a.draw_start, a.ink_start - FPS // 2)
+    body = ramp(a, start, late, 7.0) + ramp(a, late, a.ink_end, 4.0)
+    body += hold(a.reveal_idx, 1.8)
+    p.shots = shots(body)
+    p.hook = hooks.pick_hook("last_lines", rng, subject, round(p.seconds), a.has_pencil)
+    p.texts = [TextCard(p.hook, "tag", 0, 2.4)]
+    return p
+
+
 RECIPES: dict[str, Callable] = {
+    "rewind": rewind,
+    "chapters": chapters,
+    "last_lines": last_lines,
     "reveal_first": reveal_first,
     "speedrun": speedrun,
     "before_after": before_after,

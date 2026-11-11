@@ -24,6 +24,9 @@ STYLE_BRIEFS = {
     "before_after": "wipe between the pencil sketch and the final ink",
     "detail_zoom": "zooms into the face/detail while it is being inked",
     "ink_only": "only the inking stage, no pencils",
+    "rewind": "finished piece first, rewinds to the blank page in a second, then the whole process in one locked shot",
+    "chapters": "the whole process in one locked shot with small stage labels (sketch, ink, done)",
+    "last_lines": "the whole process in one locked shot that slows down for the final strokes",
     "one_take": "one continuous locked shot from first stroke to last, finished piece only at the end",
     "process_cuts": "short jump cuts of the pen inking at near real speed",
 }

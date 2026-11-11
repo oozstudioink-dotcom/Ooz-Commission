@@ -752,6 +752,8 @@ class StyleLearningTest(unittest.TestCase):
     def test_winning_styles_come_round_more_and_weakest_is_skipped(self):
         cfg = load_config()
         cfg["variants"]["per_drawing"] = 5
+        cfg["variants"]["styles"] = ["one_take", "process_cuts", "reveal_first", "speedrun", "before_after",
+                                     "detail_zoom", "ink_only"]      # this test's own list, not the config's
         r = Runner(FakeBot(), fresh_state(), cfg, clock=Clock(datetime(2026, 11, 7, tzinfo=timezone.utc)))
         self.assertEqual(len(r.choose_styles("d1")), 5)
         r.state["style_scores"] = {"process_cuts": {"avg_views": 3000, "posts": 4},
