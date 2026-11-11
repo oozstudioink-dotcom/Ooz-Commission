@@ -96,6 +96,17 @@ def tap(data, message_id=0):
                                "message": {"message_id": message_id}}}
 
 
+def sample_video() -> Path | None:
+    """A real recording for the tests that need one: REELS_TEST_VIDEO, or the developer's local
+    sample. None anywhere else (e.g. on GitHub), where those tests are skipped."""
+    p = Path(os.environ.get("REELS_TEST_VIDEO", "/root/.claude/uploads/e5bed814-3c70-560e-b2aa-4d61a14a2658/"
+                                                 "4626688f-copy_090B8A3E-0DB0-41B2-B7D7-C69758B502D9.mov"))
+    try:
+        return p if p.exists() else None
+    except OSError:                      # e.g. no permission to look in that folder
+        return None
+
+
 def fresh_state():
     return json.loads(json.dumps(EMPTY))
 
@@ -1275,9 +1286,7 @@ class DriveTest(unittest.TestCase):
 
         self.files = files = {"root": {"name": "My Drive", "folder": True, "parents": []}}
         self.calls = calls = []
-        self.video = video = Path(os.environ.get(
-            "REELS_TEST_VIDEO", "/root/.claude/uploads/e5bed814-3c70-560e-b2aa-4d61a14a2658/"
-                                "4626688f-copy_090B8A3E-0DB0-41B2-B7D7-C69758B502D9.mov"))
+        self.video = video = sample_video() or Path("no-sample-video")
         uploads = {}
 
         class H(BaseHTTPRequestHandler):
@@ -1413,6 +1422,8 @@ class DriveTest(unittest.TestCase):
 
     @unittest.skipUnless(shutil.which("ffmpeg"), "needs ffmpeg")
     def test_proxy_streams_with_auth_both_modes(self):
+        if sample_video() is None:
+            self.skipTest("no sample video (set REELS_TEST_VIDEO)")
         out = Path(tempfile.mkdtemp())
         url = self.d.media_url("raw1")
         long_ = self.dmod.make_proxy(url, self.d.token(), out / "k.mp4", duration_s=40 * 60)   # keyframes
@@ -1504,10 +1515,9 @@ class LongformTest(unittest.TestCase):
         blank = d / "blank.mp4"
         subprocess.run(["ffmpeg", "-v", "error", "-y", "-f", "lavfi", "-i", "color=c=0xd7e1e6:s=360x640:r=30:d=20",
                         "-pix_fmt", "yuv420p", str(blank)], check=True)
-        src = Path(os.environ.get("REELS_TEST_VIDEO", "/root/.claude/uploads/e5bed814-3c70-560e-b2aa-4d61a14a2658/"
-                                                     "4626688f-copy_090B8A3E-0DB0-41B2-B7D7-C69758B502D9.mov"))
-        if not src.exists():
-            self.skipTest("no sample video")
+        src = sample_video()
+        if src is None:
+            self.skipTest("no sample video (set REELS_TEST_VIDEO)")
         mid = d / "mid.mp4"
         subprocess.run(["ffmpeg", "-v", "error", "-y", "-i", str(src), "-an", "-vf", "scale=360:640", "-r", "30",
                         "-pix_fmt", "yuv420p", str(mid)], check=True)
