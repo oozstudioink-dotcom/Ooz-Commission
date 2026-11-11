@@ -182,6 +182,7 @@ class Page:
         self.work, self.store, self.norm, self.src_idx, self.dt = work, store, norm, src_idx, dt
         self.matcher, self.ref, self.others = matcher, ref, others or []
         self.stretches: list = []                          # (ink added, first, last) between flips
+        self.cuts: list = []                               # frames where the page changes
 
     def time(self, f: int) -> float:
         """Recording seconds of working-copy frame f."""
@@ -297,12 +298,13 @@ def _one_page(src: Path, out_dir: Path, max_width: int, window: list | None = No
     norm["stabilised"] = moved
     pg = Page(work, store, norm, keep, dt, matcher, ref, others)
     pg.stretches = stretches
+    pg.cuts = cuts
     pg.full_store = full_store
     return pg
 
 
 def find_parts(src: Path, out_root: Path, max_width: int = 1080, raw_duration: float | None = None,
-               window: list | None = None) -> list[dict]:
+               window: list | None = None, watcher=None) -> list[dict]:
     """The separate drawings in a recording, as parts make_variants renders one by one:
     [{"t0", "t1": recording seconds, "box": (x0, y0, x1, y1) fractions, "ref_t", "label"}].
     Separate drawings on the page you drew on, and the page drawn on from another view (paper
@@ -313,6 +315,23 @@ def find_parts(src: Path, out_root: Path, max_width: int = 1080, raw_duration: f
     from .media import probe
     src_s = probe(src)["duration"]
     pg = _one_page(src, out_dir, max_width, window, (raw_duration or src_s) / max(src_s, 1e-6))
+    if watcher is not None:
+        # watched (ears + eyes): Claude says what is there, the measurements say exactly where
+        try:
+            from .watch import parts_from_map
+            seen = watcher(pg.full_store, pg.dt)
+            (out_dir / "edit_map.json").write_text(json.dumps(seen, indent=1, ensure_ascii=False))
+            parts = parts_from_map(seen, pg.full_store, pg.dt, pg.cuts)
+            pg.work.unlink(missing_ok=True)
+            if len(parts) < 2:
+                print("watched: one drawing in this recording")
+                return []
+            print(f"watched: {len(parts)} separate drawings: " + ", ".join(
+                f"{p['label']} {p['title'] or ''} at {p['t0'] / 60:.1f}-{p['t1'] / 60:.1f} min".replace("  ", " ")
+                for p in parts))
+            return parts
+        except Exception as e:  # noqa: BLE001 - watching is a help: fall back to measuring
+            print(f"warn: couldn't watch the recording ({str(e)[:200]}); measuring instead")
     ref_t = None if pg.ref is None else round(pg.ref * pg.dt, 2)
     parts = [{"t0": round(pg.time(s["frames"][0]), 2), "t1": round(pg.time(s["frames"][1]) + pg.dt, 2),
               "box": list(s["box"]), "ref_t": ref_t} for s in find_subjects(pg.store)]

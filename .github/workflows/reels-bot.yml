@@ -40,6 +40,7 @@ jobs:
       YT_CLIENT_ID: ${{ secrets.YT_CLIENT_ID }}
       YT_CLIENT_SECRET: ${{ secrets.YT_CLIENT_SECRET }}
       YT_REFRESH_TOKEN: ${{ secrets.YT_REFRESH_TOKEN }}
+      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}   # the editor's eyes (optional)
       TIKTOK_CLIENT_KEY: ${{ secrets.TIKTOK_CLIENT_KEY }}
       TIKTOK_CLIENT_SECRET: ${{ secrets.TIKTOK_CLIENT_SECRET }}
       TIKTOK_REFRESH_TOKEN: ${{ secrets.TIKTOK_REFRESH_TOKEN }}
@@ -57,7 +58,9 @@ jobs:
 
       - name: Check social connections (posts nothing)
         if: inputs.task == 'check'
-        run: python -m reels_ai bot --phase check
+        run: |
+          pip install -q anthropic || true       # only to test the Claude key; the rest is stdlib
+          python -m reels_ai bot --phase check
 
       - name: Tidy Drive (duplicates to the Trash)
         if: inputs.task == 'tidy-drive'
