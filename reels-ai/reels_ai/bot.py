@@ -721,18 +721,23 @@ class Runner:
         return not (str(d.get("drive_where") or "").startswith("Longform") and numbered)
 
     def split_page(self, did: str, d: dict, src: Path, tmp: Path, raw_duration: float | None,
-                   max_width: int) -> None:
+                   max_width: int, raw_input=None) -> None:
         """One page with several separate drawings (a head close-up, two figures ...): each gets
         its own Shorts, framed on it and covering the time it was drawn. This drawing becomes the
         first; the others are queued after it. Done once per recording."""
         from .pipeline import find_parts
+        from .watch import watcher
         d["split_done"] = True
+        name = d.get("drive_name") or did
         try:
+            # watched when there is a Claude key: ears (what was said) + eyes (what is on screen)
+            watch = watcher(raw_input, name, self.cfg, tmp)
             parts = find_parts(src, tmp / "parts", max_width=max_width, raw_duration=raw_duration,
-                               window=d.get("window"))
+                               window=d.get("window"), watcher=watch)
         except Exception as e:  # noqa: BLE001 - splitting is a bonus: render the page as one
             print(f"warn: couldn't look for separate drawings: {e}")
             return
+        self.keep_edit_map(d, tmp / "parts" / f"{src.stem}_parts" / "edit_map.json")
         if len(parts) < 2:
             return
         d["part"] = parts[0]
@@ -740,9 +745,32 @@ class Runner:
         for p in parts[1:]:
             self.state["drawings"][new_id(self.state, "d")] = {**keep, "part": p, "status": "queued"}
         name = d.get("subject") or d.get("drive_name") or did
-        self.say(f"\U0001f5bc Found {len(parts)} separate drawings on the {name} page. Making Shorts for "
-                 "each one, framed on it: this one first, the others on the next renders.")
+        titles = [f"{p['label'].split()[0]}. {p['title']}" for p in parts if p.get("title")]
+        self.say(f"\U0001f5bc Found {len(parts)} separate drawings in {name}. Making Shorts for "
+                 "each one, framed on it: this one first, the others on the next renders."
+                 + ("\n" + "\n".join(titles) if titles else ""))
         self.checkpoint()
+
+    def keep_edit_map(self, d: dict, path: Path) -> None:
+        """Save what was seen and heard in a recording next to the bot's memory in Drive (it is
+        never watched twice, and an app can show it later), and a one-line summary on the drawing."""
+        if not path.exists():
+            return
+        try:
+            seen = json.loads(path.read_text())
+        except ValueError:
+            return
+        d["watched"] = {"pages": len(seen.get("pages", [])), "drawings": len(seen.get("drawings", [])),
+                        "spoken_lines": len(seen.get("transcript", [])), "model": seen.get("model")}
+        if not (self.drive and d.get("drive_id")):
+            return
+        try:
+            folder = self.drive.folder("Bot memory/Edit maps")
+            fname = f"{d['drive_id']}.json"
+            old = self.drive.find_file(fname, folder)
+            self.drive.write_text(fname, folder, path.read_text(), file_id=(old or {}).get("id"))
+        except Exception as e:  # noqa: BLE001 - the map is a record; rendering goes on without it
+            print(f"warn: couldn't save the edit map: {e}")
 
     def drive_raw(self, d: dict) -> dict:
         """How Process cuts read short real-speed moments straight from the original on Drive."""
@@ -1483,7 +1511,8 @@ class Runner:
                         from .pipeline import swap_out                      # needs the original:
                         styles = swap_out(styles, "process_cuts")              # make another style
                     if d.get("source") == "drive" and not d.get("split_done") and self.may_split(d):
-                        self.split_page(did, d, src, tmp, raw.get("raw_duration"), 2160 if big else 1080)
+                        self.split_page(did, d, src, tmp, raw.get("raw_duration"), 2160 if big else 1080,
+                                        raw.get("raw_input"))
                     out_dir, results = make_variants(src, tmp / "out", styles,
                                                      seed=int(did[1:]), subject=d["subject"],
                                                      review_page=False, copy=copy,
@@ -1914,6 +1943,28 @@ def check(runner: Runner) -> None:
                          f" \u00b7 {n} video(s) waiting in Inbox")
         except Exception as e:  # noqa: BLE001
             lines.append(f"Google Drive: \u274c {e}")
+    # Claude (the editor's eyes): is the key there and can it reach the model? No tokens are used.
+    model = runner.cfg.get("watch", {}).get("model", "claude-opus-5-5")
+    if not os.environ.get("ANTHROPIC_API_KEY", "").strip():
+        lines.append("Claude (eyes): not connected (add the ANTHROPIC_API_KEY secret); the editor measures only")
+    else:
+        try:
+            import anthropic
+        except ImportError:
+            anthropic = None
+            lines.append("Claude (eyes): key is set (the connection can't be tested in this step)")
+        if anthropic is not None:
+            try:
+                anthropic.Anthropic().models.retrieve(model)
+                lines.append(f"Claude (eyes): \u2705 {model}")
+            except anthropic.AuthenticationError:
+                lines.append("Claude (eyes): \u274c the key was not accepted (check the ANTHROPIC_API_KEY secret)")
+            except anthropic.NotFoundError:
+                lines.append(f"Claude (eyes): \u274c this key can't use {model}")
+            except anthropic.APIStatusError as e:
+                lines.append(f"Claude (eyes): \u274c {e.status_code}: {str(e.message)[:120]}")
+            except anthropic.APIConnectionError:
+                lines.append("Claude (eyes): \u274c couldn't reach the API (network)")
     # Gemini: try the configured model, then a few others; remember the first that answers.
     import time as _time
     from .ai import DEFAULT_MODEL, candidate_models, ping

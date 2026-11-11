@@ -79,7 +79,10 @@ def run_one(drive, expected: dict, work: Path, style: str = "one_take", log=prin
     src = make_proxy(url, token, work / f"{f['id']}.mp4", dur or 30 * 60, max_side=2560)
     raw = {"raw_duration": float(dur), "raw_input": lambda t0: ["-headers", f"Authorization: Bearer {token}\r\n",
                                                                  "-ss", f"{t0:.3f}", "-i", url]} if dur else {}
-    parts = find_parts(src, work / "parts", raw_duration=dur)
+    from .state import load_config
+    from .watch import watcher
+    parts = find_parts(src, work / "parts", raw_duration=dur,
+                       watcher=watcher(raw.get("raw_input"), f["name"], load_config(), work, log=log))
     reviews = []
     for k, part in enumerate(parts or [None]):
         out, res = make_variants(src, work / f"d{k}", [style], review_page=False, proxy=True, part=part,

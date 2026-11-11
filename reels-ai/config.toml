@@ -62,6 +62,18 @@ redirect_uri = "https://oozstudioink-dotcom.github.io/Ooz-Commission/tiktok-call
 max_per_day = 1
 post_times = ["18:00"]
 
+[watch]
+# Ears and eyes. Each Drive recording is watched once: its sound is transcribed on the bot's
+# machine (Whisper, free, nothing leaves the run), and Claude looks at a storyboard of frames
+# with the transcript and says which pages appear, which is being drawn on, and how many separate
+# drawings were made and when. The editor cuts from that; the measurements place the exact frames.
+# Needs the ANTHROPIC_API_KEY secret (pay per use: roughly 20 cents for a 35-minute stream,
+# a few cents for a short clip). Without the key the editor measures only, as before.
+enabled = true
+model = "claude-opus-5-5"
+ears = true
+whisper_model = "base"           # "small" hears better but takes about three times as long
+
 [review]
 # The reviewer watches every finished Short before it reaches you: too short, stutter, blank
 # stretches, or another page in the video. One that fails is replaced by another style; if none
