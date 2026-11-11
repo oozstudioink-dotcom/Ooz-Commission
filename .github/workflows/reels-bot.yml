@@ -96,31 +96,24 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: gh workflow run reels-bot.yml --ref "${{ github.event.repository.default_branch }}" -f task=run -R "$GITHUB_REPOSITORY"
 
-      - name: Save bot state
+      # The bot's memory lives privately in Google Drive. It is never committed here; if a copy
+      # is found in the repo it is taken out again.
+      - name: Keep the bot's memory out of the repo
         if: always()
         run: |
+          git ls-files --error-unmatch state/state.json >/dev/null 2>&1 || exit 0
           git config user.name "ooz-reels-bot"
           git config user.email "ooz-reels-bot@users.noreply.github.com"
-          if [ -f state/.in_drive ]; then
-            # The bot's memory lives privately in Google Drive now: remove the public repo copy once.
-            git ls-files --error-unmatch state/state.json >/dev/null 2>&1 || exit 0
-            git rm -q --cached state/state.json
-            git commit -q -m "reels-bot: memory moved to Google Drive"
-          else
-            [ -f state/state.json ] || exit 0
-            git add state/state.json
-            git diff --cached --quiet && exit 0
-            git commit -q -m "reels-bot: update state"
-          fi
-          # If main moved while we ran, keep this run's state (it is the newest).
+          git rm -q --cached state/state.json
+          git commit -q -m "reels-bot: keep the bot's memory out of the repo"
           for i in 1 2 3; do
             git fetch -q origin "${{ github.event.repository.default_branch }}" &&
-              git rebase -q -X theirs FETCH_HEAD &&
+              git rebase -q FETCH_HEAD &&
               git push -q origin HEAD:"${{ github.event.repository.default_branch }}" && exit 0
             git rebase --abort 2>/dev/null || true
             sleep $((i * 3))
           done
-          echo "::error::Could not save bot state"; exit 1
+          exit 0
 
       # Tell the owner in Telegram when a run crashes or times out (otherwise it fails silently).
       - name: Alert on failure

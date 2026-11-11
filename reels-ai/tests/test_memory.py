@@ -4,6 +4,7 @@ from __future__ import annotations
 import json
 import tempfile
 import unittest
+from unittest import mock
 from pathlib import Path
 
 from reels_ai.memory import DriveMemory, MemoryError_, tidy
@@ -99,6 +100,32 @@ class MemoryTest(unittest.TestCase):
         self.d.broken = True
         with self.assertRaises(MemoryError_):
             DriveMemory(self.d).load(self.local)
+
+    def test_a_failed_save_leaves_no_copy_on_the_machine(self):
+        """A copy left behind once ended up in the public repo: none is written unless Drive has it."""
+        self.d.put("state.json", "Bot memory", memory())
+        state = self.mem.load(self.local)
+        self.d.write_text = mock.Mock(side_effect=OSError("401 from Drive"))
+        with self.assertRaises(OSError):
+            self.mem.save(state, self.local)
+        self.assertFalse(self.local.exists())
+        self.assertFalse((self.local.parent / ".in_drive").exists())
+
+    def test_google_tokens_are_renewed_before_they_run_out(self):
+        from reels_ai import drive as drv
+        d = drv.Drive("id", "secret", "refresh")
+        asked = []
+
+        class R:
+            def __enter__(s): return s
+            def __exit__(s, *a): return False
+            def read(s, *a): return json.dumps({"access_token": f"t{len(asked)}"}).encode()
+        t = [1000.0]
+        with mock.patch("urllib.request.urlopen", side_effect=lambda *a, **k: (asked.append(1), R())[1]), \
+                mock.patch("time.time", side_effect=lambda: t[0]):
+            self.assertEqual((d.token(), d.token()), ("t1", "t1"))     # reused while fresh
+            t[0] += 41 * 60
+            self.assertEqual(d.token(), "t2")                          # asked again after 40 minutes
 
     def test_tidy_repairs_shapes(self):
         state = tidy({"drawings": {"d1": {"status": "queued"}, "d2": "oops"}, "variants": [], "next_id": 5})

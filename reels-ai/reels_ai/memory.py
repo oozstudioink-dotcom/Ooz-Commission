@@ -122,10 +122,10 @@ class DriveMemory:
                                    "the copy in Drive and its backups are unchanged.")
         self._backup()
         state["schema"] = SCHEMA
-        save_state(state, local)             # local copy for this run only (no longer committed)
         text = json.dumps(state, indent=2, ensure_ascii=False, sort_keys=True) + "\n"
         self.file_id = self.drive.write_text(NAME, self.folder_id or self.drive.folder(FOLDER), text,
                                              self.file_id)
+        save_state(state, local)             # local copy for this run only, never committed
         marker = marker or (local.parent / MARKER.name)
         marker.parent.mkdir(parents=True, exist_ok=True)
         marker.write_text("bot memory lives in Google Drive\n")
