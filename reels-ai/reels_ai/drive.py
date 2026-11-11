@@ -362,7 +362,11 @@ def make_proxy(url: str, token: str, dst: Path, duration_s: float | None, max_si
     def run(keyframes: bool, dur: float) -> None:
         cmd = ["ffmpeg", "-v", "error", "-y", "-headers", f"Authorization: Bearer {token}\r\n"]
         if keyframes:
-            cmd += ["-skip_frame", "nokey", "-i", url, "-vf", f"{scale},setpts=N/30/TB"]
+            # never more frames than the working copy can use: a 2-hour recording has ~7000
+            # keyframes, and shrinking and encoding them all at 4K took most of a run
+            step = dur / target_frames
+            pick = f"select='isnan(prev_selected_t)+gte(t-prev_selected_t\\,{step:.3f})'," if step > 1.05 else ""
+            cmd += ["-skip_frame", "nokey", "-i", url, "-vf", f"{pick}{scale},setpts=N/30/TB"]
         else:
             rate = max(0.05, target_frames / max(dur, 1))
             cmd += ["-i", url, "-vf", f"fps={rate:.4f},{scale},setpts=N/30/TB"]
