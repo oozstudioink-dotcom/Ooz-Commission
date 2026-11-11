@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json  # noqa: F401
+import time
 import os  # noqa: F401
 import random  # noqa: F401
 import re  # noqa: F401
@@ -89,7 +90,11 @@ class RenderMixin:
         name = d.get("drive_name") or did
         try:
             # watched when there is a Claude key: ears (what was said) + eyes (what is on screen)
-            watch = watcher(raw_input, name, self.cfg, tmp)
+            from ..watch import saved_map
+            old = saved_map(self.drive, d["drive_id"]) if self.drive and d.get("drive_id") else None
+            watch = watcher(raw_input, name, self.cfg, tmp, saved=old)
+            if watch and not old and self.claude_over_budget():
+                watch = None                                   # measure only until next month
             parts = find_parts(src, tmp / "parts", max_width=max_width, raw_duration=raw_duration,
                                window=d.get("window"), watcher=watch)
         except Exception as e:  # noqa: BLE001 - splitting is a bonus: render the page as one
@@ -120,15 +125,33 @@ class RenderMixin:
             return
         d["watched"] = {"pages": len(seen.get("pages", [])), "drawings": len(seen.get("drawings", [])),
                         "spoken_lines": len(seen.get("transcript", [])), "model": seen.get("model")}
+        from ..watch import cost, save_map
+        if seen.get("reused"):
+            return
+        spent = self.state.setdefault("claude_spend", {})
+        month = time.strftime("%Y-%m")
+        spent[month] = round(spent.get(month, 0.0) + cost(seen), 4)
+        print(f"Claude: {cost(seen) * 100:.0f} cents for this recording, ${spent[month]:.2f} this month")
         if not (self.drive and d.get("drive_id")):
             return
         try:
-            folder = self.drive.folder("Bot memory/Edit maps")
-            fname = f"{d['drive_id']}.json"
-            old = self.drive.find_file(fname, folder)
-            self.drive.write_text(fname, folder, path.read_text(), file_id=(old or {}).get("id"))
+            save_map(self.drive, d["drive_id"], path.read_text())
         except Exception as e:  # noqa: BLE001 - the map is a record; rendering goes on without it
             print(f"warn: couldn't save the edit map: {e}")
+
+    def claude_over_budget(self) -> bool:
+        """Has this month's Claude spending reached [watch] monthly_budget_usd? Told once a month."""
+        limit = float(self.cfg.get("watch", {}).get("monthly_budget_usd", 0) or 0)
+        month = time.strftime("%Y-%m")
+        spent = self.state.get("claude_spend", {}).get(month, 0.0)
+        if not limit or spent < limit:
+            return False
+        if self.state.get("claude_budget_told") != month:
+            self.state["claude_budget_told"] = month
+            self.say(f"\U0001f4b0 Claude has used ${spent:.2f} this month, the limit you set (${limit:.0f}). "
+                     "Until next month I find the drawings by measuring only. Raise monthly_budget_usd "
+                     "in config.toml to change it.")
+        return True
 
     # ------------------------------------------------------------------ compilations
     def uncompiled(self) -> list[tuple[str, dict]]:

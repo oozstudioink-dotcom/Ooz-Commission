@@ -74,6 +74,10 @@ post_times = ["18:00"]
 # a few cents for a short clip). Without the key the editor measures only, as before.
 enabled = true
 model = "claude-opus-5-5"
+# Most Claude may cost in a month, in dollars. At the limit the bot tells you once and finds
+# drawings by measuring only until next month. A recording is only ever paid for once: its
+# edit map is kept in Drive > Bot memory > Edit maps and reused by /redo and by the test set.
+monthly_budget_usd = 8
 ears = true
 whisper_model = "base"           # "small" hears better but takes about three times as long
 

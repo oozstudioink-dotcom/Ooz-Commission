@@ -11,6 +11,7 @@ again and an app can show it later.
 """
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 import cv2
@@ -104,14 +105,49 @@ def parts_from_map(m: dict, store, dt: float, cuts: list[int]) -> list[dict]:
     return parts
 
 
-def watcher(raw_input, file_name: str, cfg: dict, work: Path, log=print):
+MAPS = "Bot memory/Edit maps"
+PRICE_IN, PRICE_OUT = 4.0, 20.0          # dollars per million tokens (Claude Opus 5.5)
+
+
+def cost(m: dict) -> float:
+    """Dollars Claude charged for making this map (0 for a map read back from Drive)."""
+    t = m.get("tokens") or {}
+    return 0.0 if m.get("reused") else (t.get("in", 0) * PRICE_IN + t.get("out", 0) * PRICE_OUT) / 1e6
+
+
+def saved_map(drive, drive_id: str) -> dict | None:
+    """The map made the last time this recording was watched, if there is one."""
+    try:
+        f = drive.find_file(f"{drive_id}.json", drive.folder(MAPS))
+        m = json.loads(drive.read_text(f["id"])) if f else None
+        return m if isinstance(m, dict) and m.get("frame_times") else None
+    except Exception as e:  # noqa: BLE001 - no saved map: watch it again
+        print(f"warn: couldn't read the saved edit map: {str(e)[:120]}")
+        return None
+
+
+def save_map(drive, drive_id: str, text: str) -> None:
+    folder = drive.folder(MAPS)
+    old = drive.find_file(f"{drive_id}.json", folder)
+    drive.write_text(f"{drive_id}.json", folder, text, file_id=(old or {}).get("id"))
+
+
+def watcher(raw_input, file_name: str, cfg: dict, work: Path, log=print, saved: dict | None = None):
     """What find_parts calls to get an edit map: (frames, seconds per frame) -> map.
-    None when watching is off or there is no Claude key (the editor then measures only)."""
+    None when watching is off or there is no Claude key (the editor then measures only).
+    `saved` is the map from an earlier run: when it fits this recording it is used as it is,
+    so a recording is listened to and shown to Claude (and paid for) only once."""
     wc = cfg.get("watch", {})
-    if not wc.get("enabled", True) or not eyes.available():
+    if not wc.get("enabled", True) or not (eyes.available() or saved):
         return None
 
     def run(store, dt: float) -> dict:
+        total = len(store) * dt
+        if saved and abs(float(saved.get("seconds") or 0) - total) <= 0.03 * total + 2:
+            log("watched before: using the saved edit map (no Claude cost)")
+            return {**saved, "reused": True}
+        if not eyes.available():
+            raise RuntimeError("the saved edit map doesn't fit and there is no Claude key")
         heard = []
         if raw_input is not None and wc.get("ears", True):
             heard = ears.listen(raw_input, Path(work), wc.get("whisper_model", "base"), log=log)

@@ -17,16 +17,19 @@ note = """TikTok livestream, 35 min, in Longform > Finished. One Deku page with 
 Flips to finished Shinobi Undercover and Naruto pages during the stream; those must never appear.
 The artist talks near the end of drawing 2 (last mark at 29:16)."""
 
-# Added by the artist on 2026-11-11 (Inbox / Inbox > Processed). How many drawings each holds
-# hasn't been written down yet, so for now only "Shorts get made and pass the reviewer" is checked.
+# Added by the artist on 2026-11-11 (Inbox / Inbox > Processed): one drawing in each.
 [[recording]]
 name = "Bakugo_2"
+drawings = 1
 
 [[recording]]
 name = "Naruto _2"
+drawings = 1
 
 [[recording]]
 name = "Bakugo_1"
+drawings = 1
 
 [[recording]]
 name = "Bruce_Lee"
+drawings = 1
