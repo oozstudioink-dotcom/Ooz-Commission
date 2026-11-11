@@ -57,6 +57,24 @@ HOOKS = {
         "Inking {subject}, no talking",
         "Skip the sketch. Here's the ink.",
     ],
+    "rewind": [
+        "Watch it un-draw, then draw",
+        "From this, back to a blank page",
+        "{subject}, start to finish",
+        "How this page was made",
+    ],
+    "chapters": [
+        "{subject}, start to finish",
+        "The whole process",
+        "Every stage of this page",
+        "Blank page to finished ink",
+    ],
+    "last_lines": [
+        "Wait for the last line",
+        "Watch till the last line",
+        "The last strokes are the best",
+        "Inking {subject}",
+    ],
     "one_take": [
         "Inking {subject}",
         "{subject}, start to finish",

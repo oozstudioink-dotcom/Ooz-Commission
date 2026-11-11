@@ -27,6 +27,9 @@ STYLE_LABELS = {
     "ink_only": "Ink only",
     "process_cuts": "Process cuts",
     "one_take": "One take",
+    "rewind": "Rewind",
+    "chapters": "Chapters",
+    "last_lines": "Last lines",
     "page_compilation": "Page compilation",
 }
 PLATFORM_LABELS = {"youtube": "YouTube Shorts", "instagram": "Instagram Reels", "tiktok": "TikTok"}

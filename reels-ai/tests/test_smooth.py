@@ -549,3 +549,39 @@ class _Shim(list):
     @property
     def height(self):
         return self[0].shape[0]
+
+
+class WholeProcessFamilyTest(unittest.TestCase):
+    """rewind / chapters / last_lines: one locked view, the whole process, no zooms, wipes or cuts."""
+
+    def analysis(self, pencil=True):
+        n = 900
+        return SimpleNamespace(n_frames=n, fps=30, draw_start=30, sketch_idx=280, ink_start=300, ink_end=840,
+                               peak_idx=600, reveal_idx=880, has_pencil=pencil, usable=[True] * n,
+                               clean_range=lambda a, b: list(range(a, b + 1)), focus=(0.5, 0.5, 1.0),
+                               detail_box=(0.3, 0.3, 0.4, 0.4), detail_start=500, detail_end=700)
+
+    def test_locked_shot_whole_process_and_right_length(self):
+        import random
+        from reels_ai.variants import RECIPES
+        for name in ("rewind", "chapters", "last_lines"):
+            for pencil in (True, False):
+                a = self.analysis(pencil)
+                p = RECIPES[name](a, random.Random(1), "Naruto")
+                self.assertTrue(11.0 <= p.seconds <= 14.0, (name, p.seconds))
+                self.assertTrue(all(s.cam == (0.5, 0.5, 1.0) and s.wipe is None and s.src is None for s in p.shots), name)
+                idx = [s.idx for s in p.shots]
+                self.assertEqual(idx[-1], a.reveal_idx)                     # ends on the finished piece
+                self.assertGreaterEqual(max(idx[:-40]), a.ink_end - 2)      # reaches the last stroke
+                self.assertLessEqual(min(idx), a.ink_start)                 # and starts before the ink
+                if not pencil:
+                    self.assertFalse(any("Sketch" in c.text for c in p.texts), name)
+
+    def test_rewind_opens_finished_and_goes_back(self):
+        import random
+        from reels_ai.variants import RECIPES
+        a = self.analysis()
+        idx = [s.idx for s in RECIPES["rewind"](a, random.Random(1), None).shots]
+        self.assertEqual(idx[0], a.reveal_idx)
+        back = idx[21:21 + 25]
+        self.assertTrue(all(x >= y for x, y in zip(back, back[1:])))        # frames run backwards

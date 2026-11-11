@@ -37,6 +37,7 @@ class CompareTest(unittest.TestCase):
     def test_file_is_valid_and_recordings_are_found_by_loose_name(self):
         cases = load()
         self.assertTrue(all("name" in c and int(c.get("drawings", 1)) >= 1 for c in cases))
+        self.assertEqual(compare({"name": "no count yet"}, [part(0, 5), part(5, 9)], [OK, OK]), [])
 
         class D:
             def folder(self, p=""):

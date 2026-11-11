@@ -19,7 +19,9 @@ from .media import (FPS, FrameStore, PageMatcher, choose_page, contact_sheet, cr
                     write_page)
 from .variants import CUT_SECONDS, RECIPES, build, pick_moments, render
 
-FALLBACK_ORDER = ["one_take", "reveal_first", "detail_zoom", "ink_only", "speedrun", "before_after"]
+# what replaces a style that can't be made or fails the reviewer: the whole-process family first
+FALLBACK_ORDER = ["one_take", "reveal_first", "last_lines", "chapters", "rewind", "speedrun", "ink_only",
+                  "detail_zoom", "before_after"]
 
 
 def swap_out(names: list[str], style: str, pencil: bool = True) -> list[str]:

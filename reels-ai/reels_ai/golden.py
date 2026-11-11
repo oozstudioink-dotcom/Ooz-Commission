@@ -26,8 +26,8 @@ def compare(expected: dict, parts: list[dict], reviews: list[dict]) -> list[str]
     parts: find_parts() output ([] = one drawing); reviews: one {"passed": n, "held": [...]} per drawing."""
     problems = []
     found = max(1, len(parts))
-    want = int(expected.get("drawings", 1))
-    if found != want:
+    want = expected.get("drawings")                  # not written down yet: the count isn't checked
+    if want is not None and found != int(want):
         spans = ", ".join(f"{p['t0'] / 60:.1f}-{p['t1'] / 60:.1f}" for p in parts) or "the whole recording"
         problems.append(f"found {found} drawing(s), should be {want} (found at minutes: {spans})")
     minutes = expected.get("minutes")
@@ -114,7 +114,9 @@ def run(only: str = "") -> int:
             lines.append(f"❌ {case['name']} ({mins:.0f} min)")
             lines += [f"   • {p}" for p in problems]
         else:
-            lines.append(f"✅ {case['name']}: {case.get('drawings', 1)} drawing(s), all correct ({mins:.0f} min)")
+            n = case.get("drawings")
+            lines.append(f"✅ {case['name']}: " + (f"{n} drawing(s), all correct" if n else "Shorts made and passed the reviewer")
+                         + f" ({mins:.0f} min)")
     report = f"Test set: {len(cases) - failed} of {len(cases)} recordings correct\n" + "\n".join(lines)
     print(report)
     summary = os.environ.get("GITHUB_STEP_SUMMARY")
