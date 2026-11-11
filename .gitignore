@@ -1,3 +1,4 @@
 
 # the bot's memory lives in Google Drive (Ooz Reels/Bot memory/state.json)
 reels-ai/state/.in_drive
+reels-ai/state/state.json

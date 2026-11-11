@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import http.client
 import json
+import time
 import re
 import subprocess
 import urllib.error
@@ -23,6 +24,9 @@ CHUNK = 16 * 1024 * 1024          # multiple of 256 KiB, as Drive requires
 
 LAYOUT = ["Inbox", "Inbox/Processed", "Longform", "Longform/Finished", "Beats", "Thumbnail Style",
           "Side Panels", "Done", "Done/Shorts", "Done/Longform"]
+
+
+TOKEN_SECONDS = 40 * 60      # an access token is used for at most this long
 
 
 class DriveError(RuntimeError):
@@ -144,6 +148,10 @@ class Drive:
         return self.token()
 
     def token(self) -> str:
+        # Google's access tokens last about an hour and the bot now runs for hours: ask again
+        # after 40 minutes instead of failing with "invalid authentication credentials"
+        if self._access and time.time() - getattr(self, "_access_at", 0.0) > TOKEN_SECONDS:
+            self._access = None
         if not self._access:
             body = urllib.parse.urlencode({
                 "client_id": self.client_id, "client_secret": self.client_secret,
@@ -152,6 +160,7 @@ class Drive:
                 with urllib.request.urlopen(urllib.request.Request(self.token_url, data=body),
                                             timeout=self.timeout) as r:
                     self._access = json.load(r)["access_token"]
+                    self._access_at = time.time()
             except urllib.error.HTTPError as e:
                 raise DriveError(f"Google sign-in failed: {_describe(e)}") from None
         return self._access

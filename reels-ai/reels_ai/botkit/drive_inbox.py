@@ -150,9 +150,10 @@ class DriveMixin:
                 d["duration"] = None
         if not d.get("duration"):
             return {}
-        url, token = self.drive.media_url(d["drive_id"]), self.drive.fresh_token()
+        url = self.drive.media_url(d["drive_id"])
+        # the token is asked for at each read: a long drawing can outlast one (they last an hour)
         return {"raw_duration": float(d["duration"]),
-                "raw_input": lambda t0: ["-headers", f"Authorization: Bearer {token}\r\n",
+                "raw_input": lambda t0: ["-headers", f"Authorization: Bearer {self.drive.token()}\r\n",
                                          "-ss", f"{t0:.3f}", "-i", url]}
 
     @property

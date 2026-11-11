@@ -10,6 +10,7 @@ YouTube stores it private anyway, the result says so and the owner flips it in S
 from __future__ import annotations
 
 import json
+import time
 import re
 import urllib.error
 import urllib.parse
@@ -52,8 +53,8 @@ class YouTube:
 
     # ------------------------------------------------------------------ transport
     def _token(self) -> str:
-        if self._access:
-            return self._access
+        if self._access and time.time() - getattr(self, "_access_at", 0.0) <= 40 * 60:
+            return self._access                        # tokens last ~1 h; the bot runs for hours
         body = urllib.parse.urlencode({
             "client_id": self.client_id, "client_secret": self.client_secret,
             "refresh_token": self.refresh_token, "grant_type": "refresh_token"}).encode()
@@ -61,6 +62,7 @@ class YouTube:
             with urllib.request.urlopen(urllib.request.Request(self.token_url, data=body),
                                         timeout=self.timeout) as r:
                 self._access = json.load(r)["access_token"]
+                self._access_at = time.time()
         except urllib.error.HTTPError as e:
             msg = _describe(e)
             if "invalid_grant" in msg:
