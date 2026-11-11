@@ -159,3 +159,12 @@ model = "gemini-pro-latest"     # best quality; falls back to Flash when Pro is 
 [bank]
 warn_below_days = 3              # Telegram alert when the approved-video bank gets this low
 retired = ["Shinobi Undercover", "My Hero Academia"]  # used enough: never dropped or re-made again (matches name or file name)
+
+[radar]
+# What to draw next, sent every morning (and on /trends): the characters getting the most views
+# in this week's short drawing videos on YouTube, and the characters your viewers asked for in
+# comments. Name a recording after a requested character and the caption thanks whoever asked.
+enabled = true
+hour = 9                         # your time; sent on the first check after this hour
+days = 7                         # how far back "this week" looks
+queries = ["anime drawing", "manga drawing", "speed drawing anime"]

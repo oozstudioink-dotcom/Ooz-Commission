@@ -335,6 +335,7 @@ class RenderMixin:
                     continue
                 d["beats"] = self.beats_summary(out_dir, results)
                 self.look_over(out_dir, results)
+                self.credit_request(d, results)
                 self.send_pages_sheet(d, out_dir)
                 links = {}
                 if d.get("source") == "drive" and self.drive:
