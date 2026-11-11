@@ -2209,3 +2209,36 @@ class InventoryTest(unittest.TestCase):
         self.r.delete_command("Lets Go")
         self.assertTrue(any("Which ones?" in t and "d1" in t and "d3" in t for t in self.bot.texts()))
         self.assertEqual(self.state["drawings"]["d1"]["status"], "rendered")
+
+
+class ReviewerGateTest(unittest.TestCase):
+    """When no version of a drawing passes the reviewer, nothing is sent: the drawing is held and
+    the owner gets one message with the reason."""
+
+    def test_nothing_passed_means_held_and_told(self):
+        bot, state = FakeBot(), fresh_state()
+        state["owner_chat_id"] = OWNER
+        r = Runner(bot, state, load_config())
+        out = Path(tempfile.mkdtemp())
+        (out / "held.json").write_text(json.dumps([
+            {"name": "one_take", "reasons": ["shows a different page (around 0s, 11s)"]},
+            {"name": "speedrun", "reasons": ["shows a different page (around 6s, 9s)"]}]))
+        d = {"source": "drive", "drive_name": "Lets+Go+LIVE!.mp4", "subject": None, "status": "queued"}
+        state["drawings"]["d1"] = d
+        self.assertTrue(r.held_back("d1", d, out, []))
+        self.assertEqual(d["status"], "held")
+        told = [t for t in bot.texts() if "none passed my own check" in t]
+        self.assertEqual(len(told), 1)
+        self.assertIn("different page", told[0])
+        self.assertIn("/redo Lets+Go+LIVE! 16-34", told[0])
+
+    def test_some_passed_means_send_those_quietly(self):
+        bot, state = FakeBot(), fresh_state()
+        state["owner_chat_id"] = OWNER
+        r = Runner(bot, state, load_config())
+        out = Path(tempfile.mkdtemp())
+        (out / "held.json").write_text(json.dumps([{"name": "ink_only", "reasons": ["only 4 s long"]}]))
+        d = {"source": "drive", "drive_name": "Kakashi.MOV", "subject": "Kakashi", "status": "queued"}
+        self.assertFalse(r.held_back("d1", d, out, [{"name": "one_take"}]))
+        self.assertEqual(d["status"], "queued")
+        self.assertEqual(bot.texts(), [])

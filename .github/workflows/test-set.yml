@@ -1,0 +1,52 @@
+# The test set: runs the editor on real recordings in Drive and compares with the right answers
+# written in reels-ai/tests/golden.toml. Run it before merging any change to the editing
+# (Actions -> test-set -> Run workflow, pick the branch). It reads from Drive only: nothing is
+# posted, sent to Telegram, or changed in the bot's memory.
+name: test-set
+
+on:
+  workflow_dispatch:
+    inputs:
+      only:
+        description: "Only recordings whose name contains this (empty = all)"
+        required: false
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: test-set-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    defaults:
+      run:
+        working-directory: reels-ai
+    env:
+      PYTHONUNBUFFERED: "1"
+      YT_CLIENT_ID: ${{ secrets.YT_CLIENT_ID }}
+      YT_CLIENT_SECRET: ${{ secrets.YT_CLIENT_SECRET }}
+      YT_REFRESH_TOKEN: ${{ secrets.YT_REFRESH_TOKEN }}
+      ONLY: ${{ inputs.only }}
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - name: Install video tools
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq --no-install-recommends ffmpeg fonts-inter
+          pip install -q -r requirements.txt
+
+      - name: Unit tests
+        run: for f in tests/test_*.py; do python -m unittest -q "$f"; done
+
+      - name: Test set (real recordings)
+        run: python -m reels_ai testset --only "$ONLY"

@@ -200,7 +200,7 @@ class Runner:
         leave the bank so the new ones replace them; already-dropped ones are untouched."""
         want = _norm_name(name)
         found = [(did, d) for did, d in self.state["drawings"].items()
-                 if d["status"] in ("rendered", "failed") and not self.retired(d)
+                 if d["status"] in ("rendered", "failed", "held") and not self.retired(d)
                  and (not want or want in _norm_name(d.get("subject") or "")
                       or want in _norm_name(d.get("drive_name") or ""))]
         if not found:
@@ -215,7 +215,7 @@ class Runner:
         # every drawing made from the same recording (a page split into several drawings)
         same = [(k, x) for k, x in self.state["drawings"].items()
                 if d.get("drive_id") and x.get("drive_id") == d["drive_id"] and k != did
-                and x["status"] in ("rendered", "failed", "queued")]
+                and x["status"] in ("rendered", "failed", "held", "queued")]
         if not window and not d.get("part"):
             d.pop("split_done", None)                     # look for separate drawings again
         if window:
@@ -401,8 +401,33 @@ class Runner:
         """Stream a raw Drive recording into a small timelapse working copy."""
         from .drive import make_proxy
         dur = d.get("duration") or 30 * 60        # unknown -> assume long (keyframe mode)
-        return make_proxy(self.drive.media_url(d["drive_id"]), self.drive.token(),
+        # one recording can hold several drawings: read it from Drive once per run, not once each
+        kept = getattr(self, "_proxy", None)
+        if kept is not None:
+            if kept.get("id") == d["drive_id"] and kept["path"].exists():
+                print(f"{d.get('drive_name')}: already read from Drive this run")
+                return kept["path"]
+            if kept.get("path"):
+                kept["path"].unlink(missing_ok=True)
+            tmp = kept["dir"]
+        path = make_proxy(self.drive.media_url(d["drive_id"]), self.drive.token(),
                           tmp / f"{d['drive_id']}.mp4", dur, max_side=3840 if self.shorts_4k else 2560)
+        if kept is not None:
+            kept.update(id=d["drive_id"], path=path)
+        return path
+
+    def minutes_to_drop(self) -> float | None:
+        """Minutes until the next drop time today (None when there is none left today)."""
+        if not self.drops_mode:
+            return None
+        lt = self.local(self.clock())
+        waits = []
+        for hhmm in self.drop_times:
+            at = datetime.strptime(hhmm, "%H:%M").time()
+            due = lt.replace(hour=at.hour, minute=at.minute, second=0, microsecond=0)
+            if due > lt:
+                waits.append((due - lt).total_seconds() / 60)
+        return min(waits) if waits else None
 
     # ------------------------------------------------------------------ inventory
     STATUS_ICON = {"pending": "\u23f3", "approved": "\u2705", "skipped": "\u274c", "posted": "\U0001f4e4",
@@ -443,6 +468,8 @@ class Runner:
                 tail = " \u2014 being made" if d["status"] == "queued" else " \u2014 waiting for a name"
             elif d["status"] == "failed":
                 tail = f" \u2014 failed: {(d.get('error') or '')[:60]}"
+            elif d["status"] == "held":
+                tail = f" \u2014 held by the reviewer: {(d.get('error') or '')[:60]}"
             elif not items:
                 tail = " \u2014 no Shorts left"
             else:
@@ -634,6 +661,30 @@ class Runner:
                 asked = None
             if asked is None or self.clock() - asked >= timedelta(hours=hours):
                 d["status"] = "queued"
+
+    def held_back(self, did: str, d: dict, out_dir: Path, results: list[dict]) -> bool:
+        """What the reviewer kept from you. True when no version passed: the drawing is held (not
+        sent, not dropped) and you get one message with the reason and what to do."""
+        try:
+            held = json.loads((out_dir / "held.json").read_text())
+        except (OSError, ValueError):
+            held = []
+        if not held:
+            return False
+        d["held"] = [f"{STYLE_LABELS.get(h['name'], h['name'])}: {'; '.join(h['reasons'])}" for h in held][:6]
+        name = self.drawing_label(did, d)
+        if results:
+            print(f"reviewer: {len(held)} version(s) of {name} held back, {len(results)} passed")
+            return False
+        why = sorted({r for h in held for r in h["reasons"]})
+        d["status"] = "held"
+        d["error"] = "; ".join(why)[:300]
+        base = d.get("subject") or (d.get("drive_name") or did).rsplit(".", 1)[0]
+        self.say(f"\U0001f50d I made Shorts of {name} but none passed my own check, so I didn't send them:\n"
+                 + "\n".join(f"\u2022 {w}" for w in why[:4])
+                 + f"\nIf the recording shows several pages, tell me the minutes you drew in: /redo {base} 16-34. "
+                   f"Or /delete {did} to drop it.")
+        return True
 
     def send_pages_sheet(self, d: dict, out_dir: Path) -> None:
         """A recording that shows several pages (a livestream): show which part was used, so a
@@ -1377,6 +1428,16 @@ class Runner:
         started = _time.time()
         done_now = 0
         self.stop_waiting_for_names()
+        guard = float(self.cfg.get("shorts", {}).get("drop_guard_minutes", 20))
+        self._proxy = {"dir": Path(tempfile.mkdtemp(dir=work_root))}
+        try:
+            self._render_queue(make_variants, mode, hours, budget, started, done_now, guard, work_root, _time)
+        finally:
+            import shutil
+            shutil.rmtree(self._proxy["dir"], ignore_errors=True)
+            self._proxy = None
+
+    def _render_queue(self, make_variants, mode, hours, budget, started, done_now, guard, work_root, _time) -> None:
         for did, d in self._queued_drawings():         # also picks up drawings a split page adds
             if d["status"] != "queued":
                 continue
@@ -1385,6 +1446,11 @@ class Runner:
                 self.say(f"\U0001f4e6 Skipped {d.get('subject') or d.get('drive_name') or did}: it's on your "
                          "retired list ([bank] retired in config.toml).")
                 continue
+            wait = self.minutes_to_drop()
+            if wait is not None and wait <= guard:
+                # a drop is due soon and runs go one at a time: stop here so it goes out on time
+                print(f"drop due in {wait:.0f} min: the remaining drawings continue on the next run")
+                return
             if done_now and _time.time() - started > budget:
                 left = sum(1 for x in self.state["drawings"].values() if x["status"] == "queued")
                 self.say(f"\u23f3 Rendered {done_now} drawing(s) this run; {left} more continue on the next run.")
@@ -1424,15 +1490,20 @@ class Runner:
                                                      max_width=2160 if big else 1080,
                                                      hints=d.get("hints"),
                                                      proxy=d.get("source") == "drive",
-                                                     part=d.get("part"), window=d.get("window"), **raw)
+                                                     part=d.get("part"), window=d.get("window"),
+                                                     review=self.cfg.get("review", {}).get("enabled", True),
+                                                     **raw)
                 except Exception as e:  # noqa: BLE001 - report any failure to the owner
                     d["status"] = "failed"
                     d["error"] = str(e)[:300]
                     self.say(f"⚠️ Couldn't process that video ({did}): {d['error']}")
                     self.checkpoint()
                     continue
-                d["beats"] = self.beats_summary(out_dir, results)
                 d.pop("attempts", None)
+                if self.held_back(did, d, out_dir, results):   # nothing passed the reviewer
+                    self.checkpoint()
+                    continue
+                d["beats"] = self.beats_summary(out_dir, results)
                 self.send_pages_sheet(d, out_dir)
                 links = {}
                 if d.get("source") == "drive" and self.drive:

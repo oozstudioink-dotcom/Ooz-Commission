@@ -3,7 +3,9 @@ from __future__ import annotations
 
 import html
 import json
+import shutil
 import subprocess
+import tempfile
 import time
 from pathlib import Path
 from typing import Callable
@@ -186,6 +188,43 @@ class Page:
         return self.src_idx[int(min(max(f, 0), len(self.src_idx) - 1))] * self.dt
 
 
+_SRC: dict = {}            # the recording being worked on: its working copy and what was found in it
+STORE_CACHE_BYTES = 1.5e9  # keep its frames in memory between drawings only when they are small
+
+
+def _forget_source() -> None:
+    c = _SRC.pop("c", None)
+    if c:
+        shutil.rmtree(c["dir"], ignore_errors=True)
+
+
+def _source(src: Path, max_width: int) -> dict:
+    """The recording, read and measured ONCE however many drawings are made from it: the
+    working copy, where the pages change, and where each page was recognised."""
+    st = src.stat()
+    key = (str(src), st.st_size, st.st_mtime_ns, max_width)
+    c = _SRC.get("c")
+    if c is None or c["key"] != key:
+        _forget_source()
+        d = Path(tempfile.mkdtemp(prefix="recording_"))
+        full = d / "full.mp4"
+        norm = normalize(src, full, keep_wide=True, max_wide_h=max(1440, max_width * 16 // 9), max_w=max_width)
+        print(f"normalized {src.name} -> {norm['width']}x{norm['height']} (x{norm['speedup']:.1f} speed)")
+        c = _SRC["c"] = {"key": key, "dir": d, "full": full, "norm": norm, "store": None, "pages": {}, "tracks": {}}
+    else:
+        print(f"{src.name}: already read this run (using what was found)")
+    return c
+
+
+def _frames(c: dict) -> FrameStore:
+    if c["store"] is not None:
+        return c["store"]
+    store = FrameStore(c["full"])
+    if sum(len(b) for b in store._frames) <= STORE_CACHE_BYTES:
+        c["store"] = store
+    return store
+
+
 def _one_page(src: Path, out_dir: Path, max_width: int, window: list | None = None,
               scale: float = 1.0, ref_time: float | None = None) -> Page:
     """Working copy of the recording, cut to the one page that was drawn on.
@@ -194,11 +233,13 @@ def _one_page(src: Path, out_dir: Path, max_width: int, window: list | None = No
     views are left out wherever they are, and small paper or camera moves are lined up.
     window: [start, end] in recording seconds that you chose (/redo <name> 16-34).
     ref_time: the frame (recording seconds) that shows the page/view to use (find_parts).
-    A contact sheet of the recording (pages.jpg/pages.json) shows which frames were used."""
+    A contact sheet of the recording (pages.jpg/pages.json) shows which frames were used.
+    Reading the recording, finding its page changes and recognising a page are each done once
+    per recording (_source), not once per drawing."""
+    c = _source(src, max_width)
+    norm = dict(c["norm"])
+    store = _frames(c)
     work = out_dir / "work.mp4"
-    norm = normalize(src, work, keep_wide=True, max_wide_h=max(1440, max_width * 16 // 9), max_w=max_width)
-    print(f"normalized {src.name} -> {norm['width']}x{norm['height']} (x{norm['speedup']:.1f} speed)")
-    store = FrameStore(work)
     dt = norm["speedup"] * scale / FPS                        # recording seconds per frame
     n = len(store)
     lo, hi = 0, n - 1
@@ -206,48 +247,57 @@ def _one_page(src: Path, out_dir: Path, max_width: int, window: list | None = No
         lo = int(max(0, min(n - 2, window[0] / dt)))
         hi = int(max(lo + 1, min(n - 1, window[1] / dt)))
         print(f"your choice: {window[0] / 60:.1f}-{window[1] / 60:.1f} min = frames {lo}-{hi}")
-    # where the drawing happened: between page flips, the stretch where ink was added
-    cuts = page_changes(store) if not window else []
-    stretches: list = []
-    first, last = drawn_stretch(store, cuts, scored_out=stretches) if cuts else (lo, hi)
-    if cuts:
-        print(f"{len(cuts)} page change(s); drawing at frames {first}-{last} of {n}")
-    first, last = same_page(store, first, last)
-    ref = None
-    if ref_time is not None:
-        ref = int(min(max(round(ref_time / dt), lo), hi))
-    elif (cuts or window) and last - first >= 40:              # several pages (a livestream): recognise
-        ref = choose_page(store, first, last)                  # the drawn one in every frame
+    wkey = (lo, hi, bool(window))
+    if wkey not in c["pages"]:
+        # where the drawing happened: between page flips, the stretch where ink was added
+        cuts = page_changes(store) if not window else []
+        stretches: list = []
+        first, last = drawn_stretch(store, cuts, scored_out=stretches) if cuts else (lo, hi)
+        if cuts:
+            print(f"{len(cuts)} page change(s); drawing at frames {first}-{last} of {n}")
+        first, last = same_page(store, first, last)
+        auto_ref = None
+        if (cuts or window) and last - first >= 40:            # several pages (a livestream): recognise
+            auto_ref = choose_page(store, first, last)         # the drawn one in every frame
+        c["pages"][wkey] = (cuts, stretches, first, last, auto_ref)
+    cuts, stretches, first, last, auto_ref = c["pages"][wkey]
+    ref = auto_ref if ref_time is None else int(min(max(round(ref_time / dt), lo), hi))
     keep = list(range(first, last + 1))
     matcher, others, moved = None, [], False
     if ref is not None:
         matcher = PageMatcher(store[ref])
-        track = fill_track(store, track_page(store, matcher, list(range(lo, hi + 1)), others=others),
-                           cuts, lo, hi)
+        tkey = (ref, lo, hi)
+        if tkey not in c["tracks"]:
+            seen: list = []
+            c["tracks"][tkey] = (fill_track(store, track_page(store, matcher, list(range(lo, hi + 1)), others=seen),
+                                            cuts, lo, hi), seen)
+        track, others = c["tracks"][tkey][0], list(c["tracks"][tkey][1])
         if len(track) >= max(30, 0.25 * (last - first + 1)):
             keep = [i for i, _ in track]
-            page = out_dir / "work_page.mp4"
-            moved = write_page(store, track, (store.width, store.height), page)
+            moved = write_page(store, track, (store.width, store.height), out_dir / "work_page.mp4")
             norm["page_frames"] = len(keep)
             norm["page_view_ref"] = round(ref * dt, 1)
         else:
             print("page recognition found too little; using the drawn stretch as is")
             matcher, others = None, []
     if matcher is None and (first, last) != (0, n - 1):
-        page = out_dir / "work_page.mp4"
-        trim(work, page, first, last)
+        trim(c["full"], out_dir / "work_page.mp4", first, last)
+    full_store = store
     if keep != list(range(n)):
         if cuts or len(keep) < n:
             contact_sheet(store, out_dir / "pages.jpg", dt, (keep[0], keep[-1]), used=set(keep))
             (out_dir / "pages.json").write_text(json.dumps({"used": [round(keep[0] * dt), round((keep[-1] + 1) * dt)],
                                                             "total": round(n * dt), "frames": len(keep), "of": n}))
-        work.unlink(missing_ok=True)
         (out_dir / "work_page.mp4").rename(work)
         store = FrameStore(work)
         norm["page_changes"] = cuts
+    else:
+        shutil.copy(c["full"], work)
+        store = FrameStore(work) if c["store"] is None else store
     norm["stabilised"] = moved
     pg = Page(work, store, norm, keep, dt, matcher, ref, others)
     pg.stretches = stretches
+    pg.full_store = full_store
     return pg
 
 
@@ -262,7 +312,6 @@ def find_parts(src: Path, out_root: Path, max_width: int = 1080, raw_duration: f
     out_dir.mkdir(parents=True, exist_ok=True)
     from .media import probe
     src_s = probe(src)["duration"]
-    full = out_dir / "full.mp4"
     pg = _one_page(src, out_dir, max_width, window, (raw_duration or src_s) / max(src_s, 1e-6))
     ref_t = None if pg.ref is None else round(pg.ref * pg.dt, 2)
     parts = [{"t0": round(pg.time(s["frames"][0]), 2), "t1": round(pg.time(s["frames"][1]) + pg.dt, 2),
@@ -274,8 +323,7 @@ def find_parts(src: Path, out_root: Path, max_width: int = 1080, raw_duration: f
     other_drawn = [(a, b) for s, a, b in pg.stretches
                    if s >= 0.01 and sum(1 for i in range(a, b + 1) if i in main) < 0.5 * (b - a + 1)]
     if pg.others or other_drawn:
-        normalize(src, full, keep_wide=True, max_wide_h=max(1440, max_width * 16 // 9), max_w=max_width)
-        store = FrameStore(full)
+        store = pg.full_store
         for a, b in other_drawn:
             if not steady_growth(store, a, b):               # a flip or a page moved around
                 continue
@@ -302,7 +350,6 @@ def find_parts(src: Path, out_root: Path, max_width: int = 1080, raw_duration: f
             if ref is not None:
                 views.append({"t0": round(r[0] * pg.dt, 2), "t1": round((r[-1] + 1) * pg.dt, 2),
                               "box": [0, 0, 1, 1], "ref_t": round(ref * pg.dt, 2)})
-        full.unlink(missing_ok=True)
     if views and not parts:                                   # the main view is one drawing too
         parts = [{"t0": round(pg.time(0), 2), "t1": round(pg.time(len(pg.src_idx) - 1) + pg.dt, 2),
                   "box": [0, 0, 1, 1], "ref_t": ref_t}]
@@ -324,14 +371,16 @@ def make_variants(src: Path, out_root: Path, names: list[str] | None = None, see
                   copy: dict | None = None, max_width: int = 1080, raw_input: RawInput | None = None,
                   raw_duration: float | None = None, hints: dict | None = None,
                   proxy: bool = False, part: dict | None = None,
-                  window: list | None = None) -> tuple[Path, list[dict]]:
+                  window: list | None = None, review: bool = False) -> tuple[Path, list[dict]]:
     """Analyse `src` and render the requested variants. Returns (output dir, results).
 
     raw_input / raw_duration: where the original recording is when `src` is only a sampled
     proxy of it (Drive). Without them `src` itself is the original - unless `proxy`: then the
     real time between frames is unknown, and the hand isn't motion-blurred (it could ghost).
     hints: from the file name ('Sasuke - ink only - continued'): pencil True/False, continued.
-    part: one drawing of several on the page, from find_parts(): only its time, framed on it."""
+    part: one drawing of several on the page, from find_parts(): only its time, framed on it.
+    review: every version is watched by the reviewer (review.py) before it counts; one that fails
+    is replaced by another style, and what was held back is listed in held.json."""
     hints = hints or {}
     how = {"continued": bool(hints.get("continued")), "pencil": hints.get("pencil")}
     src = Path(src).expanduser().resolve()
@@ -448,17 +497,47 @@ def make_variants(src: Path, out_root: Path, names: list[str] | None = None, see
             names = swap_out(names, "process_cuts", a.has_pencil)
             print(f"warn: only {len(clips)} real-speed moments; made {names[-1]} instead of process_cuts")
     plans = build(a, names, seed, subject, copy, clips)
-    results = []
-    for plan in plans:
+    results, held = [], []
+    tried = set(names)
+
+    def make(plan):
         dst = out_dir / "variants" / f"{plan.name}.mp4"
         render(plan, store, dst, audio, a.focus, a.usable)
+        verdict = None
+        if review:                                    # the reviewer watches it before you do
+            from .review import review as watch
+            verdict = watch(dst)
+        return dst, verdict
+
+    for plan in plans:
+        first = plan.name
+        for attempt in range(3):
+            dst, verdict = make(plan)
+            if verdict is None or verdict.ok:
+                break
+            print(f"  reviewer held back {plan.name}: {'; '.join(verdict.reasons)}")
+            held.append({"name": plan.name, "reasons": verdict.reasons})
+            dst.unlink(missing_ok=True)
+            # another style in its place, so the drawing still gets its full set
+            spare = [n for n in FALLBACK_ORDER if n not in tried and (a.has_pencil or n != "before_after")]
+            if not spare or attempt == 2:
+                plan = None
+                break
+            tried.add(spare[0])
+            plan = build(a, spare[:1], seed, subject, copy, clips)[0]
+        if plan is None:
+            print(f"  no style passed in place of {first}")
+            continue
         _thumb(dst, 0.02, out_dir / "thumbs" / f"{plan.name}.jpg")
         if sheets:
             _contact_sheet(dst, out_dir / "thumbs" / f"{plan.name}_sheet.jpg")
         results.append({"name": plan.name, "file": f"variants/{plan.name}.mp4",
                         "seconds": plan.seconds, "description": plan.description,
-                        "grade": plan.grade, "hook": plan.hook, "caption": plan.caption})
-        print(f"  rendered {plan.name:13s} {plan.seconds:5.1f}s  hook: {plan.hook!r}")
+                        "grade": plan.grade, "hook": plan.hook, "caption": plan.caption,
+                        **({"review": verdict.to_dict()} if verdict else {})})
+        print(f"  rendered {plan.name:13s} {plan.seconds:5.1f}s  hook: {plan.hook!r}"
+              f"{'  (reviewed: ok)' if verdict else ''}")
+    (out_dir / "held.json").write_text(json.dumps(held, indent=2, ensure_ascii=False))
     (out_dir / "variants.json").write_text(json.dumps(results, indent=2, ensure_ascii=False))
     if review_page:
         _review_page(out_dir, src.name, results)
