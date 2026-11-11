@@ -26,6 +26,7 @@ STYLE_BRIEFS = {
     "ink_only": "only the inking stage, no pencils",
     "rewind": "finished piece first, rewinds to the blank page in a second, then the whole process in one locked shot",
     "chapters": "the whole process in one locked shot with small stage labels (sketch, ink, done)",
+    "slow_open": "the first simple marks shown slowly, then the whole drawing builds fast and holds; no text on screen",
     "last_lines": "the whole process in one locked shot that slows down for the final strokes",
     "one_take": "one continuous locked shot from first stroke to last, finished piece only at the end",
     "process_cuts": "short jump cuts of the pen inking at near real speed",

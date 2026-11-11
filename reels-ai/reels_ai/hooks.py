@@ -69,6 +69,12 @@ HOOKS = {
         "Every stage of this page",
         "Blank page to finished ink",
     ],
+    "slow_open": [
+        "It starts with a stick figure",
+        "From a few lines to {subject}",
+        "Watch what this turns into",
+        "Wait for what it becomes",
+    ],
     "last_lines": [
         "Wait for the last line",
         "Watch till the last line",

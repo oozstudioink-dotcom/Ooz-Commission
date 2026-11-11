@@ -24,6 +24,7 @@ STYLE_LABELS = {
     "rewind": "Rewind",
     "chapters": "Chapters",
     "last_lines": "Last lines",
+    "slow_open": "Slow open",
     "page_compilation": "Page compilation",
 }
 

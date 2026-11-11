@@ -326,7 +326,24 @@ def last_lines(a: Analysis, rng, subject) -> Plan:
     return p
 
 
+def slow_open(a: Analysis, rng, subject) -> Plan:
+    """Modelled on the stick-figure-to-character Shorts: the first marks are shown slowly, so the
+    viewer sees how little it starts from, then the rest of the drawing rushes in and the
+    finished piece holds. No text on screen: the drawing is the hook."""
+    p = Plan("slow_open", "The first marks at an unhurried pace (the simple start), then the "
+             "whole drawing builds fast in one locked shot and holds on the finished piece. "
+             "No text.", "natural")
+    start = a.draw_start
+    span = max(2, a.ink_end - start)
+    opening = start + max(2, min(int(5.5 * FPS), int(span * 0.08)))   # the first marks, never stretched
+    body = ramp(a, start, opening, 5.5) + ramp(a, opening, a.ink_end, 8.0)
+    p.shots = shots(body + hold(a.reveal_idx, 1.4))
+    p.hook = hooks.pick_hook("slow_open", rng, subject, round(p.seconds), a.has_pencil)
+    return p
+
+
 RECIPES: dict[str, Callable] = {
+    "slow_open": slow_open,
     "rewind": rewind,
     "chapters": chapters,
     "last_lines": last_lines,
