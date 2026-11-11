@@ -5,6 +5,7 @@ It looks for the faults that used to reach Telegram:
   - stutter (the same frame shown again and again: stop-motion look)
   - blank or black stretches
   - another page in the video (a different drawing at the start, in a wipe, or at the end)
+  - nothing drawn (a hand over a page that stays almost empty)
 
 Each check answers with a plain reason. A Short that fails is not sent: the editor makes another
 style in its place, and if nothing passes the drawing is held and you get one message saying why.
@@ -25,6 +26,7 @@ MAX_BLANK = 0.12           # share of sampled frames that are black or empty
 SAMPLES = 22               # frames compared for "is this all one page?"
 MIN_INK = 0.012            # a frame needs this much ink (share of the area) to be judged
 SAME = 0.45                # how much of the smaller drawing's ink sits in the bigger one, above chance
+MIN_DRAWING = 0.013        # share of the frame where lines appear and stay: a drawing gets made
 FOREIGN_FRAMES = 2         # this many clearly-other-page frames fail the Short
 
 
@@ -36,6 +38,7 @@ class Review:
     repeats: float = 0.0
     blank: float = 0.0
     foreign: list[float] = field(default_factory=list)      # times (s) of other-page frames
+    most_ink: float = 0.0
 
     def fail(self, why: str) -> None:
         self.ok = False
@@ -43,7 +46,8 @@ class Review:
 
     def to_dict(self) -> dict:
         return {"ok": self.ok, "reasons": self.reasons, "seconds": round(self.seconds, 1),
-                "repeats": round(self.repeats, 3), "blank": round(self.blank, 3),
+                "repeats": round(self.repeats, 3), "blank": round(float(self.blank), 3),
+                "most_ink": round(self.most_ink, 3),
                 "foreign_at": [round(t, 1) for t in self.foreign]}
 
 
@@ -152,6 +156,20 @@ def review(path: Path, min_seconds: float = MIN_SECONDS) -> Review:
 
     # one page throughout? compare every sampled frame with every other
     inks = [_ink(f) for f in frames]
+    # what was drawn: lines there in one third of the video and not in another (start vs end,
+    # either way round for a reveal-first edit), away from where the hand usually is. The desk
+    # and tools never change; a pen hovering over an empty page leaves nothing behind.
+    if len(inks) >= 6:
+        st = np.stack([i[0] for i in inks])
+        third = len(st) // 3
+        a, b = st[:third].mean(0) > 0.5, st[-third:].mean(0) > 0.5
+        grow = np.ones((5, 5), np.uint8)
+        change = (b & ~(cv2.dilate(a.astype(np.uint8), grow) > 0)) | (a & ~(cv2.dilate(b.astype(np.uint8), grow) > 0))
+        r.most_ink = float((change & (np.stack([i[1] for i in inks]).mean(0) < 0.3)).mean())
+    else:
+        r.most_ink = 1.0
+    if r.most_ink < MIN_DRAWING:
+        r.fail("nothing gets drawn: the page stays almost empty the whole time")
     m = len(frames)
     cache: dict = {}
     rel: dict[tuple[int, int], bool | None] = {}

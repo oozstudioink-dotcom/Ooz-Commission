@@ -12,7 +12,21 @@
 [[recording]]
 name = "Lets Go LIVE"
 drawings = 3
-note = """TikTok livestream, 35 min, Deku page with three drawings (head close-up top left, Deku
-looking back bottom left, Deku landing on the right). Flips to finished Shinobi Undercover and
-Naruto pages during the stream; those must never appear. On 2026-11-10 the editor found 5
-drawings here (two of them the same minutes), so this one is expected to fail until that is fixed."""
+minutes = [[0.72, 14.05], [14.5, 29.27], [29.32, 33.45]]     # from the artist, 2026-11-11
+note = """TikTok livestream, 35 min, in Longform > Finished. One Deku page with three drawings.
+Flips to finished Shinobi Undercover and Naruto pages during the stream; those must never appear.
+The artist talks near the end of drawing 2 (last mark at 29:16)."""
+
+# Added by the artist on 2026-11-11 (Inbox / Inbox > Processed). How many drawings each holds
+# hasn't been written down yet, so for now only "Shorts get made and pass the reviewer" is checked.
+[[recording]]
+name = "Bakugo_2"
+
+[[recording]]
+name = "Naruto _2"
+
+[[recording]]
+name = "Bakugo_1"
+
+[[recording]]
+name = "Bruce_Lee"

@@ -89,3 +89,13 @@ class ReviewTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class NothingDrawnTest(unittest.TestCase):
+    def test_a_hand_over_an_empty_page_fails(self):
+        """The Short the owner hated most: a pen hovering over a page that stays empty."""
+        tmp = Path(tempfile.mkdtemp())
+        frames = [page([], 0, (60 + (i * 7) % 240, 330 + (i * 5) % 200)) for i in range(270)]
+        r = review(write(frames, tmp / "empty.mp4"))
+        self.assertFalse(r.ok)
+        self.assertTrue(any("nothing gets drawn" in why for why in r.reasons), r.reasons)
