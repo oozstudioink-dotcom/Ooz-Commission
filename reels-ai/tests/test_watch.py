@@ -95,6 +95,19 @@ class EditMapTest(unittest.TestCase):
             self.assertIsNotNone(watch.watcher(None, "x.mp4", {}, Path(".")))
             self.assertIsNone(watch.watcher(None, "x.mp4", {"watch": {"enabled": False}}, Path(".")))
 
+    def test_a_recording_watched_before_is_not_paid_for_again(self):
+        old = {"frame_times": [1.0, 2.0], "seconds": 300.0, "drawings": [], "tokens": {"in": 36000, "out": 4000}}
+        self.assertAlmostEqual(watch.cost(old), 0.224)
+        store = Frames([None] * 600)
+        with mock.patch.dict(os.environ, {"ANTHROPIC_API_KEY": ""}), \
+                mock.patch.object(eyes, "look", side_effect=AssertionError("asked Claude")):
+            run = watch.watcher(None, "x.mp4", {}, Path("."), log=lambda *a: None, saved=old)
+            m = run(store, 0.5)                                   # same length: reused, even with no key
+            self.assertTrue(m["reused"])
+            self.assertEqual(watch.cost(m), 0.0)
+            with self.assertRaises(RuntimeError):                 # another length: not this recording
+                run(Frames([None] * 100), 0.5)
+
 
 class AskClaudeTest(unittest.TestCase):
     """The request itself: right model, structured answer, fallback on, refusals not swallowed."""

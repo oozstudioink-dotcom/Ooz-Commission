@@ -39,7 +39,7 @@ class Bot:
 
     # ------------------------------------------------------------ methods used
     def get_updates(self, offset: int) -> list[dict]:
-        return self._call("getUpdates", {"offset": offset, "timeout": 0,
+        return self._call("getUpdates", {"offset": offset, "timeout": getattr(self, "wait", 0),
                                          "allowed_updates": ["message", "callback_query"]})
 
     def send_message(self, chat_id: int, text: str, reply_markup: dict | None = None,

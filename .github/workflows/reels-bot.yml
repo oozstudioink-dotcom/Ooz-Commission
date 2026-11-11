@@ -1,10 +1,11 @@
-# Runs the Ooz Reels approval bot once an hour (and on demand from the Actions tab).
+# The Ooz Reels bot, always on: each run serves for up to 5 hours and starts the next one.
+# The timer below is only a safety net (it restarts the bot if a run ever dies).
 # Needs repo secret TELEGRAM_BOT_TOKEN. Optional: TELEGRAM_OWNER_ID to pin the owner chat.
 name: reels-bot
 
 on:
   schedule:
-    - cron: "23 * * * *"
+    - cron: "23 */2 * * *"
   workflow_dispatch:
     inputs:
       task:
@@ -28,7 +29,7 @@ concurrency:
 jobs:
   run:
     runs-on: ubuntu-latest
-    timeout-minutes: 60
+    timeout-minutes: 355
     defaults:
       run:
         working-directory: reels-ai
@@ -72,24 +73,28 @@ jobs:
           TIKTOK_AUTH_CODE: ${{ inputs.code }}
         run: python -m reels_ai bot --phase tiktok-connect
 
-      # Fast path: stdlib only. Reads Telegram, handles taps, posts what's due.
-      - name: Poll Telegram
-        id: poll
-        if: inputs.task != 'check' && inputs.task != 'tiktok-connect' && inputs.task != 'tidy-drive'
-        run: python -m reels_ai bot --phase poll
-
-      # Slow path, only when a new timelapse arrived.
+      # Always-on: one long run answers Telegram within seconds and renders whenever there is
+      # work. It hands over when a newer run is waiting and starts its successor itself.
       - name: Install video tools
-        if: steps.poll.outputs.render == 'true'
+        if: inputs.task == 'run' || inputs.task == ''
         run: |
           sudo apt-get update -qq
           sudo apt-get install -y -qq --no-install-recommends ffmpeg fonts-inter
           pip install -q -r requirements.txt
 
-      - name: Render variants and send for approval
-        if: steps.poll.outputs.render == 'true'
-        timeout-minutes: 52        # stop in time for "Save bot state" (each finished drawing is already saved)
-        run: python -m reels_ai bot --phase render
+      - name: Serve (answer Telegram, render, post what is due)
+        if: inputs.task == 'run' || inputs.task == ''
+        timeout-minutes: 345
+        env:
+          SERVE_MINUTES: "300"
+        run: python -m reels_ai bot --phase serve
+
+      # A check or tidy took the bot's place for a moment: start the bot again.
+      - name: Start the bot again
+        if: always() && inputs.task != 'run' && inputs.task != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh workflow run reels-bot.yml --ref "${{ github.event.repository.default_branch }}" -f task=run -R "$GITHUB_REPOSITORY"
 
       - name: Save bot state
         if: always()

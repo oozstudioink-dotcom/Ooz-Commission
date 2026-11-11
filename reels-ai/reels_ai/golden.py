@@ -80,9 +80,20 @@ def run_one(drive, expected: dict, work: Path, style: str = "one_take", log=prin
     raw = {"raw_duration": float(dur), "raw_input": lambda t0: ["-headers", f"Authorization: Bearer {token}\r\n",
                                                                  "-ss", f"{t0:.3f}", "-i", url]} if dur else {}
     from .state import load_config
-    from .watch import watcher
+    from .watch import cost, save_map, saved_map, watcher
+    # a recording watched before (by the bot or an earlier test) is not paid for again
     parts = find_parts(src, work / "parts", raw_duration=dur,
-                       watcher=watcher(raw.get("raw_input"), f["name"], load_config(), work, log=log))
+                       watcher=watcher(raw.get("raw_input"), f["name"], load_config(), work, log=log,
+                                       saved=saved_map(drive, f["id"])))
+    made = work / "parts" / f"{src.stem}_parts" / "edit_map.json"
+    if made.exists():
+        seen = json.loads(made.read_text())
+        if not seen.get("reused"):
+            log(f"Claude: {cost(seen) * 100:.0f} cents")
+            try:
+                save_map(drive, f["id"], made.read_text())
+            except Exception as e:  # noqa: BLE001
+                log(f"warn: couldn't save the edit map: {e}")
     reviews = []
     for k, part in enumerate(parts or [None]):
         out, res = make_variants(src, work / f"d{k}", [style], review_page=False, proxy=True, part=part,

@@ -44,6 +44,9 @@ class Runner(CommandsMixin, DriveMixin, InventoryMixin, NamingMixin, DropsMixin,
         self.clients = clients or {}          # platform -> API client (e.g. Instagram)
         self.drive = drive                    # Google Drive inbox / backups (optional)
         self.tz = ZoneInfo(config.get("timezone", "UTC"))
+        self.serving = False                  # always-on mode (see serve): answers between drawings
+        self.yield_now = lambda: False        # always-on mode: is it time to hand over to a new run?
+        self._full_at = 0.0
         owner = os.environ.get("TELEGRAM_OWNER_ID")
         if owner:
             state["owner_chat_id"] = int(owner)
@@ -84,10 +87,14 @@ class Runner(CommandsMixin, DriveMixin, InventoryMixin, NamingMixin, DropsMixin,
             else:
                 self.post_due()
             self.warn_low_bank()
-        self.check_drive_inbox()
-        self.storage_check()
-        self.refresh_stats()
-        self.weekly_report()
+        # always-on: Telegram is answered every few seconds, Drive is looked at every two minutes
+        import time as _time
+        if not self.serving or updates or _time.time() - self._full_at >= 120:
+            self._full_at = _time.time()
+            self.check_drive_inbox()
+            self.storage_check()
+            self.refresh_stats()
+            self.weekly_report()
         return (any(d["status"] == "queued" for d in self.state["drawings"].values())
                 or bool(self.state.get("compile_request")))
 
@@ -280,6 +287,8 @@ def run(phase: str) -> None:
             raise SystemExit("Drive isn't connected")
         runner.say(tidy.run(runner.drive, state))
         return
+    if phase == "serve":
+        return serve(runner, lambda: save(state))
     try:
         needs_render = False
         if phase in ("poll", "all"):
@@ -293,6 +302,87 @@ def run(phase: str) -> None:
         with open(out, "a") as f:
             f.write(f"render={'true' if needs_render else 'false'}\n")
     print(f"phase={phase} needs_render={needs_render}")
+
+
+def runs_waiting() -> int:
+    """How many runs of this workflow are queued behind this one on GitHub (a new version of the
+    code, a check you started, the safety timer). 0 anywhere else or when GitHub can't be asked."""
+    import json as _json
+    import urllib.request
+    repo, token = os.environ.get("GITHUB_REPOSITORY", ""), os.environ.get("GITHUB_TOKEN", "")
+    wf = os.environ.get("SERVE_WORKFLOW", "reels-bot.yml")
+    if not (repo and token):
+        return 0
+    n = 0
+    for status in ("queued", "pending"):
+        try:
+            req = urllib.request.Request(
+                f"https://api.github.com/repos/{repo}/actions/workflows/{wf}/runs?status={status}&per_page=1",
+                headers={"Authorization": f"Bearer {token}", "Accept": "application/vnd.github+json"})
+            with urllib.request.urlopen(req, timeout=20) as r:
+                n += int(_json.load(r).get("total_count", 0))
+        except Exception as e:  # noqa: BLE001 - asking is optional
+            print(f"warn: couldn't ask GitHub about waiting runs: {str(e)[:100]}")
+    return n
+
+
+def serve(runner: "Runner", save, minutes: float | None = None, waiting=runs_waiting, clock=None,
+          restart=None) -> None:
+    """Always-on mode: one long run that answers Telegram within seconds and renders whenever
+    there is work, with no per-run time limit. It hands over to a fresh run when one is waiting
+    (new code, a check, the safety timer) or after `minutes`, and starts its own successor when
+    nothing is waiting. Replies arrive between drawings while a render is going."""
+    import json as _json
+    import time as _time
+    clock = clock or _time.time
+    minutes = float(minutes if minutes is not None else os.environ.get("SERVE_MINUTES", 300))
+    end = clock() + minutes * 60
+    runner.serving = True
+    runner.bot.wait = 20                       # Telegram holds the request until something arrives
+    asked = {"at": clock(), "yes": False}
+
+    def handover() -> bool:
+        if clock() >= end:
+            return True
+        if not asked["yes"] and clock() - asked["at"] >= 60:
+            asked.update(at=clock(), yes=waiting() > 0)
+        return asked["yes"]
+
+    runner.yield_now = handover
+    saved = [_json.dumps(runner.state, sort_keys=True, default=str)]
+
+    def keep() -> None:
+        now_ = _json.dumps(runner.state, sort_keys=True, default=str)
+        if now_ != saved[0]:
+            save()
+            saved[0] = now_
+
+    failures = 0
+    print(f"serving for up to {minutes:.0f} min")
+    try:
+        while not handover():
+            try:
+                if runner.poll():
+                    keep()
+                    runner.render_all()
+                    runner.poll()
+                failures = 0
+            except Exception as e:  # noqa: BLE001 - a network blip must not stop the service
+                failures += 1
+                print(f"warn: {type(e).__name__}: {str(e)[:200]} ({failures} in a row)")
+                if failures >= 8:
+                    raise
+                _time.sleep(min(60, 5 * failures))
+            keep()
+    finally:
+        save()
+    if waiting() == 0:                         # nobody is taking over: start the next run ourselves
+        try:
+            (restart or (lambda: dispatch_workflow(os.environ.get("SERVE_WORKFLOW", "reels-bot.yml"),
+                                                   {"task": "run"})))()
+            print("started the next run")
+        except Exception as e:  # noqa: BLE001 - the safety timer starts one within two hours
+            print(f"warn: couldn't start the next run: {str(e)[:150]}")
 
 
 def make_drive(config: dict):
