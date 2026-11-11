@@ -2254,3 +2254,55 @@ class ReviewerGateTest(unittest.TestCase):
         self.assertFalse(r.held_back("d1", d, out, [{"name": "one_take"}]))
         self.assertEqual(d["status"], "queued")
         self.assertEqual(bot.texts(), [])
+
+
+class ServeTest(unittest.TestCase):
+    """Always-on mode: answers at once, renders when there is work, hands over cleanly."""
+
+    def runner(self):
+        from reels_ai import bot as botmod
+        bot, state = FakeBot(), fresh_state()
+        r = Runner(bot, state, load_config())
+        r.render_all = lambda: self.rendered.append(1)
+        self.rendered, self.saves, self.t = [], [], [0.0]
+        return botmod, bot, state, r
+
+    def test_answers_saves_only_changes_and_starts_its_successor(self):
+        botmod, bot, state, r = self.runner()
+        bot.push(**msg(OWNER, text="/status"))
+        polls = []
+        real = r.poll
+
+        def poll():
+            polls.append(1)
+            self.t[0] += 30                                  # each look at Telegram takes 30 s here
+            return real()
+        r.poll = poll
+        started = []
+        botmod.serve(r, lambda: self.saves.append(1), minutes=3, waiting=lambda: 0,
+                     clock=lambda: self.t[0], restart=lambda: started.append(1))
+        self.assertTrue(r.serving and bot.wait == 20)
+        self.assertEqual(len(polls), 6)                      # kept answering for the whole 3 minutes
+        self.assertTrue(any(k == "text" for k, *_ in bot.sent))
+        self.assertLessEqual(len(self.saves), 3)             # memory written when it changed, and at the end
+        self.assertEqual((self.rendered, started), ([], [1]))
+
+    def test_hands_over_when_a_newer_run_waits_and_survives_a_network_blip(self):
+        botmod, bot, state, r = self.runner()
+        calls = []
+
+        def poll():
+            calls.append(1)
+            self.t[0] += 40
+            if len(calls) == 1:
+                raise OSError("network down")
+            return False
+        r.poll = poll
+        started = []
+        from unittest import mock
+        with mock.patch("time.sleep"):
+            botmod.serve(r, lambda: None, minutes=300, waiting=lambda: 1 if self.t[0] >= 100 else 0,
+                         clock=lambda: self.t[0], restart=lambda: started.append(1))
+        self.assertGreaterEqual(len(calls), 2)               # went on after the blip
+        self.assertLess(self.t[0], 600)                      # stopped long before the 300 minutes
+        self.assertEqual(started, [])                        # the waiting run takes over: no extra start

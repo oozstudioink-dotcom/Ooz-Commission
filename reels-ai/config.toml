@@ -92,7 +92,7 @@ enabled = true
 # recordings as large as their vertical crop allows). Full-quality files go to Drive >
 # Done > Shorts and every drop links to them; Telegram gets 1080p previews (50 MB bot limit).
 resolution = "4k"
-max_render_minutes = 40          # per hourly run; the rest continues next run
+max_render_minutes = 40          # only for one-off runs; the always-on bot has no limit
 drop_guard_minutes = 20          # no new drawing is started this close to a drop time, so drops are never late
 
 [drive]

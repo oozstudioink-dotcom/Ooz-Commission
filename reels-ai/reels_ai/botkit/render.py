@@ -236,6 +236,16 @@ class RenderMixin:
         for did, d in self._queued_drawings():         # also picks up drawings a split page adds
             if d["status"] != "queued":
                 continue
+            if self.serving and done_now:              # always-on: answer Telegram between drawings
+                try:
+                    self.poll()
+                except Exception as e:  # noqa: BLE001 - answering must not stop the rendering
+                    print(f"warn: couldn't check Telegram between drawings: {str(e)[:150]}")
+                self.checkpoint()
+                if self.yield_now():                   # a new run is waiting: it picks up the rest
+                    return
+                if d["status"] != "queued":            # you deleted or changed it meanwhile
+                    continue
             if self.retired(d):                      # listed in [bank] retired: not made any more
                 d["status"] = "retired"
                 self.say(f"\U0001f4e6 Skipped {d.get('subject') or d.get('drive_name') or did}: it's on your "
@@ -246,7 +256,7 @@ class RenderMixin:
                 # a drop is due soon and runs go one at a time: stop here so it goes out on time
                 print(f"drop due in {wait:.0f} min: the remaining drawings continue on the next run")
                 return
-            if done_now and _time.time() - started > budget:
+            if done_now and not self.serving and _time.time() - started > budget:
                 left = sum(1 for x in self.state["drawings"].values() if x["status"] == "queued")
                 self.say(f"\u23f3 Rendered {done_now} drawing(s) this run; {left} more continue on the next run.")
                 return
