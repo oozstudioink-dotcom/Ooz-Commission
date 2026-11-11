@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import shutil
 import subprocess
 from pathlib import Path
 
@@ -46,6 +47,14 @@ def normalize(src: Path, dst: Path, keep_wide: bool = False, max_wide_h: int = 1
     speed = max(1.0, info["duration"] / MAX_WORK_SECONDS)
     tempo = f"setpts=PTS/{speed:.4f}," if speed > 1 else ""
 
+    # A working copy read from Drive is often already the right shape, rate and length. Encoding
+    # it again changes nothing and at 4K took a quarter of an hour: use it as it is.
+    wide = keep_wide and w / h > 9 / 16 + 0.01
+    fits = (wide and h <= max_wide_h) or (abs(w / h - 9 / 16) < 0.01 and w <= max_w)
+    if fits and speed == 1 and w % 2 == 0 and h % 2 == 0 and _plain_h264(src, w, h):
+        shutil.copyfile(src, dst)
+        return {"source_duration": info["duration"], "speedup": 1.0, "width": w, "height": h}
+
     if keep_wide and w / h > 9 / 16 + 0.01:
         out_h = min(max_wide_h, h)
         out_h -= out_h % 2
@@ -62,10 +71,27 @@ def normalize(src: Path, dst: Path, keep_wide: bool = False, max_wide_h: int = 1
               f"[b]scale={out_w}:-2:flags=lanczos[fg];[bg][fg]overlay=(W-w)/2:(H-h)/2,setsar=1")
     subprocess.run(
         ["ffmpeg", "-v", "error", "-y", "-i", str(src), "-an", "-vf", vf,
-         "-c:v", "libx264", "-crf", "14", "-preset", "fast", "-pix_fmt", "yuv420p", str(dst)],
+         "-c:v", "libx264", "-crf", "14", "-preset", "veryfast" if out_w * out_h > 2560 * 1440 else "fast",
+         "-pix_fmt", "yuv420p", str(dst)],
         check=True,
     )
     return {"source_duration": info["duration"], "speedup": speed, "width": out_w, "height": out_h}
+
+
+def _plain_h264(path: Path, w: int, h: int) -> bool:
+    """Is this file already 30 fps H.264 (yuv420p) stored upright at w x h?"""
+    try:
+        out = subprocess.run(
+            ["ffprobe", "-v", "error", "-select_streams", "v:0", "-show_entries",
+             "stream=codec_name,pix_fmt,width,height,r_frame_rate,avg_frame_rate", "-of", "json", str(path)],
+            check=True, capture_output=True, text=True).stdout
+        st = json.loads(out)["streams"][0]
+        n, d = (st.get("avg_frame_rate") or "0/1").split("/")
+        return (st.get("codec_name") == "h264" and st.get("pix_fmt") == "yuv420p"
+                and (int(st["width"]), int(st["height"])) == (w, h)
+                and st.get("r_frame_rate") == f"{FPS}/1" and abs(float(n) / max(float(d), 1) - FPS) < 0.05)
+    except (subprocess.CalledProcessError, ValueError, KeyError, IndexError):
+        return False
 
 
 def vertical_filter(src_w: int, src_h: int, xf: float, wf: float, ow: int, oh: int) -> str:
