@@ -109,6 +109,40 @@ class YouTube:
                  "published": i["contentDetails"].get("videoPublishedAt", "")}
                 for i in res.get("items", [])]
 
+    # ------------------------------------------------------------------ radar
+    def search_shorts(self, query: str, after: str, limit: int = 25) -> list[str]:
+        """Ids of the most-viewed short videos for a search, published after an RFC 3339 time."""
+        res = self._req("GET", f"{self.api}/search",
+                        {"part": "id", "type": "video", "videoDuration": "short", "order": "viewCount",
+                         "q": query, "publishedAfter": after, "maxResults": limit})
+        return [i["id"]["videoId"] for i in res.get("items", []) if i.get("id", {}).get("videoId")]
+
+    def videos(self, ids: list[str]) -> list[dict]:
+        out = []
+        for k in range(0, len(ids), 50):
+            res = self._req("GET", f"{self.api}/videos", {"part": "snippet,statistics,contentDetails",
+                                                          "id": ",".join(ids[k:k + 50])})
+            for v in res.get("items", []):
+                m = re.fullmatch(r"PT(?:(\d+)M)?(?:(\d+)S)?", v["contentDetails"].get("duration", ""))
+                out.append({"id": v["id"], "title": v["snippet"].get("title", ""),
+                            "tags": v["snippet"].get("tags", []), "channel": v["snippet"].get("channelTitle", ""),
+                            "views": int(v["statistics"].get("viewCount", 0)),
+                            "seconds": (int(m.group(1) or 0) * 60 + int(m.group(2) or 0)) if m else 999})
+        return out
+
+    def channel_comments(self, channel_id: str, limit: int = 100) -> list[dict]:
+        """The newest top-level comments on this channel's videos: [{author, text, likes, video}]."""
+        res = self._req("GET", f"{self.api}/commentThreads",
+                        {"part": "snippet", "allThreadsRelatedToChannelId": channel_id, "order": "time",
+                         "maxResults": min(100, limit), "textFormat": "plainText"})
+        out = []
+        for i in res.get("items", []):
+            c = i["snippet"]["topLevelComment"]["snippet"]
+            out.append({"author": c.get("authorDisplayName", ""), "text": c.get("textDisplay", ""),
+                        "likes": int(c.get("likeCount", 0)), "video": i["snippet"].get("videoId", ""),
+                        "own": c.get("authorChannelId", {}).get("value") == channel_id})
+        return out
+
     def insights(self, video_id: str, since: date | None = None) -> dict:
         start = since or date.today() - timedelta(days=90)
         res = self._req("GET", self.analytics_url, {

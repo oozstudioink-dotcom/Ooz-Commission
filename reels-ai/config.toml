@@ -34,7 +34,7 @@ per_drawing = 3                  # versions made from each drawing: one per plat
 # The "whole process" family: one locked view of the whole page, first line to last, no zooms,
 # wipes or cuts (the edits you liked best were one_take and reveal_first). Styles you can add back:
 # "process_cuts", "before_after", "detail_zoom", "ink_only".
-styles = ["one_take", "reveal_first", "rewind", "chapters", "last_lines", "speedrun"]
+styles = ["one_take", "reveal_first", "slow_open", "rewind", "chapters", "last_lines", "speedrun"]
 
 # method = "manual": at post time the bot sends you the finished video + caption to upload
 #                    (until the YouTube / Instagram API connections are set up)
@@ -86,6 +86,10 @@ whisper_model = "base"           # "small" hears better but takes about three ti
 # stretches, or another page in the video. One that fails is replaced by another style; if none
 # passes, the drawing is held and you get one message with the reason.
 enabled = true
+# look: Claude also looks at a few frames of each finished version and adds one line of opinion
+# to its message (framing, whole drawing visible, anything distracting). Advice only; about
+# 2 cents a drawing, counted in [watch] monthly_budget_usd.
+look = true
 
 [shorts]
 # "4k": recordings from the Drive inbox render at up to 2160x3840 (vertical 4K; landscape
@@ -155,3 +159,12 @@ model = "gemini-pro-latest"     # best quality; falls back to Flash when Pro is 
 [bank]
 warn_below_days = 3              # Telegram alert when the approved-video bank gets this low
 retired = ["Shinobi Undercover", "My Hero Academia"]  # used enough: never dropped or re-made again (matches name or file name)
+
+[radar]
+# What to draw next, sent every morning (and on /trends): the characters getting the most views
+# in this week's short drawing videos on YouTube, and the characters your viewers asked for in
+# comments. Name a recording after a requested character and the caption thanks whoever asked.
+enabled = true
+hour = 9                         # your time; sent on the first check after this hour
+days = 7                         # how far back "this week" looks
+queries = ["anime drawing", "manga drawing", "speed drawing anime"]

@@ -128,16 +128,40 @@ class RenderMixin:
         from ..watch import cost, save_map
         if seen.get("reused"):
             return
-        spent = self.state.setdefault("claude_spend", {})
-        month = time.strftime("%Y-%m")
-        spent[month] = round(spent.get(month, 0.0) + cost(seen), 4)
-        print(f"Claude: {cost(seen) * 100:.0f} cents for this recording, ${spent[month]:.2f} this month")
+        print(f"Claude: {cost(seen) * 100:.0f} cents for this recording, ${self.spend(cost(seen)):.2f} this month")
         if not (self.drive and d.get("drive_id")):
             return
         try:
             save_map(self.drive, d["drive_id"], path.read_text())
         except Exception as e:  # noqa: BLE001 - the map is a record; rendering goes on without it
             print(f"warn: couldn't save the edit map: {e}")
+
+    def spend(self, dollars: float) -> float:
+        """Count Claude spending for this month; returns the month's total."""
+        spent = self.state.setdefault("claude_spend", {})
+        month = time.strftime("%Y-%m")
+        spent[month] = round(spent.get(month, 0.0) + dollars, 4)
+        return spent[month]
+
+    def look_over(self, out_dir: Path, results: list[dict]) -> None:
+        """Claude looks at a few frames of each finished version and adds one line of opinion to
+        its message ([review] look). Advice only: you still decide. About 2 cents a drawing."""
+        from .. import eyes
+        from ..watch import cost
+        if not self.cfg.get("review", {}).get("look", True) or not eyes.available() or self.claude_over_budget():
+            return
+        try:
+            vids = [(r["name"], eyes.stills(out_dir / r["file"])) for r in results]
+            seen = eyes.judge([v for v in vids if v[1]], model=self.cfg.get("watch", {}).get("model", eyes.MODEL))
+            total = self.spend(cost(seen))
+            print(f"look: {cost(seen) * 100:.1f} cents, ${total:.2f} this month")
+            notes = {v["name"]: v for v in seen.get("videos", [])}
+            for r in results:
+                v = notes.get(r["name"])
+                if v:
+                    r["look"] = ("\U0001f441 Looks good: " if v["keep"] else "\U0001f441 Check this one: ") + v["note"][:160]
+        except Exception as e:  # noqa: BLE001 - an opinion is a bonus; the videos go out without it
+            print(f"warn: couldn't look over the videos: {str(e)[:150]}")
 
     def claude_over_budget(self) -> bool:
         """Has this month's Claude spending reached [watch] monthly_budget_usd? Told once a month."""
@@ -310,6 +334,8 @@ class RenderMixin:
                     self.checkpoint()
                     continue
                 d["beats"] = self.beats_summary(out_dir, results)
+                self.look_over(out_dir, results)
+                self.credit_request(d, results)
                 self.send_pages_sheet(d, out_dir)
                 links = {}
                 if d.get("source") == "drive" and self.drive:
@@ -345,6 +371,8 @@ class RenderMixin:
                     text = (f"\U0001f3ac {STYLE_LABELS[r['name']]} · {r['seconds']:.0f}s · {vid}"
                     f"{' · drawing ' + d['part']['label'] if d.get('part') else ''}\n"
                             f"Hook: “{r['hook']}”\n\n{r['caption']}\n\n{note}")
+                    if r.get("look"):
+                        text += f"\n{r['look']}"
                     if links.get(r["name"]):
                         text += f"\n\U0001f39e Full quality: {links[r['name']]}"
                     sent = self.bot.send_video(

@@ -154,3 +154,62 @@ def look(frames: list[tuple[float, bytes]], transcript_text: str, file_name: str
     out["model"] = msg.model
     out["tokens"] = {"in": msg.usage.input_tokens, "out": msg.usage.output_tokens}
     return out
+
+
+JUDGE_SYSTEM = """You check finished vertical short videos of one hand-drawn artwork before the \
+artist sees them. For each video you get a few frames in time order (the last one is the final \
+frame). Judge only what a viewer would notice: is the whole drawing inside the frame at the end \
+(not cut off at an edge, not tiny in a mostly empty frame), is it clearly the same drawing \
+throughout, does the drawing visibly progress, is anything distracting (another page, a big \
+blank area, on-screen text covering the drawing). Be strict but fair: a hand over the page while \
+drawing is normal. Give each video keep=true or false and one short plain sentence a busy artist \
+can act on. Do not name characters."""
+
+JUDGE_SCHEMA = {"type": "object", "additionalProperties": False, "required": ["videos"], "properties": {
+    "videos": {"type": "array", "items": {
+        "type": "object", "additionalProperties": False, "required": ["name", "keep", "note"],
+        "properties": {"name": {"type": "string"}, "keep": {"type": "boolean"}, "note": {"type": "string"}}}}}}
+
+
+def stills(path, n: int = 4, long_side: int = 384) -> list[bytes]:
+    """A few small frames of a finished video, in order, ending on its last frame."""
+    cap = cv2.VideoCapture(str(path))
+    total = int(cap.get(cv2.CAP_PROP_FRAME_COUNT) or 0)
+    out = []
+    for i in ([int(total * f) for f in np.linspace(0.08, 0.8, n - 1)] + [max(0, total - 3)]) if total > 4 else []:
+        cap.set(cv2.CAP_PROP_POS_FRAMES, i)
+        ok, img = cap.read()
+        if not ok:
+            continue
+        h, w = img.shape[:2]
+        k = long_side / max(h, w)
+        ok, buf = cv2.imencode(".jpg", cv2.resize(img, (int(w * k), int(h * k)), interpolation=cv2.INTER_AREA),
+                               [cv2.IMWRITE_JPEG_QUALITY, 75])
+        if ok:
+            out.append(buf.tobytes())
+    cap.release()
+    return out
+
+
+def judge(videos: list[tuple[str, list[bytes]]], client=None, model: str = MODEL) -> dict:
+    """One look at every version of a drawing: {"videos": [{"name", "keep", "note"}], "tokens"}."""
+    import anthropic
+    client = client or anthropic.Anthropic()
+    content: list[dict] = []
+    for name, frames in videos:
+        content.append({"type": "text", "text": f"Video \"{name}\": {len(frames)} frames"})
+        content += [{"type": "image", "source": {"type": "base64", "media_type": "image/jpeg",
+                                                 "data": base64.standard_b64encode(j).decode("utf-8")}} for j in frames]
+    content.append({"type": "text", "text": "Judge each video by its name."})
+    with client.beta.messages.stream(
+        model=model, max_tokens=2000, system=JUDGE_SYSTEM,
+        betas=["server-side-fallback-2026-07-01"], fallbacks="default",
+        output_config={"effort": "low", "format": {"type": "json_schema", "schema": JUDGE_SCHEMA}},
+        messages=[{"role": "user", "content": content}],
+    ) as stream:
+        msg = stream.get_final_message()
+    if msg.stop_reason in ("refusal", "max_tokens"):
+        raise RuntimeError(f"Claude gave no verdict ({msg.stop_reason})")
+    out = json.loads(next(b.text for b in msg.content if b.type == "text"))
+    out["tokens"] = {"in": msg.usage.input_tokens, "out": msg.usage.output_tokens}
+    return out

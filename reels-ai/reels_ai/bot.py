@@ -95,6 +95,7 @@ class Runner(CommandsMixin, DriveMixin, InventoryMixin, NamingMixin, DropsMixin,
             self.storage_check()
             self.refresh_stats()
             self.weekly_report()
+            self.trend_radar()
         return (any(d["status"] == "queued" for d in self.state["drawings"].values())
                 or bool(self.state.get("compile_request")))
 
@@ -165,6 +166,8 @@ class Runner(CommandsMixin, DriveMixin, InventoryMixin, NamingMixin, DropsMixin,
             self.clear_chat(int(m.get("message_id") or 0))
         elif cmd == "/id":
             self.say(f"Your chat ID: {chat['id']}\n(For the commission-alerts script's TELEGRAM_CHAT_ID.)")
+        elif cmd in ("/trends", "/radar"):
+            self.send_radar()
         elif cmd == "/report":
             self.state["report_request"] = True
             self.send_report()

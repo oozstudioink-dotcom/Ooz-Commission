@@ -108,6 +108,25 @@ class EditMapTest(unittest.TestCase):
             with self.assertRaises(RuntimeError):                 # another length: not this recording
                 run(Frames([None] * 100), 0.5)
 
+    def test_finished_videos_get_one_line_of_opinion_and_the_cost_is_counted(self):
+        from reels_ai.bot import Runner
+        from reels_ai.state import load_config
+        from tests.test_bot import FakeBot, fresh_state
+        r = Runner(FakeBot(), fresh_state(), load_config())
+        results = [{"name": "one_take", "file": "a.mp4"}, {"name": "rewind", "file": "b.mp4"}]
+        verdict = {"videos": [{"name": "one_take", "keep": True, "note": "whole drawing in frame"},
+                              {"name": "rewind", "keep": False, "note": "the drawing is cut off on the left"}],
+                   "tokens": {"in": 3000, "out": 200}}
+        with mock.patch.dict(os.environ, {"ANTHROPIC_API_KEY": "k"}), \
+                mock.patch.object(eyes, "stills", return_value=[b"jpg"]), \
+                mock.patch.object(eyes, "judge", return_value=verdict):
+            r.look_over(Path("."), results)
+        self.assertIn("Looks good", results[0]["look"])
+        self.assertIn("Check this one: the drawing is cut off", results[1]["look"])
+        self.assertAlmostEqual(sum(r.state["claude_spend"].values()), 0.016)
+        with mock.patch.dict(os.environ, {"ANTHROPIC_API_KEY": ""}):       # no key: nothing asked, no crash
+            r.look_over(Path("."), [{"name": "x", "file": "x.mp4"}])
+
 
 class AskClaudeTest(unittest.TestCase):
     """The request itself: right model, structured answer, fallback on, refusals not swallowed."""

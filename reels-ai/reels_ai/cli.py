@@ -9,7 +9,7 @@ import argparse
 from pathlib import Path
 
 STYLES = ["reveal_first", "speedrun", "before_after", "detail_zoom", "ink_only", "process_cuts", "one_take",
-          "rewind", "chapters", "last_lines"]
+          "rewind", "chapters", "last_lines", "slow_open"]
 
 
 def make(args: argparse.Namespace) -> None:

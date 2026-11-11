@@ -20,7 +20,7 @@ from .media import (FPS, FrameStore, PageMatcher, choose_page, contact_sheet, cr
 from .variants import CUT_SECONDS, RECIPES, build, pick_moments, render
 
 # what replaces a style that can't be made or fails the reviewer: the whole-process family first
-FALLBACK_ORDER = ["one_take", "reveal_first", "last_lines", "chapters", "rewind", "speedrun", "ink_only",
+FALLBACK_ORDER = ["one_take", "reveal_first", "slow_open", "last_lines", "chapters", "rewind", "speedrun", "ink_only",
                   "detail_zoom", "before_after"]
 
 

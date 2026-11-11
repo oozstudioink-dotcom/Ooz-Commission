@@ -20,6 +20,68 @@ from .common import (  # noqa: F401
 
 
 class PostingMixin:
+    # ------------------------------------------------------------------ what to draw next
+    def trend_radar(self) -> None:
+        """Once a day after [radar] hour (your time): what is getting views and what was asked for."""
+        rc = self.cfg.get("radar", {})
+        lt = self.local(self.clock())
+        day = lt.strftime("%Y-%m-%d")
+        if (not rc.get("enabled", True) or "youtube" not in self.clients or lt.hour < int(rc.get("hour", 9))
+                or self.state.get("radar_day") == day):
+            return
+        self.state["radar_day"] = day
+        self.send_radar(quiet=True)
+
+    def send_radar(self, quiet: bool = False) -> None:
+        from .. import eyes, radar
+        from ..watch import cost
+        yt = self.clients.get("youtube")
+        if not yt:
+            return None if quiet else self.say("\U0001f4c8 The trend radar needs the YouTube connection.")
+        rc = self.cfg.get("radar", {})
+        try:
+            videos = radar.gather(yt, rc.get("queries", ["anime drawing", "manga drawing", "speed drawing anime"]),
+                                  self.clock(), int(rc.get("days", 7)))[:40]
+        except Exception as e:  # noqa: BLE001
+            print(f"warn: radar: {str(e)[:200]}")
+            return None if quiet else self.say(f"\U0001f4c8 Couldn't read YouTube's trends: {str(e)[:150]}")
+        comments = []
+        try:
+            me = self.state.setdefault("yt_channel", {}).get("id") or yt.whoami()["id"]
+            self.state["yt_channel"]["id"] = me
+            comments = [c for c in yt.channel_comments(me) if not c["own"]]
+        except Exception as e:  # noqa: BLE001 - comments need one more YouTube permission; trends still go out
+            print(f"warn: radar comments: {str(e)[:200]}")
+        named = None
+        if eyes.available() and not self.claude_over_budget():
+            try:
+                named = radar.read_names(videos, comments, model=self.cfg.get("watch", {}).get("model", eyes.MODEL))
+                print(f"radar: {cost(named) * 100:.1f} cents, ${self.spend(cost(named)):.2f} this month")
+            except Exception as e:  # noqa: BLE001 - count hashtags instead
+                print(f"warn: radar names: {str(e)[:150]}")
+        if named is None:
+            named = {"trending": radar.by_hashtags(videos), "requests": radar.by_phrases(comments)}
+        since = self.clock() - timedelta(days=14)
+        def recent(d: dict) -> bool:
+            try:
+                return parse(d["created"]) >= since
+            except Exception:  # noqa: BLE001 - no date: count it as recent
+                return True
+        drawn = {radar._key(d.get("subject")) for d in self.state["drawings"].values()
+                 if d.get("subject") and recent(d)}
+        asked = radar.rank_requests(named["requests"], comments)
+        self.state["requests"] = {radar._key(r["name"]): {"name": r["name"], "by": r["first"]} for r in asked}
+        self.say(radar.message(radar.rank_trending(named["trending"], videos, drawn), asked))
+
+    def credit_request(self, d: dict, results: list[dict]) -> None:
+        """A drawing named after something a viewer asked for: thank them in the caption."""
+        from ..radar import _key
+        r = self.state.get("requests", {}).get(_key(d.get("subject")))
+        if not r or not d.get("subject"):
+            return
+        for x in results:
+            x["caption"] = f"Requested by {r['by']} \U0001f64f Who should I draw next?\n{x['caption']}"
+
     # ------------------------------------------------------------------ reports
     def weekly_report(self) -> None:
         """Sunday after 10 AM, once a week, when at least one platform is connected."""
