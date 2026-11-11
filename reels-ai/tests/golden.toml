@@ -1,0 +1,18 @@
+# The test set: real recordings in Drive and what the editor must make of them.
+# The recordings stay in Drive (nothing of yours is stored in this repo); only their names and
+# the right answers are written here. Before an editing change is merged, the "test-set" workflow
+# runs the editor on every recording below and compares.
+#
+# name      part of the file name in Drive (spaces, +, _ and capitals don't matter)
+# drawings  how many separate drawings the recording holds (1 = one drawing, one set of Shorts)
+# minutes   optional: when each drawing was made, [[start, end], ...] in minutes of the recording
+# pass      "all" (default): every drawing must give Shorts that pass the reviewer
+# note      anything worth remembering about this recording
+
+[[recording]]
+name = "Lets Go LIVE"
+drawings = 3
+note = """TikTok livestream, 35 min, Deku page with three drawings (head close-up top left, Deku
+looking back bottom left, Deku landing on the right). Flips to finished Shinobi Undercover and
+Naruto pages during the stream; those must never appear. On 2026-11-10 the editor found 5
+drawings here (two of them the same minutes), so this one is expected to fail until that is fixed."""

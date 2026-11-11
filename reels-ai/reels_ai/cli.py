@@ -30,6 +30,12 @@ def longform(args: argparse.Namespace) -> None:
     run(args.project)
 
 
+def testset(args: argparse.Namespace) -> None:
+    from .golden import run
+
+    raise SystemExit(run(args.only or ""))
+
+
 def main() -> None:
     ap = argparse.ArgumentParser(prog="reels_ai")
     sub = ap.add_subparsers(dest="cmd", required=True)
@@ -50,5 +56,8 @@ def main() -> None:
     lf = sub.add_parser("longform", help="build a LongDraw from Drive > Longform > PROJECT")
     lf.add_argument("--project", required=True)
     lf.set_defaults(func=longform)
+    ts = sub.add_parser("testset", help="run the editor on the real recordings in tests/golden.toml and compare")
+    ts.add_argument("--only", help="just the recordings whose name contains this")
+    ts.set_defaults(func=testset)
     args = ap.parse_args()
     args.func(args)
