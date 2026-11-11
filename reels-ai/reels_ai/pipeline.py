@@ -227,7 +227,7 @@ def _frames(c: dict) -> FrameStore:
 
 
 def _one_page(src: Path, out_dir: Path, max_width: int, window: list | None = None,
-              scale: float = 1.0, ref_time: float | None = None) -> Page:
+              scale: float = 1.0, ref_time: float | None = None, span: tuple | None = None) -> Page:
     """Working copy of the recording, cut to the one page that was drawn on.
 
     The page is RECOGNISED in every frame (PageMatcher): frames of other pages, flips and other
@@ -279,8 +279,15 @@ def _one_page(src: Path, out_dir: Path, max_width: int, window: list | None = No
             norm["page_frames"] = len(keep)
             norm["page_view_ref"] = round(ref * dt, 1)
         else:
-            print("page recognition found too little; using the drawn stretch as is")
             matcher, others = None, []
+            if span:                                       # a drawing with known times: use those
+                first = int(max(lo, min(hi - 1, span[0] / dt)))
+                last = int(max(first + 1, min(hi, span[1] / dt)))
+                keep = list(range(first, last + 1))
+                print(f"page recognition found too little; using the drawing's own minutes "
+                      f"({span[0] / 60:.1f}-{span[1] / 60:.1f})")
+            else:
+                print("page recognition found too little; using the drawn stretch as is")
     if matcher is None and (first, last) != (0, n - 1):
         trim(c["full"], out_dir / "work_page.mp4", first, last)
     full_store = store
@@ -411,7 +418,8 @@ def make_variants(src: Path, out_root: Path, names: list[str] | None = None, see
     from .media import probe
     src_s = probe(src)["duration"]
     pg = _one_page(src, out_dir, max_width, window, (raw_duration or src_s) / max(src_s, 1e-6),
-                   ref_time=(part or {}).get("ref_t"))
+                   ref_time=(part or {}).get("ref_t"),
+                   span=(part["t0"], part["t1"]) if part else None)
     work, store, norm = pg.work, pg.store, pg.norm
     total = raw_duration or norm["source_duration"]
     scale = total / max(norm["source_duration"], 1e-6)

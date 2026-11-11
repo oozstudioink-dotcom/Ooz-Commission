@@ -191,3 +191,31 @@ class EarsTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class EarsDecodeTest(unittest.TestCase):
+    def test_sound_is_read_without_the_librarys_file_reader(self):
+        """transcribe() hands Whisper the samples themselves (its own file reader crashed on GitHub)."""
+        import sys
+        import wave
+        got = {}
+
+        class FakeModel:
+            def __init__(self, *a, **k):
+                pass
+
+            def transcribe(self, audio, **kw):
+                got["audio"] = audio
+                return iter([SimpleNamespace(start=1.0, end=2.5, text=" this is Deku landing ")]), None
+
+        tmp = Path(tempfile.mkdtemp()) / "a.wav"
+        with wave.open(str(tmp), "wb") as w:
+            w.setnchannels(1)
+            w.setsampwidth(2)
+            w.setframerate(16000)
+            w.writeframes((np.sin(np.arange(16000) / 20) * 8000).astype(np.int16).tobytes())
+        with mock.patch.dict(sys.modules, {"faster_whisper": SimpleNamespace(WhisperModel=FakeModel)}):
+            lines = ears.transcribe(tmp)
+        self.assertEqual(lines, [{"t0": 1.0, "t1": 2.5, "text": "this is Deku landing"}])
+        self.assertEqual((got["audio"].dtype, len(got["audio"])), (np.float32, 16000))
+        self.assertLessEqual(float(np.abs(got["audio"]).max()), 1.0)

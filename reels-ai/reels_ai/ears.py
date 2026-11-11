@@ -27,8 +27,15 @@ def pull_audio(raw_input, dst: Path, timeout: int = 1500) -> Path | None:
 def transcribe(audio: Path, model: str = "base") -> list[dict]:
     """[{"t0", "t1", "text"}] in recording seconds. Silence is skipped."""
     from faster_whisper import WhisperModel            # heavy import: only when there is sound
+    import wave
+
+    import numpy as np
+    # read the sound ourselves (pull_audio wrote 16 kHz mono 16-bit): the library's own file
+    # reader breaks with some versions of its decoder
+    with wave.open(str(audio), "rb") as w:
+        samples = np.frombuffer(w.readframes(w.getnframes()), dtype=np.int16).astype(np.float32) / 32768.0
     wm = WhisperModel(model, device="cpu", compute_type="int8")
-    segments, _ = wm.transcribe(str(audio), vad_filter=True, beam_size=1)
+    segments, _ = wm.transcribe(samples, vad_filter=True, beam_size=1)
     out = []
     for s in segments:
         text = (s.text or "").strip()
