@@ -235,3 +235,34 @@ Tests: `python -m unittest discover -s tests` (add `REELS_TEST_VIDEO=clip.mov` f
 3. YouTube: ~~Analytics stats + API upload~~ (secrets `YT_CLIENT_ID`, `YT_CLIENT_SECRET`, `YT_REFRESH_TOKEN`; uploads stay private until Google's API audit is approved)
 4. Instagram: ~~stats + Reels-tab posting~~ (set `method = "api"` after `Run workflow` → task `check` passes); trial reels once the account has 200 followers
 5. Learning: ~~styles that average more views (weekly report, 2+ matched posts) are made more often~~; hooks next
+
+## How the code is organised
+
+```
+reels_ai/
+  bot.py            the bot's entry point: reads Telegram, hands each job to a part below
+  botkit/           the bot, in parts
+    commands.py       /redo, /retire, /ideas, /clear, /longform
+    drive_inbox.py    recordings coming in from Drive and Telegram
+    naming.py         asking what an unnamed recording is
+    inventory.py      /inventory and /delete
+    drops.py          the bank and the daily drops
+    posting.py        posting to platforms, stats, reports
+    learning.py       which styles to make (ratings, views, AI copy)
+    render.py         queued recordings -> watched, split, rendered, reviewed, sent
+    connect.py        the connection check, TikTok sign-in
+    common.py         labels, buttons, small helpers
+  ears.py  eyes.py  watch.py     what was said, what is on screen, the edit map
+  media.py  analyze.py           measurements: page changes, ink, page recognition
+  pipeline.py  variants.py  fx.py   the editor: plans and renders each style
+  review.py         the reviewer every Short passes before it is sent
+  golden.py         the test set runner (tests/golden.toml)
+  memory.py  state.py            the bot's memory
+  longform*.py  panels.py  thumbnail.py  advert.py   LongDraw videos
+  drive.py  telegram.py  youtube.py  instagram.py  tiktok.py   connections
+```
+
+The bot's memory lives in Drive > Ooz Reels > Bot memory: `state.json` (everything it knows),
+`Backups/` (one copy per day) and `Edit maps/` (what was seen and heard in each recording).
+A damaged `state.json` is restored from the newest good backup, and a save that would lose most
+of the memory is refused.
