@@ -60,13 +60,8 @@ def final_frame(video: Path, dst: Path) -> Path | None:
         return None
 
 
-def write_copy(image: Path, subject: str | None, styles: list[str], api_key: str, pencil: bool | None = None,
-               model: str = DEFAULT_MODEL, endpoint: str = ENDPOINT, timeout: int = 120) -> dict | None:
-    key = re.sub(r"\s+", "", api_key or "")
-    if not key or not image:
-        return None
-    styles = [s for s in styles if s in STYLE_BRIEFS]
-    prompt = PROMPT.format(
+def _prompt(subject: str | None, styles: list[str], pencil: bool | None) -> str:
+    return PROMPT.format(
         pencil_fact=("the artist sketched in pencil first, then inked" if pencil is True else
                      "the artist went straight to ink with no pencil sketch" if pencil is False else
                      "don't say whether a pencil sketch was used"),
@@ -76,6 +71,53 @@ def write_copy(image: Path, subject: str | None, styles: list[str], api_key: str
                       "character or series anywhere (hooks, caption, hashtags); keep everything generic "
                       "about the drawing and the inking."),
         styles="\n".join(f"   - {s}: {STYLE_BRIEFS[s]}" for s in styles))
+
+
+def write_copy_claude(image: Path, subject: str | None, styles: list[str], pencil: bool | None = None,
+                      model: str = "claude-opus-5-5", client=None) -> dict | None:
+    """Hooks, caption and hashtags written by Claude from the finished drawing (about a cent).
+    Returns the cleaned copy with "tokens", or None (the caller falls back)."""
+    styles = [s for s in styles if s in STYLE_BRIEFS]
+    if not image or not styles:
+        return None
+    schema = {"type": "object", "additionalProperties": False,
+              "required": ["subject", "hooks", "caption", "hashtags"], "properties": {
+                  "subject": {"type": "string"},
+                  "hooks": {"type": "object", "additionalProperties": False, "required": styles,
+                            "properties": {s: {"type": "string"} for s in styles}},
+                  "caption": {"type": "string"},
+                  "hashtags": {"type": "array", "items": {"type": "string"}}}}
+    try:
+        import anthropic
+        client = client or anthropic.Anthropic()
+        with client.beta.messages.stream(
+            model=model, max_tokens=1500,
+            betas=["server-side-fallback-2026-07-01"], fallbacks="default",
+            output_config={"effort": "low", "format": {"type": "json_schema", "schema": schema}},
+            messages=[{"role": "user", "content": [
+                {"type": "image", "source": {"type": "base64", "media_type": "image/jpeg",
+                                             "data": base64.b64encode(Path(image).read_bytes()).decode()}},
+                {"type": "text", "text": _prompt(subject, styles, pencil)}]}],
+        ) as stream:
+            msg = stream.get_final_message()
+        if msg.stop_reason in ("refusal", "max_tokens"):
+            raise ValueError(f"no answer ({msg.stop_reason})")
+        out = clean(json.loads(next(b.text for b in msg.content if b.type == "text")), styles)
+    except Exception as e:  # noqa: BLE001 - captions are never worth stopping a render for
+        print(f"warn: Claude copy failed: {str(e)[:160]}")
+        return None
+    if out:
+        out["tokens"] = {"in": msg.usage.input_tokens, "out": msg.usage.output_tokens}
+    return out
+
+
+def write_copy(image: Path, subject: str | None, styles: list[str], api_key: str, pencil: bool | None = None,
+               model: str = DEFAULT_MODEL, endpoint: str = ENDPOINT, timeout: int = 120) -> dict | None:
+    key = re.sub(r"\s+", "", api_key or "")
+    if not key or not image:
+        return None
+    styles = [s for s in styles if s in STYLE_BRIEFS]
+    prompt = _prompt(subject, styles, pencil)
     body = {
         "contents": [{"parts": [
             {"text": prompt},

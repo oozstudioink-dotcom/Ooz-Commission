@@ -151,10 +151,12 @@ offer = ["FIRST 10 CLIENTS", "50% OFF"]
 
 
 [ai]
-# Hooks + captions written by Google Gemini when the GEMINI_API_KEY secret is set
-# (free key: aistudio.google.com -> Get API key). Without a key the built-in hooks are used.
+# Hooks, captions and hashtags. writer = "claude": Claude writes them from the finished drawing
+# (about a cent a drawing, counted in [watch] monthly_budget_usd). If Claude can't (no key, the
+# monthly limit, a failure) Gemini is tried when its key is set, and the built-in hooks after that.
 enabled = true
-model = "gemini-pro-latest"     # best quality; falls back to Flash when Pro is busy or not on the key
+writer = "claude"                # or "gemini"
+model = "gemini-pro-latest"     # the Gemini model used as the fallback
 
 [bank]
 warn_below_days = 3              # Telegram alert when the approved-video bank gets this low

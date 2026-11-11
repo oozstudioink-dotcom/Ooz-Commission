@@ -22,14 +22,27 @@ from .common import (  # noqa: F401
 class LearningMixin:
     # ------------------------------------------------------------------ AI copy
     def ai_copy(self, src: Path, d: dict, styles: list[str], tmp: Path) -> dict | None:
-        """Gemini-written hooks + caption when GEMINI_API_KEY is set; None -> templates."""
-        key = os.environ.get("GEMINI_API_KEY", "").strip()
-        if not key or self.cfg.get("ai", {}).get("enabled", True) is False:
+        """Hooks + caption written by Claude ([ai] writer = "claude", about a cent a drawing);
+        Gemini when Claude can't (no key, monthly limit reached, a failure); None -> templates."""
+        ac = self.cfg.get("ai", {})
+        if ac.get("enabled", True) is False:
             return None
-        from ..ai import DEFAULT_MODEL, final_frame, write_copy
+        from .. import eyes
+        from ..ai import DEFAULT_MODEL, final_frame, write_copy, write_copy_claude
+        from ..watch import cost
         frame = final_frame(src, tmp / "final.jpg")
-        from ..ai import candidate_models
         copy = None
+        if ac.get("writer", "claude") == "claude" and eyes.available() and not self.claude_over_budget():
+            copy = write_copy_claude(frame, d.get("subject"), styles,
+                                     model=self.cfg.get("watch", {}).get("model", eyes.MODEL))
+            if copy:
+                used = {"tokens": copy.pop("tokens", {})}
+                print(f"captions by Claude: {cost(used) * 100:.1f} cents, ${self.spend(cost(used)):.2f} this month")
+                return copy if d.get("subject") else strip_guessed_names(copy)
+        key = os.environ.get("GEMINI_API_KEY", "").strip()
+        if not key:
+            return None
+        from ..ai import candidate_models
         wanted = self.cfg.get("ai", {}).get("model", DEFAULT_MODEL)
         for model in candidate_models(key, wanted, self.state.get("ai_model"), limit=3):
             copy = write_copy(frame, d.get("subject"), styles, key, model=model)
