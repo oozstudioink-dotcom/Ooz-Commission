@@ -112,10 +112,11 @@ class YouTube:
                 for i in res.get("items", [])]
 
     # ------------------------------------------------------------------ radar
-    def search_shorts(self, query: str, after: str, limit: int = 25) -> list[str]:
-        """Ids of the most-viewed short videos for a search, published after an RFC 3339 time."""
+    def search_shorts(self, query: str, after: str, limit: int = 25, duration: str = "short") -> list[str]:
+        """Ids of the most-viewed videos for a search, published after an RFC 3339 time.
+        duration: "short" (under 4 min), "medium" (4-20 min) or "long"."""
         res = self._req("GET", f"{self.api}/search",
-                        {"part": "id", "type": "video", "videoDuration": "short", "order": "viewCount",
+                        {"part": "id", "type": "video", "videoDuration": duration, "order": "viewCount",
                          "q": query, "publishedAfter": after, "maxResults": limit})
         return [i["id"]["videoId"] for i in res.get("items", []) if i.get("id", {}).get("videoId")]
 

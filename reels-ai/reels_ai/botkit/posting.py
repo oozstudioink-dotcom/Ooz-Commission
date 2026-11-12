@@ -53,10 +53,12 @@ class PostingMixin:
         except Exception as e:  # noqa: BLE001 - comments need one more YouTube permission; trends still go out
             print(f"warn: radar comments: {str(e)[:200]}")
         named = None
-        if eyes.available() and not self.claude_over_budget():
+        route = self.route("radar")
+        if route:
             try:
-                named = radar.read_names(videos, comments, model=self.cfg.get("watch", {}).get("model", eyes.MODEL))
-                print(f"radar: {cost(named) * 100:.1f} cents, ${self.spend(cost(named)):.2f} this month")
+                named = radar.read_names(videos, comments, model=self.cfg.get("watch", {}).get("model", eyes.MODEL),
+                                         route=route)
+                print(f"radar by {named.get('by')}: {cost(named) * 100:.1f} cents, ${self.spend(cost(named)):.2f} this month")
             except Exception as e:  # noqa: BLE001 - count hashtags instead
                 print(f"warn: radar names: {str(e)[:150]}")
         if named is None:

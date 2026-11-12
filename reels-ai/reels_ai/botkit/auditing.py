@@ -39,6 +39,17 @@ class AuditMixin:
         from .. import eyes
         return eyes.available() and not self.claude_over_budget()
 
+    def route(self, job: str) -> dict | None:
+        """Which model does a routine job: [ai] gemini_first lists the jobs Gemini's free tier
+        tries first (Claude only if it fails). None when no model can be asked at all."""
+        import os
+        key = os.environ.get("GEMINI_API_KEY", "").strip()
+        first = "gemini" if key and job in self.cfg.get("ai", {}).get("gemini_first", []) else "claude"
+        claude = self._claude_ok()
+        if not claude and not key:
+            return None
+        return {"first": first, "gemini_key": key, "claude": claude}
+
     def send_audit(self, quiet: bool = False) -> None:
         from .. import audit
         from ..watch import cost
@@ -121,10 +132,12 @@ class AuditMixin:
         styles = [s for s in self.cfg["variants"]["styles"] if s in STYLE_LABELS]
         days = audit.plan_days(self.local(self.clock()))
         plan = None
-        if (trending or requests) and self._claude_ok():
+        route = self.route("calendar")
+        if (trending or requests) and route:
             try:
-                got = audit.plan(days, trending, requests, self.state.get("audit_best", []), styles, self._model())
-                print(f"calendar: {cost(got) * 100:.1f} cents, ${self.spend(cost(got)):.2f} this month")
+                got = audit.plan(days, trending, requests, self.state.get("audit_best", []), styles, self._model(),
+                                 route=route)
+                print(f"calendar by {got.get('by')}: {cost(got) * 100:.1f} cents, ${self.spend(cost(got)):.2f} this month")
                 known = {x["name"].lower() for x in trending + requests}
                 plan = [d for d in got.get("days", []) if d.get("character", "").lower() in known][:7]
             except Exception as e:  # noqa: BLE001 - the simple plan goes out instead

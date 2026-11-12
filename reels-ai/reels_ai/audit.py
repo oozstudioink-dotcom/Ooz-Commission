@@ -117,21 +117,10 @@ def report(measured: list[dict], words: dict | None = None) -> str:
     return "\n".join(lines)
 
 
-def _ask(system: str, schema: dict, text: str, model: str, client=None, max_tokens: int = 6000) -> dict:
-    import anthropic
-    client = client or anthropic.Anthropic()
-    with client.beta.messages.stream(
-        model=model, max_tokens=max_tokens, system=system,
-        betas=["server-side-fallback-2026-07-01"], fallbacks="default",
-        output_config={"effort": "medium", "format": {"type": "json_schema", "schema": schema}},
-        messages=[{"role": "user", "content": text}],
-    ) as stream:
-        msg = stream.get_final_message()
-    if msg.stop_reason in ("refusal", "max_tokens"):
-        raise RuntimeError(f"Claude gave no answer ({msg.stop_reason})")
-    out = json.loads(next(b.text for b in msg.content if b.type == "text"))
-    out["tokens"] = {"in": msg.usage.input_tokens, "out": msg.usage.output_tokens}
-    return out
+def _ask(system: str, schema: dict, text: str, model: str, client=None, max_tokens: int = 6000,
+         route: dict | None = None) -> dict:
+    from .llm import ask
+    return ask(system, schema, text, model=model, max_tokens=max_tokens, effort="medium", route=route, client=client)
 
 
 def propose(measured: list[dict], weak: list[int], trending: list[dict], model: str, client=None) -> dict:
@@ -180,14 +169,14 @@ def simple_plan(day_names: list[str], trending: list[dict], requests: list[dict]
 
 
 def plan(day_names: list[str], trending: list[dict], requests: list[dict], best: list[dict], styles: list[str],
-         model: str, client=None) -> dict:
+         model: str, client=None, route: dict | None = None) -> dict:
     text = ("Days to fill: " + ", ".join(day_names)
             + "\nGetting views this week: " + (", ".join(f"{t['name']} ({t.get('series') or '?'}, {_n(t['views'])} views)"
                                                          for t in trending) or "none known")
             + "\nAsked for by viewers: " + (", ".join(f"{r['name']} (by {r['by']})" for r in requests) or "none")
             + "\nThe artist's best recent videos: " + ("; ".join(f"{v['title']} ({v['pace']}x usual)" for v in best) or "none yet")
             + "\nEditing styles: " + ", ".join(styles))
-    return _ask(PLAN_SYSTEM, PLAN_SCHEMA, text, model, client, max_tokens=3000)
+    return _ask(PLAN_SYSTEM, PLAN_SCHEMA, text, model, client, max_tokens=3000, route=route)
 
 
 def calendar_text(days: list[dict], times: list[str], labels: dict) -> str:

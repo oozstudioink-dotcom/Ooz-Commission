@@ -74,25 +74,14 @@ def by_phrases(comments: list[dict]) -> list[dict]:
     return [{"name": n.title(), "comments": ks} for n, ks in found.items()]
 
 
-def read_names(videos: list[dict], comments: list[dict], client=None, model: str = "claude-opus-5-5") -> dict:
-    """Claude reads the names out of the titles and comments (see SCHEMA); returns tokens too."""
-    import anthropic
-    client = client or anthropic.Anthropic()
+def read_names(videos: list[dict], comments: list[dict], client=None, model: str = "claude-opus-5-5",
+               route: dict | None = None) -> dict:
+    """The names read out of the titles and comments (see SCHEMA) by Gemini or Claude (llm.ask)."""
+    from .llm import ask
     text = "Videos:\n" + "\n".join(f"{k}. {v['title'][:120]} | tags: {', '.join(v['tags'][:6])}"
                                    for k, v in enumerate(videos))
     text += "\n\nComments:\n" + ("\n".join(f"{k}. {c['text'][:200]}" for k, c in enumerate(comments)) or "(none)")
-    with client.beta.messages.stream(
-        model=model, max_tokens=4000, system=SYSTEM,
-        betas=["server-side-fallback-2026-07-01"], fallbacks="default",
-        output_config={"effort": "low", "format": {"type": "json_schema", "schema": SCHEMA}},
-        messages=[{"role": "user", "content": text}],
-    ) as stream:
-        msg = stream.get_final_message()
-    if msg.stop_reason in ("refusal", "max_tokens"):
-        raise RuntimeError(f"Claude gave no list ({msg.stop_reason})")
-    out = json.loads(next(b.text for b in msg.content if b.type == "text"))
-    out["tokens"] = {"in": msg.usage.input_tokens, "out": msg.usage.output_tokens}
-    return out
+    return ask(SYSTEM, SCHEMA, text, model=model, route=route, client=client)
 
 
 def rank_trending(named: list[dict], videos: list[dict], drawn: set[str], top: int = 3) -> list[dict]:

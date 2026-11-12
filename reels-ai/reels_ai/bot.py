@@ -32,10 +32,11 @@ from .botkit.common import (  # noqa: F401 - re-exported: other modules and test
     dispatch_workflow, shrink_for_telegram,
 )
 from .botkit.auditing import AuditMixin
+from .botkit.sponsoring import SponsorMixin
 from .botkit.connect import check, tiktok_connect  # noqa: F401
 
 
-class Runner(AuditMixin, CommandsMixin, DriveMixin, InventoryMixin, NamingMixin, DropsMixin, PostingMixin, LearningMixin, RenderMixin):
+class Runner(AuditMixin, SponsorMixin, CommandsMixin, DriveMixin, InventoryMixin, NamingMixin, DropsMixin, PostingMixin, LearningMixin, RenderMixin):
     def __init__(self, bot: Bot, state: dict, config: dict, clock=now, clients: dict | None = None,
                  drive=None, checkpoint=None):
         self.bot, self.state, self.cfg, self.clock = bot, state, config, clock
@@ -170,6 +171,8 @@ class Runner(AuditMixin, CommandsMixin, DriveMixin, InventoryMixin, NamingMixin,
             self.say(f"Your chat ID: {chat['id']}\n(For the commission-alerts script's TELEGRAM_CHAT_ID.)")
         elif cmd in ("/trends", "/radar"):
             self.send_radar()
+        elif cmd == "/sponsors":
+            self.send_sponsors()
         elif cmd == "/audit":
             self.send_audit()
         elif cmd == "/calendar":
