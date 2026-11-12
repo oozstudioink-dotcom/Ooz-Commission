@@ -49,6 +49,7 @@ class DriveMixin:
             return self.drive_problem(e)
         self.state.pop("drive_error", None)
         seen = self.state.setdefault("drive_seen", [])
+        self.follow_known(sources, seen, parse_name)
         new = [src for src in sources if src[0]["id"] not in seen]
         labels: dict[str, str] = {}
         for f, where, keep, project in new:
@@ -118,6 +119,33 @@ class DriveMixin:
                  f"\u2022 Longform \u203a Finished (sessions already in a LongDraw): {fin / 1e9:.0f} GB"
                  f"{total}\nThese are safe to delete when you're ready; the Shorts and LongDraws are in Done. "
                  "I never delete anything myself.")
+
+    def follow_known(self, sources, seen, parse_name) -> None:
+        """Recordings the bot already knows: a new name you give the file in Drive becomes its
+        name here too, and one set aside for taking too long (before runs had no time limit)
+        is tried again, once."""
+        by_file: dict[str, list] = {}
+        for did, d in self.state["drawings"].items():
+            if d.get("drive_id"):
+                by_file.setdefault(d["drive_id"], []).append((did, d))
+        for f, where, _, _ in sources:
+            if f["id"] not in seen:
+                continue
+            for did, d in by_file.get(f["id"], []):
+                if (d.get("drive_name") != f["name"] and f["name"] not in d.get("old_names", [])
+                        and d.get("status") not in ("replaced", "deleted")):
+                    old = d.get("drive_name")
+                    d["drive_name"] = f["name"]
+                    named = parse_name(f["name"])[0]
+                    if named and d.get("subject_by") != "you":
+                        d["subject"] = named
+                    print(f"renamed in Drive: {old} -> {f['name']}")
+                if (d.get("status") == "failed" and str(d.get("error") or "").startswith("took longer")
+                        and not d.get("retried_unlimited") and not d.get("part")):
+                    d["retried_unlimited"] = True
+                    self.requeue(did, d)
+                    self.say(f"\U0001f501 Trying {d.get('subject') or d['drive_name']} again: it was set aside "
+                             "for taking too long, and long recordings now have as long as they need.")
 
     def drive_source(self, d: dict, tmp: Path) -> Path:
         """Stream a raw Drive recording into a small timelapse working copy."""

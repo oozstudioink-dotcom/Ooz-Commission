@@ -775,6 +775,32 @@ class SplitDropsTest(FakeVariantsMixin, unittest.TestCase):
         self.assertEqual(r.bank()["drops"], 0)
 
 
+class RenamedInDriveTest(unittest.TestCase):
+    def test_a_rename_in_drive_is_followed_and_a_timed_out_recording_is_retried_once(self):
+        class D:
+            name = "IMG_0163.mov"
+            def folder(self, path=""): return "id:" + path
+            def list(self, folder_id, kind="video"):
+                return [{"id": "f1", "name": self.name}] if folder_id == "id:Inbox" and kind == "video" else []
+        drive = D()
+        bot, state = FakeBot(), fresh_state()
+        state["owner_chat_id"] = OWNER
+        state["drive_seen"] = ["f1"]
+        state["drawings"] = {"d1": {"source": "drive", "drive_id": "f1", "drive_name": "IMG_0163.mov", "subject": None,
+                                    "status": "failed", "error": "took longer than a whole run twice", "attempts": 3}}
+        r = Runner(bot, state, load_config(), drive=drive)
+        drive.name = "Afro_Samurai.MOV"
+        r.check_drive_inbox()
+        d = state["drawings"]["d1"]
+        self.assertEqual((d["drive_name"], d["status"]), ("Afro_Samurai.MOV", "queued"))
+        self.assertIn("afro", d["subject"].lower())
+        self.assertNotIn("attempts", d)
+        self.assertTrue(any("Trying" in t and "again" in t for t in bot.texts()))
+        d.update(status="failed", error="took longer than a whole run twice")
+        r.check_drive_inbox()                                        # only once
+        self.assertEqual(d["status"], "failed")
+
+
 class StyleLearningTest(unittest.TestCase):
     def test_winning_styles_come_round_more_and_weakest_is_skipped(self):
         cfg = load_config()
