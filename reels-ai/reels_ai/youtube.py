@@ -129,8 +129,19 @@ class YouTube:
                 out.append({"id": v["id"], "title": v["snippet"].get("title", ""),
                             "tags": v["snippet"].get("tags", []), "channel": v["snippet"].get("channelTitle", ""),
                             "views": int(v["statistics"].get("viewCount", 0)),
+                            "likes": int(v["statistics"].get("likeCount", 0)),
+                            "comments": int(v["statistics"].get("commentCount", 0)),
+                            "description": v["snippet"].get("description", ""),
+                            "published": v["snippet"].get("publishedAt", ""),
+                            "category": v["snippet"].get("categoryId", "1"),
                             "seconds": (int(m.group(1) or 0) * 60 + int(m.group(2) or 0)) if m else 999})
         return out
+
+    def update_video(self, video_id: str, title: str, description: str, tags: list[str], category: str) -> None:
+        """Change a published video's title, description and tags (nothing else is touched)."""
+        self._req("PUT", f"{self.api}/videos", {"part": "snippet"},
+                  body={"id": video_id, "snippet": {"title": title[:100], "description": description[:4900],
+                                                    "tags": tags[:30], "categoryId": category}})
 
     def channel_comments(self, channel_id: str, limit: int = 100) -> list[dict]:
         """The newest top-level comments on this channel's videos: [{author, text, likes, video}]."""
