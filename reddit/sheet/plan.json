@@ -22,6 +22,16 @@
         "2-concept-sketch.jpg"
       ],
       "caption": "Example: two characters shown; Character Concept Sketch is one character"
+    },
+    {
+      "n": 6,
+      "name": "Comic Page — B&W",
+      "price": "$150–300",
+      "turnaround": "2–3 weeks",
+      "desc": "Up to 6 panels, lineart and inks, no color",
+      "images": [
+        "6-comic-page-bw.jpg"
+      ]
     }
   ]
 }
