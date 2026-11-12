@@ -84,6 +84,7 @@ class NamingMixin:
         if self.drive and d.get("drive_id"):
             try:
                 self.drive.rename(d["drive_id"], new_name)
+                d.setdefault("old_names", []).append(old)      # a stale Drive listing isn't a rename
                 d["drive_name"] = new_name
                 renamed = f" Renamed in Drive to \u201c{new_name}\u201d."
             except Exception as e:  # noqa: BLE001

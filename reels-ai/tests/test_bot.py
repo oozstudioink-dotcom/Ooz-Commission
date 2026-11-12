@@ -272,6 +272,7 @@ class DropsFeedTest(FakeVariantsMixin, unittest.TestCase):
         self.cfg["timezone"] = "UTC"
         self.cfg["approval"]["mode"] = "auto"            # albums straight into the bank
         self.cfg["delivery"]["split"], self.cfg["variants"]["per_drawing"] = [], 5   # classic one-video drops
+        self.cfg["delivery"]["drop_times"] = ["17:00", "17:00"]   # two a day, as written
         self.clock = Clock(datetime(2026, 11, 7, 9, 0, tzinfo=timezone.utc))
         self.bot, self.state = FakeBot(), fresh_state()
         self.r = Runner(self.bot, self.state, self.cfg, clock=self.clock,
@@ -536,6 +537,7 @@ class RetireAndTidyTest(FakeVariantsMixin, unittest.TestCase):
         cfg["bank"]["retired"] = []
         cfg["approval"]["mode"] = "auto"
         cfg["delivery"]["split"], cfg["variants"]["per_drawing"] = [], 5   # classic one-video drops
+        cfg["delivery"]["drop_times"] = ["17:00", "17:00"]   # two a day, as written
         clock = Clock(datetime(2026, 11, 7, 9, tzinfo=timezone.utc))
         r = Runner(bot, state, cfg, clock=clock)
         src = Path(tempfile.mkdtemp()) / "in.mp4"
@@ -639,11 +641,11 @@ class KeepSkipTest(FakeVariantsMixin, unittest.TestCase):
         self.assertEqual(state["variants"][ks[0]]["status"], "approved")
         self.assertEqual(state["variants"][ks[1]]["status"], "skipped")
         clock.t = datetime(2026, 11, 7, 20, tzinfo=timezone.utc)
-        r.poll()                                                      # only the kept one drops
-        dropped = [k for k, v in state["variants"].items() if v.get("dropped_at")]
-        self.assertEqual(dropped, [ks[0]])
-        drop_msg = max(bot.markups)
-        self.assertEqual(bot.markups[drop_msg]["inline_keyboard"][0][1]["callback_data"], f"dn:{ks[0]}")
+        r.poll()                                     # kept and unanswered go out as options; skipped never
+        dropped = sorted(k for k, v in state["variants"].items() if v.get("dropped_at"))
+        self.assertEqual(dropped, sorted([ks[0], ks[2]]))
+        drop_msg = next(m for m, mk in bot.markups.items()
+                        if mk and mk["inline_keyboard"][0][-1].get("callback_data") == f"dn:{ks[0]}")
         bot.push(**tap(f"dn:{ks[0]}", message_id=drop_msg))
         r.poll()
         style = state["variants"][ks[0]]["style"]
@@ -705,15 +707,17 @@ class NoGuessedNamesTest(unittest.TestCase):
 
 
 class SplitDropsTest(FakeVariantsMixin, unittest.TestCase):
-    """Default now: each drop is one drawing with a different version for TikTok, YouTube, Reels."""
+    """Default now: one drawing a day, its 3 versions sent as options, plus a still for Instagram."""
 
-    def test_one_drawing_per_drop_one_version_per_platform(self):
+    def test_one_drawing_a_day_three_options_and_a_post_still(self):
         bot, state = FakeBot(), fresh_state()
         cfg = load_config()
         cfg["timezone"] = "UTC"
         cfg["approval"]["mode"] = "auto"
         clock = Clock(datetime(2026, 11, 7, 9, tzinfo=timezone.utc))
         r = Runner(bot, state, cfg, clock=clock)
+        stills = []
+        r.post_still = lambda options: stills.append(options) or None     # no ffmpeg here
         src = Path(tempfile.mkdtemp()) / "in.mp4"
         src.write_bytes(b"raw")
         bot.push(**msg(OWNER, text="hi"))
@@ -727,25 +731,74 @@ class SplitDropsTest(FakeVariantsMixin, unittest.TestCase):
         self.assertEqual(r.bank()["drops"], 4)                        # counted in drawings
         bot.push(**msg(OWNER, text="/queue"))
         r.poll()
-        self.assertTrue(any("Drops: 4 drawings" in t for t in bot.texts()))
-        for day in range(3):
+        self.assertTrue(any("Drawings ready: 4 = 4 days of uploads" in t for t in bot.texts()))
+        for day in range(5):
             clock.t = datetime(2026, 11, 7, 20, tzinfo=timezone.utc) + timedelta(days=day)
             r.poll()
+            r.poll()                                                 # extra runs never double-drop
         dropped = [v for v in state["variants"].values() if v.get("dropped_at")]
         by_drop: dict = {}
         for v in dropped:
             by_drop.setdefault(v["drop_no"], []).append(v)
-        self.assertEqual(len(by_drop), 4)                            # 2 a day until the 4 drawings are used
+        self.assertEqual(len(by_drop), 4)                            # one a day until the 4 drawings are used
+        days = {vs[0]["dropped_at"][:10] for vs in by_drop.values()}
+        self.assertEqual(len(days), 4)                               # never two drawings on one day
         for vs in by_drop.values():
-            self.assertEqual(len({v["drawing"] for v in vs}), 1)     # one drawing per drop
-            self.assertEqual(sorted(v["platform"] for v in vs), ["instagram", "tiktok", "youtube"])
-            self.assertEqual(len({v["style"] for v in vs}), 3)       # a different version each
-            self.assertEqual(len({v["caption"] for v in vs}), 1)     # one caption to paste everywhere
+            self.assertEqual(len({v["drawing"] for v in vs}), 1)     # one drawing per day
+            self.assertEqual(sorted(v["option"] for v in vs), [1, 2, 3])
+            self.assertEqual(len({v["style"] for v in vs}), 3)       # three different versions
+            self.assertEqual(len({v["caption"] for v in vs}), 1)     # one caption
         drawings = [vs[0]["drawing"] for _, vs in sorted(by_drop.items())]
         self.assertEqual(len(set(drawings)), 4)                      # no drawing twice
-        fors = [p for k, _, p in bot.sent if k == "video" and "for TikTok" in p]
-        self.assertEqual(len(fors), 4)
+        self.assertEqual(len([p for k, _, p in bot.sent if k == "video" and p.startswith("Option 1 of 3")]), 4)
+        self.assertEqual(len([t for t in bot.texts() if "Today's drop #" in t and "pick the one you like" in t]), 4)
+        self.assertEqual(len(stills), 4)                             # an Instagram still asked for each day
+        self.assertEqual(len([t for t in bot.texts() if "use the last frame" in t]), 4)   # none made here: said so
         self.assertEqual(r.bank()["drops"], 0)
+
+
+    def test_unanswered_versions_count_as_options_and_skipped_ones_do_not(self):
+        bot, state = FakeBot(), fresh_state()
+        cfg = load_config()
+        cfg["timezone"] = "UTC"
+        r = Runner(bot, state, cfg, clock=Clock(datetime(2026, 11, 7, 20, tzinfo=timezone.utc)))
+        r.post_still = lambda options: None
+        state["owner_chat_id"] = OWNER
+        state["drawings"] = {"d1": {"subject": "Gojo", "status": "rendered"}}
+        state["variants"] = {f"v{i}": {"drawing": "d1", "style": st, "status": status, "file_id": f"f{i}",
+                                       "caption": "c", "hook": "h", "seconds": 12}
+                             for i, (st, status) in enumerate([("one_take", "pending"), ("rewind", "pending"),
+                                                               ("chapters", "skipped"), ("slow_open", "approved")])}
+        r.drop_due()
+        sent = sorted(k for k, v in state["variants"].items() if v.get("dropped_at"))
+        self.assertEqual(sent, ["v0", "v1", "v3"])                   # the skipped one never goes out
+        self.assertEqual(r.bank()["drops"], 0)
+
+
+class RenamedInDriveTest(unittest.TestCase):
+    def test_a_rename_in_drive_is_followed_and_a_timed_out_recording_is_retried_once(self):
+        class D:
+            name = "IMG_0163.mov"
+            def folder(self, path=""): return "id:" + path
+            def list(self, folder_id, kind="video"):
+                return [{"id": "f1", "name": self.name}] if folder_id == "id:Inbox" and kind == "video" else []
+        drive = D()
+        bot, state = FakeBot(), fresh_state()
+        state["owner_chat_id"] = OWNER
+        state["drive_seen"] = ["f1"]
+        state["drawings"] = {"d1": {"source": "drive", "drive_id": "f1", "drive_name": "IMG_0163.mov", "subject": None,
+                                    "status": "failed", "error": "took longer than a whole run twice", "attempts": 3}}
+        r = Runner(bot, state, load_config(), drive=drive)
+        drive.name = "Afro_Samurai.MOV"
+        r.check_drive_inbox()
+        d = state["drawings"]["d1"]
+        self.assertEqual((d["drive_name"], d["status"]), ("Afro_Samurai.MOV", "queued"))
+        self.assertIn("afro", d["subject"].lower())
+        self.assertNotIn("attempts", d)
+        self.assertTrue(any("Trying" in t and "again" in t for t in bot.texts()))
+        d.update(status="failed", error="took longer than a whole run twice")
+        r.check_drive_inbox()                                        # only once
+        self.assertEqual(d["status"], "failed")
 
 
 class StyleLearningTest(unittest.TestCase):
@@ -1780,6 +1833,7 @@ class Shorts4KFlowTest(FakeVariantsMixin, unittest.TestCase):
         cfg["shorts"]["max_render_minutes"] = 0          # budget: one drawing per run
         cfg["approval"]["mode"] = "auto"
         cfg["delivery"]["split"], cfg["variants"]["per_drawing"] = [], 5   # classic one-video drops
+        cfg["delivery"]["drop_times"] = ["17:00", "17:00"]   # two a day, as written
         clock = Clock(datetime(2026, 11, 8, 9, tzinfo=timezone.utc))
         r = Runner(bot, state, cfg, clock=clock, drive=D())
         src = Path(tempfile.mkdtemp()) / "raw.mp4"
