@@ -190,7 +190,12 @@ rewrites = 3                     # at most this many rewrites are proposed each 
 # /sponsors: reads the descriptions of the most-viewed drawing videos of the last two months,
 # lists the brands that sponsor or supply those creators (each backed by an exact quote), and
 # drafts a first email to the top ones from your real numbers. On demand only; nothing is sent.
-queries = ["manga drawing", "anime drawing tutorial", "inking art", "art supplies haul"]
+queries = ["manga drawing", "inking art", "art supplies haul", "japanese brush pen calligraphy", "manga tools review"]
 days = 60
 videos = 40                      # descriptions read each time
 drafts = 3                       # emails drafted
+# What the emails say about you. They lead with the work, state your numbers once as they are,
+# and ask for an affiliate or discount code or product first, open to any other deal.
+about = "Ooz Studio Ink: a comic artist working in the manga tradition (mangaka-style pages, inked by hand), posting inking timelapses and longer real-time sessions"
+portfolio = "https://oozstudioink-dotcom.github.io/Ooz-Commission/"
+wishlist = ["Japanese calligraphy brushes", "brush pens", "sumi ink", "manga dip pens and nibs", "manga manuscript paper"]
