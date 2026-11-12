@@ -24,6 +24,17 @@
       "caption": "Example: two characters shown; Character Concept Sketch is one character"
     },
     {
+      "n": 6,
+      "name": "Comic Page — B&W",
+      "price": "$150–300",
+      "turnaround": "2–3 weeks",
+      "desc": "Up to 6 panels, lineart and inks, no color",
+      "images": [
+        "6-comic-page-bw.jpg"
+      ],
+      "caption": "Full-page composition shown; pages can also be split into up to 6 panels"
+    },
+    {
       "n": 5,
       "name": "Single Character Illustration",
       "price": "$200–400",
@@ -36,17 +47,6 @@
       "caption": "Shown in black-and-white ink wash. The second example has two characters; this package is one."
     },
     {
-      "n": 6,
-      "name": "Comic Page — B&W",
-      "price": "$150–300",
-      "turnaround": "2–3 weeks",
-      "desc": "Up to 6 panels, lineart and inks, no color",
-      "images": [
-        "6-comic-page-bw.jpg"
-      ],
-      "caption": "Full-page composition shown; pages can also be split into up to 6 panels"
-    },
-    {
       "n": 8,
       "name": "Custom Packaging",
       "price": "DM me for custom pricing",
@@ -54,5 +54,6 @@
       "desc": "Combine packages or request something bigger",
       "images": []
     }
-  ]
+  ],
+  "order_note": "Shown in this order on the sheet, numbered 1-5 there"
 }
