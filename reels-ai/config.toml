@@ -9,10 +9,13 @@ timezone = "America/New_York"   # used for post_times below
 #              Nothing is auto-posted.
 # "platforms": per-platform schedules below, with optional auto-posting (method = "api").
 mode = "drops"
-drop_times = ["17:00", "17:00"]      # same time twice = both drops at 5 PM
-# Each drop = ONE drawing, with a different version for each platform below, so no platform sees
-# the same drawing twice and the platforms test styles against each other. [] = old one-video drops.
+drop_times = ["17:00"]               # one drawing a day, at 5 PM
+# Each day = ONE drawing: the bot sends `options` versions of it to choose from, the caption, and
+# a 4:5 still of the finished piece for the Instagram feed post. The drawing is then used up, so
+# no drawing is posted twice. split names the platforms the Short goes to.
 split = ["tiktok", "youtube", "instagram"]
+options = 3
+instagram_post = true
 post_to = "TikTok \u00b7 Instagram Reels \u00b7 YouTube Shorts"
 
 [naming]
