@@ -33,7 +33,7 @@ Post this to your own profile (Create post › choose your profile), then pin it
 **Body:**
 > Hi, I'm Ooz Studio Ink, a one-person studio for comic art, character design and concept art, focused on manga-style inking.
 >
-> - Quick Sketch: $20–35 (24–48 hours)
+> - Quick Sketch: $30–40 (24–48 hours)
 > - Character Concept Sketch: $40–75 (3–5 days)
 > - Comic Page B&W: $150–300 (2–3 weeks)
 > - Single Character Illustration: ink wash $200, color $300 (1–2 weeks)
@@ -47,9 +47,9 @@ Post this to your own profile (Create post › choose your profile), then pin it
 ## 4. Where to post (read each subreddit's rules first)
 | Subreddit | What to do | Title |
 |---|---|---|
-| r/HungryArtists | Post only on the day or thread its rules allow; reply to [Hiring] posts any day | `[For Hire] Manga-style inks, comic pages & character art | $20–300` |
-| r/artcommissions | Post the sheet | `[For Hire] Manga-style inking, comic pages and character art, from $20` |
-| r/commissions | Post the sheet | `[For Hire] Manga-style ink commissions, from $20` |
+| r/HungryArtists | Post only on the day or thread its rules allow; reply to [Hiring] posts any day | `[For Hire] Manga-style inks, comic pages & character art | $30–300` |
+| r/artcommissions | Post the sheet | `[For Hire] Manga-style inking, comic pages and character art, from $30` |
+| r/commissions | Post the sheet | `[For Hire] Manga-style ink commissions, from $30` |
 | r/ComicBookCollabs | Reply to [PAID] posts that want pencils, inks or full pages | (reply template below) |
 | r/characterdrawing | Reply to people looking for character art | (reply template below) |
 
