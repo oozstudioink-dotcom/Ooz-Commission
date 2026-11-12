@@ -156,6 +156,10 @@ offer = ["FIRST 10 CLIENTS", "50% OFF"]
 # monthly limit, a failure) Gemini is tried when its key is set, and the built-in hooks after that.
 enabled = true
 writer = "claude"                # or "gemini"
+# Routine reading and planning jobs that Gemini's free tier tries first; Claude only steps in when
+# Gemini is busy. Jobs not listed go straight to Claude (watching recordings, judging Shorts,
+# rewrites, sponsor emails). Take a job off the list if Gemini's answers aren't good enough.
+gemini_first = ["radar", "calendar", "sponsors"]
 model = "gemini-pro-latest"     # the Gemini model used as the fallback
 
 [bank]
@@ -181,3 +185,12 @@ weekday = 6                      # 0 = Monday ... 6 = Sunday
 hour = 11                        # your time
 videos = 20                      # how many recent videos are measured
 rewrites = 3                     # at most this many rewrites are proposed each time
+
+[sponsors]
+# /sponsors: reads the descriptions of the most-viewed drawing videos of the last two months,
+# lists the brands that sponsor or supply those creators (each backed by an exact quote), and
+# drafts a first email to the top ones from your real numbers. On demand only; nothing is sent.
+queries = ["manga drawing", "anime drawing tutorial", "inking art", "art supplies haul"]
+days = 60
+videos = 40                      # descriptions read each time
+drafts = 3                       # emails drafted
