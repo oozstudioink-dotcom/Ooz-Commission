@@ -31,9 +31,11 @@ DRAFT_SYSTEM = """You write first-contact emails from a small creator to a brand
 team. Who the creator is, what they want and their numbers are given; use only those facts. \
 Write one email per brand: a subject line and a body under 140 words.
 
-Lead with the work, not the numbers: the creator is a working comic artist in the manga \
-tradition whose videos show the brand's kind of tool being used by hand, and the portfolio link \
-lets the brand judge the art for itself. Say plainly that the channel is small and growing, give \
+Lead with the work, not the numbers: the creator inks by hand in the manga tradition and films \
+it, so the videos show the brand's kind of tool in use, and the portfolio link lets the brand \
+judge the art for itself. The portfolio is sketchbook studies and practice pieces: never call \
+the creator a published or professional comic artist, and never mention original series, books \
+or clients. Say plainly that the channel is small and growing, give \
 the numbers once exactly as given, and never round them up or describe the audience as bigger \
 than it is. Do not oversell: no "huge", "massive", "viral", no promises about views or sales.
 

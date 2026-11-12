@@ -200,6 +200,6 @@ videos = 40                      # descriptions read each time
 drafts = 3                       # emails drafted
 # What the emails say about you. They lead with the work, state your numbers once as they are,
 # and ask for an affiliate or discount code or product first, open to any other deal.
-about = "Ooz Studio Ink: a comic artist working in the manga tradition (mangaka-style pages, inked by hand), posting inking timelapses and longer real-time sessions"
+about = "Ooz Studio Ink: an artist inking by hand in the manga tradition; sketchbook studies and practice pieces (no published or original series work), posted as inking timelapses and longer real-time sessions"
 portfolio = "https://oozstudioink-dotcom.github.io/Ooz-Commission/portfolio.html"
 wishlist = ["Japanese calligraphy brushes", "brush pens", "sumi ink", "manga dip pens and nibs", "manga manuscript paper"]
