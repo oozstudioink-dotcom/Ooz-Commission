@@ -225,9 +225,19 @@
   .lb-x { position: absolute; top: 12px; right: 18px; background: none; border: 0; color: var(--paper); font-size: 34px; cursor: pointer; line-height: 1; }
   .lb-nav { position: absolute; top: 50%; background: none; border: 0; color: var(--paper); font-size: 40px; cursor: pointer; padding: 12px; transform: translateY(-50%); }
   .lb-prev { left: 4px; } .lb-next { right: 4px; }
+  .tabs { display: flex; justify-content: center; gap: 4px; background: var(--ink); padding: 10px 16px; border-bottom: 1px solid #2a2a2a; }
+  .tabs a { color: var(--paper); opacity: .65; text-decoration: none; font-size: 12px; font-weight: 600; letter-spacing: .18em; text-transform: uppercase; padding: 8px 16px; border-bottom: 2px solid transparent; }
+  .tabs a:hover { opacity: 1; }
+  .tabs a.on { opacity: 1; border-bottom-color: var(--signal); }
 </style>
 </head>
 <body>
+
+  <nav class="tabs" aria-label="Site">
+    <a class="on" href="index.html" aria-current="page">Commissions</a>
+    <a href="portfolio.html">Portfolio</a>
+  </nav>
+
 
   <div class="status-banner">Commissions <span>open now</span> &mdash; currently accepting new clients</div>
 
