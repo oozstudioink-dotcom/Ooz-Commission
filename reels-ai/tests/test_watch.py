@@ -127,6 +127,24 @@ class EditMapTest(unittest.TestCase):
         with mock.patch.dict(os.environ, {"ANTHROPIC_API_KEY": ""}):       # no key: nothing asked, no crash
             r.look_over(Path("."), [{"name": "x", "file": "x.mp4"}])
 
+    def test_claude_writes_the_captions_and_never_names_an_unlabelled_drawing(self):
+        from reels_ai import ai
+        from reels_ai.bot import Runner
+        from reels_ai.state import load_config
+        from tests.test_bot import FakeBot, fresh_state
+        r = Runner(FakeBot(), fresh_state(), load_config())
+        made = {"hooks": {"one_take": "Watch Goku appear"}, "caption": "Inking Goku by hand", "subject": "Goku",
+                "hashtags": ["#goku", "#inking"], "tokens": {"in": 900, "out": 300}}
+        with mock.patch.dict(os.environ, {"ANTHROPIC_API_KEY": "k", "GEMINI_API_KEY": ""}), \
+                mock.patch.object(ai, "final_frame", return_value=Path("f.jpg")), \
+                mock.patch.object(ai, "write_copy_claude", side_effect=lambda *a, **k: json.loads(json.dumps(made))):
+            named = r.ai_copy(Path("v.mp4"), {"subject": "Goku"}, ["one_take"], Path("."))
+            blank = r.ai_copy(Path("v.mp4"), {}, ["one_take"], Path("."))
+        self.assertEqual(named["caption"], "Inking Goku by hand")
+        self.assertNotIn("tokens", named)
+        self.assertNotIn("Goku", json.dumps(blank))
+        self.assertAlmostEqual(sum(r.state["claude_spend"].values()), 0.0192)
+
 
 class AskClaudeTest(unittest.TestCase):
     """The request itself: right model, structured answer, fallback on, refusals not swallowed."""
