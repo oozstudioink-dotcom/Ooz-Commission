@@ -1,0 +1,59 @@
+{
+  "note": "What goes on the Reddit commission sheet. Images are the cleaned-up examples in this folder.",
+  "packages": [
+    {
+      "n": 1,
+      "name": "Quick Sketch",
+      "price": "$20–35",
+      "turnaround": "24–48 hours",
+      "desc": "Single character, one pose, loose linework, no color",
+      "images": [
+        "1-quick-sketch.jpg",
+        "1-quick-sketch-b.jpg"
+      ]
+    },
+    {
+      "n": 2,
+      "name": "Character Concept Sketch",
+      "price": "$40–75",
+      "turnaround": "3–5 days",
+      "desc": "Single rough or lined character, one pose, no color",
+      "images": [
+        "2-concept-sketch.jpg"
+      ],
+      "caption": "Example: two characters shown; Character Concept Sketch is one character"
+    },
+    {
+      "n": 6,
+      "name": "Comic Page — B&W",
+      "price": "$150–300",
+      "turnaround": "2–3 weeks",
+      "desc": "Up to 6 panels, lineart and inks, no color",
+      "images": [
+        "6-comic-page-bw.jpg"
+      ],
+      "caption": "Full-page composition shown; pages can also be split into up to 6 panels"
+    },
+    {
+      "n": 5,
+      "name": "Single Character Illustration",
+      "price": "Ink wash $200  ·  Color $300",
+      "turnaround": "1–2 weeks",
+      "desc": "One character, fully rendered: ink wash or full color",
+      "images": [
+        "5-illustration-b.jpg",
+        "5-illustration-a.jpg"
+      ],
+      "caption": "Shown in ink wash. The second example has two characters; this package is one."
+    },
+    {
+      "n": 8,
+      "name": "Custom Packaging",
+      "price": "DM me for custom pricing",
+      "turnaround": "",
+      "desc": "Combine packages or request something bigger",
+      "images": []
+    }
+  ],
+  "order_note": "Shown in this order on the sheet, numbered 1-5 there"
+}
