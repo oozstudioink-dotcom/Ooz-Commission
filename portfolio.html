@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Ooz Studio Ink — Portfolio</title>
+<meta name="description" content="Portfolio of Ooz Studio Ink: sketchbook ink studies in the manga tradition, drawn and inked by hand.">
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;600;700&display=swap');
+  :root { --ink: #141414; --paper: #F7F6F3; --signal: #C0392B; --ink-60: #6B6B6B; --ink-20: #D4D1C9; }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: 'Space Grotesk', sans-serif; background: var(--paper); color: var(--ink); line-height: 1.6; }
+  .container { max-width: 880px; margin: 0 auto; padding: 0 24px; }
+  .tabs { display: flex; justify-content: center; gap: 4px; background: var(--ink); padding: 10px 16px; }
+  .tabs a { color: var(--paper); opacity: .65; text-decoration: none; font-size: 12px; font-weight: 600;
+            letter-spacing: .18em; text-transform: uppercase; padding: 8px 16px; border-bottom: 2px solid transparent; }
+  .tabs a:hover { opacity: 1; }
+  .tabs a.on { opacity: 1; border-bottom-color: var(--signal); }
+  header { padding: 56px 24px 40px; text-align: center; }
+  .mark { width: 56px; height: 56px; border: 2.5px solid var(--ink); border-radius: 50%; margin: 0 auto 24px; position: relative; }
+  .mark::before { content: ''; position: absolute; top: 50%; left: 15%; width: 70%; height: 2px; background: var(--ink); transform: translateY(-50%); }
+  .mark .dot { position: absolute; width: 5px; height: 5px; background: var(--signal); border-radius: 50%; left: 50%; transform: translateX(-50%); }
+  .mark .dot:nth-child(1) { top: 10%; } .mark .dot:nth-child(2) { top: 30%; }
+  .mark .dot:nth-child(3) { top: 62%; } .mark .dot:nth-child(4) { top: 82%; }
+  h1 { font-weight: 700; font-size: 28px; letter-spacing: -0.02em; }
+  .subline { font-weight: 600; font-size: 11px; letter-spacing: 0.42em; text-transform: uppercase; color: var(--ink-60); margin-top: 8px; }
+  .intro { max-width: 580px; margin: 28px auto 0; font-size: 16px; color: var(--ink-60); }
+  h2 { font-weight: 700; font-size: 13px; letter-spacing: 0.15em; text-transform: uppercase; color: var(--ink-60); margin-bottom: 20px; }
+  section { padding: 48px 0; border-top: 1px solid var(--ink-20); }
+  .gallery { background: var(--ink); color: var(--paper); padding: 48px 20px 56px; border: 0; }
+  .gallery-inner { max-width: 1040px; margin: 0 auto; }
+  .gallery h2 { color: var(--paper); opacity: .6; text-align: center; margin-bottom: 8px; }
+  .g-sub { text-align: center; font-size: 14px; opacity: .7; margin-bottom: 28px; }
+  .g-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+  .g-grid .g-item:first-child { grid-column: span 2; }
+  @media (max-width: 620px) { .g-grid { grid-template-columns: 1fr; } .g-grid .g-item:first-child { grid-column: auto; } }
+  .g-item { position: relative; border: 0; padding: 0; cursor: zoom-in; background: var(--paper); display: block; width: 100%;
+            aspect-ratio: 4/3; overflow: hidden; font-family: inherit; text-align: left; }
+  .g-item::before { content: ''; position: absolute; top: 0; left: 0; width: 12px; height: 12px; border-top: 2px solid var(--signal);
+                    border-left: 2px solid var(--signal); z-index: 1; }
+  .g-item img { width: 100%; height: 100%; object-fit: cover; display: block; transition: transform .35s ease; }
+  .g-item:hover img, .g-item:focus-visible img { transform: scale(1.04); }
+  .g-item:focus-visible { outline: 2px solid var(--signal); outline-offset: 2px; }
+  .g-tag { position: absolute; left: 0; bottom: 0; background: var(--ink); color: var(--paper); font-size: 11px; font-weight: 600;
+           letter-spacing: .08em; text-transform: uppercase; padding: 5px 10px; }
+  .two { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  @media (max-width: 640px) { .two { grid-template-columns: 1fr; } }
+  .card { border: 1px solid var(--ink-20); background: #fff; padding: 20px; position: relative; }
+  .card::before { content: ''; position: absolute; top: -1px; left: -1px; width: 10px; height: 10px; border-top: 2px solid var(--signal);
+                  border-left: 2px solid var(--signal); }
+  .card h3 { font-size: 16px; font-weight: 700; margin-bottom: 6px; }
+  .card p { font-size: 14px; color: var(--ink-60); }
+  .about p { font-size: 15px; color: var(--ink-60); max-width: 640px; }
+  .about p + p { margin-top: 12px; }
+  .cta { background: var(--ink); color: var(--paper); text-align: center; padding: 56px 24px; }
+  .cta h2 { color: var(--paper); opacity: .6; }
+  .cta p { max-width: 520px; margin: 0 auto 22px; font-size: 15px; opacity: .85; }
+  .cta-button { display: inline-block; background: var(--signal); color: #fff; text-decoration: none; font-weight: 700; font-size: 14px;
+                letter-spacing: .06em; padding: 14px 28px; margin: 4px; }
+  .cta-button.ghost { background: transparent; border: 1.5px solid var(--paper); }
+  .contact { margin-top: 22px; font-size: 13px; opacity: .8; }
+  .contact a { color: var(--paper); font-weight: 600; text-decoration: underline; text-underline-offset: 3px; }
+  footer { text-align: center; padding: 28px 24px; font-size: 12px; color: var(--ink-60); }
+  .box { position: fixed; inset: 0; background: rgba(10,10,10,.94); display: none; align-items: center; justify-content: center;
+         padding: 20px; z-index: 10; cursor: zoom-out; flex-direction: column; gap: 12px; }
+  .box.open { display: flex; }
+  .box img { max-width: 100%; max-height: 86vh; object-fit: contain; background: var(--paper); }
+  .box p { color: var(--paper); font-size: 13px; opacity: .8; }
+  .box button { position: absolute; top: 14px; right: 16px; background: none; border: 0; color: var(--paper); font-size: 30px;
+                cursor: pointer; line-height: 1; padding: 6px 10px; }
+</style>
+</head>
+<body>
+
+  <nav class="tabs" aria-label="Site">
+    <a href="index.html">Commissions</a>
+    <a class="on" href="portfolio.html" aria-current="page">Portfolio</a>
+  </nav>
+
+  <header>
+    <div class="mark"><div class="dot"></div><div class="dot"></div><div class="dot"></div><div class="dot"></div></div>
+    <h1>OOZ STUDIO INK</h1>
+    <div class="subline">Portfolio</div>
+    <p class="intro">Sketchbook ink studies in the manga tradition. Every line here is drawn and inked by hand on paper.</p>
+  </header>
+
+  <section class="gallery" id="work">
+    <div class="gallery-inner">
+      <h2>Sketchbook studies</h2>
+      <p class="g-sub">Personal practice pieces in pen, brush and ink wash. Tap any piece to enlarge.</p>
+      <div class="g-grid">
+        <button class="g-item" type="button" data-i="0" aria-label="Enlarge: Ink wash study — samurai"><img src="portfolio/01-samurai.jpg" alt="Ink wash study — samurai" loading="lazy" width="1600" height="1200"><span class="g-tag">Sketchbook study</span></button>
+        <button class="g-item" type="button" data-i="1" aria-label="Enlarge: Ink and wash study — the city and the fall"><img src="portfolio/02-city-page.jpg" alt="Ink and wash study — the city and the fall" loading="lazy" width="1600" height="1200"><span class="g-tag">Sketchbook study</span></button>
+        <button class="g-item" type="button" data-i="2" aria-label="Enlarge: Ink study — rivals clash"><img src="portfolio/03-rivals-clash.jpg" alt="Ink study — rivals clash" loading="lazy" width="1600" height="1200"><span class="g-tag">Sketchbook study</span></button>
+        <button class="g-item" type="button" data-i="3" aria-label="Enlarge: Ink study — fighter &amp; beast"><img src="portfolio/04-fighter-and-beast.jpg" alt="Ink study — fighter &amp; beast" loading="lazy" width="1600" height="1200"><span class="g-tag">Sketchbook study</span></button>
+        <button class="g-item" type="button" data-i="4" aria-label="Enlarge: Ink study — the clash"><img src="portfolio/05-the-clash.jpg" alt="Ink study — the clash" loading="lazy" width="1600" height="1200"><span class="g-tag">Sketchbook study</span></button>
+      </div>
+    </div>
+  </section>
+
+  <div class="container">
+    <section class="about">
+      <h2>About</h2>
+      <p>Ooz Studio Ink is a one-person studio for comic art, character design and concept art, rooted in the manga tradition and built around inking: line weight, solid blacks and ink wash.</p>
+      <p>The pieces above are personal studies from my sketchbook. They are practice, including studies of existing characters, and not published or original series work.</p>
+      <p>I work traditionally, pencil first and then pen, brush and ink on paper, and I film the process. The inking sessions go out as short timelapses and longer real-time videos.</p>
+    </section>
+
+    <section>
+      <h2>Working together</h2>
+      <div class="two">
+        <div class="card">
+          <h3>Commissions</h3>
+          <p>Comic art, character design and concept art for individuals and small teams. Packages, pricing and terms are on the commissions page.</p>
+        </div>
+        <div class="card">
+          <h3>Brands &amp; art supplies</h3>
+          <p>I show the tools I draw with, in use, on camera. I'm open to product features, affiliate partnerships and sponsored videos for pens, brushes, ink and paper.</p>
+        </div>
+      </div>
+    </section>
+  </div>
+
+  <div class="cta">
+    <h2>Get in touch</h2>
+    <p>For commissions, start with the form. For partnerships, message me directly.</p>
+    <a href="index.html" class="cta-button">See commissions</a>
+    <a href="https://www.instagram.com/OozStudioInk" class="cta-button ghost">Message on Instagram</a>
+    <p class="contact">Also on <a href="https://x.com/OozStudioInk">X @OozStudioInk</a></p>
+  </div>
+
+  <footer>Ooz Studio Ink &mdash; Comic art &middot; Character design &middot; Concept art</footer>
+
+  <div class="box" id="box" role="dialog" aria-modal="true" aria-label="Enlarged artwork">
+    <button type="button" aria-label="Close">&times;</button>
+    <img alt="">
+    <p></p>
+  </div>
+  <script>
+    (function () {
+      var box = document.getElementById('box'), img = box.querySelector('img'), cap = box.querySelector('p'), last = null;
+      function close() { box.classList.remove('open'); if (last) last.focus(); }
+      document.querySelectorAll('.g-item').forEach(function (b) {
+        b.addEventListener('click', function () {
+          var i = b.querySelector('img'); last = b;
+          img.src = i.src; img.alt = i.alt; cap.textContent = i.alt; box.classList.add('open');
+          box.querySelector('button').focus();
+        });
+      });
+      box.addEventListener('click', close);
+      document.addEventListener('keydown', function (e) { if (e.key === 'Escape') close(); });
+    })();
+  </script>
+</body>
+</html>

@@ -808,7 +808,7 @@ class InstagramPostingTest(FakeVariantsMixin, unittest.TestCase):
         cfg = platforms_config()
         cfg["timezone"] = "UTC"
         cfg["platforms"]["youtube"]["enabled"] = False
-        cfg["platforms"]["instagram"].update(method="api", post_times=["19:00"])
+        cfg["platforms"]["instagram"].update(enabled=True, method="api", post_times=["19:00"])
         clock = Clock(datetime(2026, 11, 7, 9, 0, tzinfo=timezone.utc))
         bot, state = FakeBot(), fresh_state()
         r = Runner(bot, state, cfg, clock=clock, clients={"instagram": ig})

@@ -48,7 +48,11 @@ max_per_day = 1
 post_times = ["17:00"]
 
 [platforms.instagram]
-enabled = true
+# Off since 2026-11-12: Instagram flagged the account for "automated account activity". The bot
+# only ever read your own stats through Instagram's official connection (weekly report and
+# connection checks; it never posted, liked, followed or commented), but it stays off until the
+# flag is cleared. With this off the bot makes no Instagram requests at all.
+enabled = false
 method = "api"                   # connection check passed 2026-11-07 (@oozstudioink)
 ig_user_id = "17841426631544131" # @oozstudioink
 share_to_feed = false            # false = Reels tab only, keeps the main grid clean
@@ -196,6 +200,6 @@ videos = 40                      # descriptions read each time
 drafts = 3                       # emails drafted
 # What the emails say about you. They lead with the work, state your numbers once as they are,
 # and ask for an affiliate or discount code or product first, open to any other deal.
-about = "Ooz Studio Ink: a comic artist working in the manga tradition (mangaka-style pages, inked by hand), posting inking timelapses and longer real-time sessions"
-portfolio = "https://oozstudioink-dotcom.github.io/Ooz-Commission/"
+about = "Ooz Studio Ink: an artist inking by hand in the manga tradition; sketchbook studies and practice pieces (no published or original series work), posted as inking timelapses and longer real-time sessions"
+portfolio = "https://oozstudioink-dotcom.github.io/Ooz-Commission/portfolio.html"
 wishlist = ["Japanese calligraphy brushes", "brush pens", "sumi ink", "manga dip pens and nibs", "manga manuscript paper"]
