@@ -31,11 +31,11 @@
   .gallery-inner { max-width: 1040px; margin: 0 auto; }
   .gallery h2 { color: var(--paper); opacity: .6; text-align: center; margin-bottom: 8px; }
   .g-sub { text-align: center; font-size: 14px; opacity: .7; margin-bottom: 28px; }
-  .g-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; }
-  .g-grid .g-item:first-child { grid-column: span 2; grid-row: span 2; }
-  @media (max-width: 760px) { .g-grid { grid-template-columns: 1fr 1fr; } }
+  .g-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+  .g-grid .g-item:first-child { grid-column: span 2; }
+  @media (max-width: 620px) { .g-grid { grid-template-columns: 1fr; } .g-grid .g-item:first-child { grid-column: auto; } }
   .g-item { position: relative; border: 0; padding: 0; cursor: zoom-in; background: var(--paper); display: block; width: 100%;
-            aspect-ratio: 1/1; overflow: hidden; font-family: inherit; text-align: left; }
+            aspect-ratio: 4/3; overflow: hidden; font-family: inherit; text-align: left; }
   .g-item::before { content: ''; position: absolute; top: 0; left: 0; width: 12px; height: 12px; border-top: 2px solid var(--signal);
                     border-left: 2px solid var(--signal); z-index: 1; }
   .g-item img { width: 100%; height: 100%; object-fit: cover; display: block; transition: transform .35s ease; }
@@ -87,15 +87,13 @@
   <section class="gallery" id="work">
     <div class="gallery-inner">
       <h2>Selected work</h2>
-      <p class="g-sub">Original comic pages, ink studies and fan art studies. Tap any piece to enlarge.</p>
+      <p class="g-sub">Pen, brush and ink wash on paper. Tap any piece to enlarge.</p>
       <div class="g-grid">
-        <button class="g-item" type="button" data-i="0" aria-label="Enlarge: Comic page — Shinobi: Undercover"><img src="portfolio/05.jpg" alt="Comic page — Shinobi: Undercover" loading="lazy"><span class="g-tag">Original comic page</span></button>
-        <button class="g-item" type="button" data-i="1" aria-label="Enlarge: Ink wash study — samurai"><img src="portfolio/01.jpg" alt="Ink wash study — samurai" loading="lazy"><span class="g-tag">Ink wash study</span></button>
-        <button class="g-item" type="button" data-i="2" aria-label="Enlarge: Ink study — fighter &amp; beast"><img src="portfolio/03.jpg" alt="Ink study — fighter &amp; beast" loading="lazy"><span class="g-tag">Ink study</span></button>
-        <button class="g-item" type="button" data-i="3" aria-label="Enlarge: Ink study — rivals clash"><img src="portfolio/02.jpg" alt="Ink study — rivals clash" loading="lazy"><span class="g-tag">Fan art study</span></button>
-        <button class="g-item" type="button" data-i="4" aria-label="Enlarge: Ink study — low-angle figure"><img src="portfolio/04.jpg" alt="Ink study — low-angle figure" loading="lazy"><span class="g-tag">Fan art study</span></button>
-        <button class="g-item" type="button" data-i="5" aria-label="Enlarge: Ink studies — character &amp; expression"><img src="portfolio/06.jpg" alt="Ink studies — character &amp; expression" loading="lazy"><span class="g-tag">Fan art study</span></button>
-        <button class="g-item" type="button" data-i="6" aria-label="Enlarge: Ink studies — motion &amp; emotion"><img src="portfolio/07.jpg" alt="Ink studies — motion &amp; emotion" loading="lazy"><span class="g-tag">Fan art study</span></button>
+        <button class="g-item" type="button" data-i="0" aria-label="Enlarge: Ink wash study — samurai"><img src="portfolio/01-samurai.jpg" alt="Ink wash study — samurai" loading="lazy" width="1600" height="1200"><span class="g-tag">Ink wash study</span></button>
+        <button class="g-item" type="button" data-i="1" aria-label="Enlarge: Ink and wash page — the city and the fall"><img src="portfolio/02-city-page.jpg" alt="Ink and wash page — the city and the fall" loading="lazy" width="1600" height="1200"><span class="g-tag">Ink &amp; wash page</span></button>
+        <button class="g-item" type="button" data-i="2" aria-label="Enlarge: Ink study — rivals clash"><img src="portfolio/03-rivals-clash.jpg" alt="Ink study — rivals clash" loading="lazy" width="1600" height="1200"><span class="g-tag">Fan art study</span></button>
+        <button class="g-item" type="button" data-i="3" aria-label="Enlarge: Ink study — fighter &amp; beast"><img src="portfolio/04-fighter-and-beast.jpg" alt="Ink study — fighter &amp; beast" loading="lazy" width="1600" height="1200"><span class="g-tag">Ink study</span></button>
+        <button class="g-item" type="button" data-i="4" aria-label="Enlarge: Ink study — the clash"><img src="portfolio/05-the-clash.jpg" alt="Ink study — the clash" loading="lazy" width="1600" height="1200"><span class="g-tag">Fan art study</span></button>
       </div>
     </div>
   </section>
