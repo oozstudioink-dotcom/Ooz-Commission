@@ -1,0 +1,9 @@
+{
+  "note": "What goes on the Reddit commission sheet. Images are the cleaned-up examples in this folder.",
+  "packages": [
+    {"n": 1, "name": "Quick Sketch", "price": "$20–35", "turnaround": "24–48 hours",
+     "desc": "Single character, one pose, loose linework, no color",
+     "image": "1-quick-sketch.jpg",
+     "caption": "Example: two characters shown; Quick Sketch is one character"}
+  ]
+}
