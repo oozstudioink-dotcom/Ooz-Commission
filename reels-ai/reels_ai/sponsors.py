@@ -28,14 +28,21 @@ FIND_SCHEMA = {"type": "object", "additionalProperties": False, "required": ["br
                        "videos": {"type": "array", "items": {"type": "integer"}}}}}}}
 
 DRAFT_SYSTEM = """You write first-contact emails from a small creator to a brand's partnerships \
-team. The creator is a traditional manga inking artist who posts hand-drawn inking videos. \
-Write one email per brand: a subject line and a body under 130 words. Be specific about why this \
-brand fits (the kind of deal they already do with similar creators is given). State the \
-creator's numbers exactly as given, never rounded up and never described as bigger than they \
-are. For a channel this size ask for what is realistic: product to feature, or an affiliate or \
-discount code, not a paid fee. Offer one concrete video idea using their product. Plain, warm, \
-no hype, no emojis. Sign off with the channel name. Do not invent facts about the brand, any \
-past relationship, or any contact name."""
+team. Who the creator is, what they want and their numbers are given; use only those facts. \
+Write one email per brand: a subject line and a body under 140 words.
+
+Lead with the work, not the numbers: the creator is a working comic artist in the manga \
+tradition whose videos show the brand's kind of tool being used by hand, and the portfolio link \
+lets the brand judge the art for itself. Say plainly that the channel is small and growing, give \
+the numbers once exactly as given, and never round them up or describe the audience as bigger \
+than it is. Do not oversell: no "huge", "massive", "viral", no promises about views or sales.
+
+Ask for what fits a channel this size, in this order: an affiliate link or discount code, or \
+product to use on camera; say the creator is open to any other arrangement the brand prefers. If \
+the brand makes something on the creator's wish list, name that item. Offer one concrete video \
+idea using their product. Mention that samples of finished pages are attached (the creator \
+attaches them). Plain, warm, no emojis. Sign off with the channel name. Do not invent facts \
+about the brand, any past relationship, or any contact name."""
 
 DRAFT_SCHEMA = {"type": "object", "additionalProperties": False, "required": ["emails"], "properties": {
     "emails": {"type": "array", "items": {
@@ -98,12 +105,17 @@ def channel_facts(me: dict, recent: list[dict]) -> dict:
             "typical_views": int(median(views)) if views else 0, "best_views": max(views) if views else 0}
 
 
-def draft(brands: list[dict], facts: dict, model: str, route: dict | None = None, client=None) -> dict:
+def draft(brands: list[dict], facts: dict, model: str, route: dict | None = None, client=None,
+          about: dict | None = None) -> dict:
     from .llm import ask
+    about = about or {}
     text = (f"Creator: {facts['channel']} ({facts['link']})\nSubscribers: {facts['subscribers']}\n"
             f"Videos posted: {facts['videos']}\nTypical views on a recent video: {facts['typical_views']}\n"
-            f"Best recent video: {facts['best_views']} views\nContent: traditional manga inking, short "
-            "timelapse videos and longer real-time inking sessions.\n\nBrands:\n"
+            f"Best recent video: {facts['best_views']} views\n"
+            f"About: {about.get('about') or 'traditional manga inking; short timelapses and longer inking sessions'}\n"
+            f"Portfolio: {about.get('portfolio') or facts['link']}\n"
+            f"Wish list (tools the creator wants to work with): {', '.join(about.get('wishlist') or []) or 'none given'}\n"
+            "\nBrands:\n"
             + "\n".join(f"- {b['name']}: {b['kind']} with {len(b['channels'])} similar channel(s); "
                         f"seen as \"{b['evidence']}\"" for b in brands))
     return ask(DRAFT_SYSTEM, DRAFT_SCHEMA, text, model=model, max_tokens=4000, effort="medium", route=route,

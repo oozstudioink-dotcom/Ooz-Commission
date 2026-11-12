@@ -35,7 +35,7 @@ class SponsorMixin:
             return
         try:
             facts = sponsors.channel_facts(me, self._channel_videos(yt, 20))
-            got = sponsors.draft(top, facts, self._model(), write_route)
+            got = sponsors.draft(top, facts, self._model(), write_route, about=sc)
             print(f"emails by {got.get('by')}: {cost(got) * 100:.1f} cents, ${self.spend(cost(got)):.2f} this month")
         except Exception as e:  # noqa: BLE001 - the list already went out
             print(f"warn: sponsor emails: {str(e)[:200]}")
