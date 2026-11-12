@@ -170,3 +170,14 @@ enabled = true
 hour = 9                         # your time; sent on the first check after this hour
 days = 7                         # how far back "this week" looks
 queries = ["anime drawing", "manga drawing", "speed drawing anime"]
+
+[audit]
+# The channel auditor: every week (and on /audit) the bot measures your recent YouTube videos
+# against your own usual pace, says what is working, and proposes new titles, descriptions and
+# tags for the weakest ones. A proposal changes nothing until you tap Apply; /undo_rewrite puts
+# the last one back. The 7-day content calendar (/calendar) is sent with it.
+enabled = true
+weekday = 6                      # 0 = Monday ... 6 = Sunday
+hour = 11                        # your time
+videos = 20                      # how many recent videos are measured
+rewrites = 3                     # at most this many rewrites are proposed each time

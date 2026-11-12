@@ -31,10 +31,11 @@ from .botkit.common import (  # noqa: F401 - re-exported: other modules and test
     label_markup, _time_range, _mmss, _norm_name, strip_guessed_names, ALBUM_BYTES, album_chunks,
     dispatch_workflow, shrink_for_telegram,
 )
+from .botkit.auditing import AuditMixin
 from .botkit.connect import check, tiktok_connect  # noqa: F401
 
 
-class Runner(CommandsMixin, DriveMixin, InventoryMixin, NamingMixin, DropsMixin, PostingMixin, LearningMixin, RenderMixin):
+class Runner(AuditMixin, CommandsMixin, DriveMixin, InventoryMixin, NamingMixin, DropsMixin, PostingMixin, LearningMixin, RenderMixin):
     def __init__(self, bot: Bot, state: dict, config: dict, clock=now, clients: dict | None = None,
                  drive=None, checkpoint=None):
         self.bot, self.state, self.cfg, self.clock = bot, state, config, clock
@@ -96,6 +97,7 @@ class Runner(CommandsMixin, DriveMixin, InventoryMixin, NamingMixin, DropsMixin,
             self.refresh_stats()
             self.weekly_report()
             self.trend_radar()
+            self.weekly_audit()
         return (any(d["status"] == "queued" for d in self.state["drawings"].values())
                 or bool(self.state.get("compile_request")))
 
@@ -168,6 +170,12 @@ class Runner(CommandsMixin, DriveMixin, InventoryMixin, NamingMixin, DropsMixin,
             self.say(f"Your chat ID: {chat['id']}\n(For the commission-alerts script's TELEGRAM_CHAT_ID.)")
         elif cmd in ("/trends", "/radar"):
             self.send_radar()
+        elif cmd == "/audit":
+            self.send_audit()
+        elif cmd == "/calendar":
+            self.send_calendar()
+        elif cmd == "/undo_rewrite":
+            self.undo_rewrite()
         elif cmd == "/report":
             self.state["report_request"] = True
             self.send_report()
@@ -187,6 +195,8 @@ class Runner(CommandsMixin, DriveMixin, InventoryMixin, NamingMixin, DropsMixin,
         if q["from"]["id"] != self.owner:
             return self.bot.answer_callback(q["id"], "Not yours")
         action, _, vid = (q.get("data") or "").partition(":")
+        if action in ("ta", "ts"):
+            return self.on_rewrite(action, vid, q)
         if action == "noname":
             d = self.state["drawings"].get(vid)
             if d and d.get("status") == "naming":

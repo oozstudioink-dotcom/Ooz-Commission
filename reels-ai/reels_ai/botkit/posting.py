@@ -71,7 +71,11 @@ class PostingMixin:
                  if d.get("subject") and recent(d)}
         asked = radar.rank_requests(named["requests"], comments)
         self.state["requests"] = {radar._key(r["name"]): {"name": r["name"], "by": r["first"]} for r in asked}
-        self.say(radar.message(radar.rank_trending(named["trending"], videos, drawn), asked))
+        top = radar.rank_trending(named["trending"], videos, drawn, top=6)
+        # kept for the content calendar (what is getting views this week)
+        self.state["radar"] = {"at": iso(self.clock()), "trending": [
+            {"name": t["name"], "series": t["series"], "views": t["views"], "channels": t["channels"]} for t in top]}
+        self.say(radar.message(top[:3], asked))
 
     def credit_request(self, d: dict, results: list[dict]) -> None:
         """A drawing named after something a viewer asked for: thank them in the caption."""
