@@ -194,7 +194,17 @@ class DriveMixin:
         links: dict[str, str] = {}
         try:
             if not d.get("keep_in_place"):          # LongDraw sessions stay in their project folder
-                self.drive.move(d["drive_id"], self.drive.folder("Inbox/Processed"), self.drive.folder("Inbox"))
+                named = self.labelled_subject(d)
+                if named and self.cfg.get("drive", {}).get("processed_to_longform", True):
+                    # a named recording goes to its own LongDraw folder, ready for /longform <name>
+                    self.drive.move(d["drive_id"], self.drive.folder(f"Longform/{named}"), self.drive.folder("Inbox"))
+                    for x in self.state["drawings"].values():
+                        if x.get("drive_id") == d["drive_id"]:
+                            x.update(keep_in_place=True, drive_where=f"Longform \u203a {named}")
+                    self.say(f"\U0001f4c1 Moved {d.get('drive_name')} to Drive \u203a Longform \u203a {named}. "
+                             f"Send /longform {named} when you want its LongDraw.")
+                else:
+                    self.drive.move(d["drive_id"], self.drive.folder("Inbox/Processed"), self.drive.folder("Inbox"))
         except Exception as e:  # noqa: BLE001
             print(f"warn: couldn't move {d.get('drive_name')}: {e}")
         if not (self.cfg.get("drive", {}).get("backup_shorts", True) or self.shorts_4k):

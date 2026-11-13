@@ -19,6 +19,17 @@ from pathlib import Path
 from reels_ai.bot import Runner
 from reels_ai.state import EMPTY, load_config
 
+
+_load_config = load_config
+
+
+def load_config():
+    """The shipped settings, with the scheduled daily drop switched on: these tests cover the
+    drop machinery, which stays in the bot behind [delivery] auto_drop."""
+    cfg = _load_config()
+    cfg["delivery"]["auto_drop"] = True
+    return cfg
+
 OWNER, STRANGER = 111, 999
 
 
@@ -799,6 +810,68 @@ class RenamedInDriveTest(unittest.TestCase):
         d.update(status="failed", error="took longer than a whole run twice")
         r.check_drive_inbox()                                        # only once
         self.assertEqual(d["status"], "failed")
+
+
+class LibraryTest(unittest.TestCase):
+    """The shipped default: nothing is sent on a schedule; /videos shows everything, and a tap
+    says which video was used."""
+
+    def setup(self):
+        class D:
+            moved = []
+            def folder(self, path=""): return "id:" + path
+            def list(self, folder_id, kind="video"): return []
+            def move_to(self, file_id, to_folder): self.moved.append((file_id, to_folder))
+        self.drive = D()
+        bot, state = FakeBot(), fresh_state()
+        state["owner_chat_id"] = OWNER
+        state["drawings"] = {"d1": {"subject": "Afro Samurai", "status": "rendered"},
+                             "d2": {"subject": "Gojo", "status": "rendered"}}
+        mk = lambda d, i, st, status="pending": {"drawing": d, "style": st, "status": status, "file_id": f"f{i}",
+                                                 "caption": "cap", "hook": "h", "seconds": 12,
+                                                 "full_link": f"https://drive.google.com/file/d/F{i}/view"}
+        state["variants"] = {"v1": mk("d1", 1, "one_take"), "v2": mk("d1", 2, "rewind"), "v3": mk("d1", 3, "chapters"),
+                             "v4": mk("d2", 4, "one_take"), "v5": mk("d2", 5, "rewind", "skipped")}
+        r = Runner(bot, state, _load_config(), clock=Clock(datetime(2026, 11, 13, 22, tzinfo=timezone.utc)),
+                   drive=self.drive)
+        return bot, state, r
+
+    def test_nothing_drops_on_a_schedule_and_videos_lists_what_is_ready(self):
+        bot, state, r = self.setup()
+        r.poll()
+        self.assertFalse(any(v.get("dropped_at") for v in state["variants"].values()))
+        bot.push(**msg(OWNER, text="/videos"))
+        r.poll()
+        vids = [p for k, _, p in bot.sent if k == "video"]
+        self.assertEqual(len(vids), 4)                               # the skipped one is not offered
+        self.assertTrue(any("4 Shorts from 2 drawing(s)" in t for t in bot.texts()))
+        bot.sent.clear()
+        bot.push(**msg(OWNER, text="/videos afro"))
+        r.poll()
+        self.assertEqual(len([1 for k, _, p in bot.sent if k == "video"]), 3)
+
+    def test_used_moves_the_file_makes_trials_and_can_be_undone(self):
+        bot, state, r = self.setup()
+        bot.push(**tap("lu:v2", message_id=7))
+        r.poll()
+        V = state["variants"]
+        self.assertEqual((V["v2"]["status"], V["v1"]["status"], V["v3"]["status"]), ("posted", "trial", "trial"))
+        self.assertIn(("F2", "id:Done/Uploaded/Afro Samurai"), self.drive.moved)
+        self.assertIn(("F1", "id:Done/Facebook trials/Afro Samurai"), self.drive.moved)
+        self.assertNotIn("d1", r.library())                          # the drawing is used up
+        self.assertIn("d2", r.library())
+        bot.push(**msg(OWNER, text="/videos trials"))
+        r.poll()
+        self.assertEqual(len([1 for k, _, p in bot.sent if k == "video" and p.startswith("Trial")]), 2)
+        bot.push(**tap("lx:v2", message_id=7))                       # undo
+        r.poll()
+        self.assertEqual({V[k]["status"] for k in ("v1", "v2", "v3")}, {"pending"})
+        self.assertIn(("F2", "id:Done/Shorts/Afro Samurai"), self.drive.moved)
+        self.assertEqual(len(r.library()["d1"]), 3)
+        bot.push(**tap("ld:v4", message_id=9))                       # decline
+        r.poll()
+        self.assertEqual(V["v4"]["status"], "skipped")
+        self.assertNotIn("d2", r.library())
 
 
 class StyleLearningTest(unittest.TestCase):

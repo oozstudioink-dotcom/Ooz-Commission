@@ -23,7 +23,7 @@ FOLDER = "application/vnd.google-apps.folder"
 CHUNK = 16 * 1024 * 1024          # multiple of 256 KiB, as Drive requires
 
 LAYOUT = ["Inbox", "Inbox/Processed", "Longform", "Longform/Finished", "Beats", "Thumbnail Style",
-          "Side Panels", "Done", "Done/Shorts", "Done/Longform"]
+          "Side Panels", "Done", "Done/Shorts", "Done/Longform", "Done/Uploaded", "Done/Facebook trials"]
 
 
 TOKEN_SECONDS = 40 * 60      # an access token is used for at most this long
@@ -244,6 +244,14 @@ class Drive:
     def move(self, file_id: str, to_folder: str, from_folder: str) -> None:
         self._req("PATCH", f"{self.api}/files/{file_id}",
                   {"addParents": to_folder, "removeParents": from_folder, "fields": "id"}, body={})
+
+    def move_to(self, file_id: str, to_folder: str) -> None:
+        """Move a file into a folder from wherever it is now."""
+        now = self._req("GET", f"{self.api}/files/{file_id}", {"fields": "parents"}).get("parents") or []
+        if now == [to_folder]:
+            return
+        self._req("PATCH", f"{self.api}/files/{file_id}",
+                  {"addParents": to_folder, "removeParents": ",".join(now), "fields": "id"}, body={})
 
     def rename(self, file_id: str, name: str) -> None:
         self._req("PATCH", f"{self.api}/files/{file_id}", {"fields": "id"}, body={"name": name})
