@@ -76,7 +76,10 @@ class DropsMixin:
         return max(1, int(self.cfg.get("delivery", {}).get("options", len(self.split) or 3)))
 
     def drop_due(self) -> None:
-        """Deliver one drop per drop time, shuffled, for the owner to post."""
+        """Deliver one drop per drop time, shuffled, for the owner to post.
+        Off when [delivery] auto_drop = false: you take videos from /videos instead."""
+        if not self.cfg.get("delivery", {}).get("auto_drop", True):
+            return
         lt = self.local(self.clock())
         open_slots = sum(1 for hhmm in self.drop_times
                          if lt.time() >= datetime.strptime(hhmm, "%H:%M").time())

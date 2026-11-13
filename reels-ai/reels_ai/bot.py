@@ -33,10 +33,11 @@ from .botkit.common import (  # noqa: F401 - re-exported: other modules and test
 )
 from .botkit.auditing import AuditMixin
 from .botkit.sponsoring import SponsorMixin
+from .botkit.library import LibraryMixin
 from .botkit.connect import check, tiktok_connect  # noqa: F401
 
 
-class Runner(AuditMixin, SponsorMixin, CommandsMixin, DriveMixin, InventoryMixin, NamingMixin, DropsMixin, PostingMixin, LearningMixin, RenderMixin):
+class Runner(AuditMixin, SponsorMixin, LibraryMixin, CommandsMixin, DriveMixin, InventoryMixin, NamingMixin, DropsMixin, PostingMixin, LearningMixin, RenderMixin):
     def __init__(self, bot: Bot, state: dict, config: dict, clock=now, clients: dict | None = None,
                  drive=None, checkpoint=None):
         self.bot, self.state, self.cfg, self.clock = bot, state, config, clock
@@ -171,6 +172,8 @@ class Runner(AuditMixin, SponsorMixin, CommandsMixin, DriveMixin, InventoryMixin
             self.say(f"Your chat ID: {chat['id']}\n(For the commission-alerts script's TELEGRAM_CHAT_ID.)")
         elif cmd in ("/trends", "/radar"):
             self.send_radar()
+        elif cmd in ("/videos", "/library"):
+            self.send_library(text.split(maxsplit=1)[1] if len(text.split(maxsplit=1)) > 1 else "")
         elif cmd == "/sponsors":
             self.send_sponsors()
         elif cmd == "/audit":
@@ -198,6 +201,8 @@ class Runner(AuditMixin, SponsorMixin, CommandsMixin, DriveMixin, InventoryMixin
         if q["from"]["id"] != self.owner:
             return self.bot.answer_callback(q["id"], "Not yours")
         action, _, vid = (q.get("data") or "").partition(":")
+        if action in ("lu", "ld", "lx"):
+            return self.on_library(action, vid, q)
         if action in ("ta", "ts"):
             return self.on_rewrite(action, vid, q)
         if action == "noname":
