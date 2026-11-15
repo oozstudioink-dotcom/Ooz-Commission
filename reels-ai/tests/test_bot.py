@@ -1783,7 +1783,7 @@ class LongformJobTest(unittest.TestCase):
                                         "createdTime": "1"},
                                        {"id": "ad", "name": "Commissions_Advert.mov", "mimeType": "video/quicktime",
                                         "createdTime": "2"}],
-                }[fid]
+                }.get(fid, [])
                 if kind == "folder":
                     return [f for f in data if f["mimeType"] == "folder"]
                 return [f for f in data if not kind or f["mimeType"].startswith(kind)]
@@ -1806,6 +1806,9 @@ class LongformJobTest(unittest.TestCase):
 
             def move(self, fid, to, frm):
                 calls["moves"].append((fid, to))
+
+            def move_to(self, fid, to):
+                self.move(fid, to, None)
 
         def fake_build(sessions, out_dir, project, episode, cfg, beats, advert, pcfg, art, log=print):
             calls["built"] = ([s.title for s in sessions], [s.src for s in sessions], episode, advert.name,

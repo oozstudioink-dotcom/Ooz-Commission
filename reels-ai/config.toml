@@ -210,3 +210,23 @@ drafts = 3                       # emails drafted
 about = "Ooz Studio Ink: an artist inking by hand in the manga tradition; sketchbook studies and practice pieces (no published or original series work), posted as inking timelapses and longer real-time sessions"
 portfolio = "https://oozstudioink-dotcom.github.io/Ooz-Commission/portfolio.html"
 wishlist = ["Japanese calligraphy brushes", "brush pens", "sumi ink", "manga dip pens and nibs", "manga manuscript paper"]
+
+# Series: recordings that belong to a set and get their own folder, lesson numbers and thumbnail.
+# Put one of the `match` words in the file name (e.g. "How to Draw - Perspective grids.mov"), drop
+# it in Inbox as usual: Shorts are made, then the recording moves to Longform > folder > its name.
+# /longform <its name> builds the long video with this series' thumbnail and "Lesson 01" numbering.
+[[series]]
+name = "How to Draw (Scott Robertson)"
+folder = "Educational Drawing/How to Draw - Scott Robertson"
+match = ["how to draw", "htd", "robertson"]
+words = ["HOW TO", "DRAW"]       # the two big words on the thumbnail and intro
+badge = "LESSON"
+kicker = "Book study"            # small red tab on the thumbnail
+
+[[series]]
+name = "Anatomy for Artists (Tom Fox)"
+folder = "Educational Drawing/Anatomy for Artists - Tom Fox"
+match = ["anatomy", "tom fox", "form and pose"]
+words = ["ANATOMY", "STUDY"]
+badge = "LESSON"
+kicker = "Book study"
