@@ -23,7 +23,7 @@ FOLDER = "application/vnd.google-apps.folder"
 CHUNK = 16 * 1024 * 1024          # multiple of 256 KiB, as Drive requires
 
 LAYOUT = ["Inbox", "Inbox/Processed", "Longform", "Longform/Finished", "Beats", "Thumbnail Style",
-          "Side Panels", "Done", "Done/Shorts", "Done/Longform", "Done/Uploaded", "Done/Facebook trials"]
+          "Side Panels", "Done", "Done/Shorts", "Done/Longform", "Done/Uploaded", "Done/Facebook trials", "Delete Me"]
 
 
 TOKEN_SECONDS = 40 * 60      # an access token is used for at most this long

@@ -850,28 +850,57 @@ class LibraryTest(unittest.TestCase):
         r.poll()
         self.assertEqual(len([1 for k, _, p in bot.sent if k == "video"]), 3)
 
-    def test_used_moves_the_file_makes_trials_and_can_be_undone(self):
+    def test_uploaded_checked_variants_discard_and_undo(self):
         bot, state, r = self.setup()
-        bot.push(**tap("lu:v2", message_id=7))
-        r.poll()
         V = state["variants"]
-        self.assertEqual((V["v2"]["status"], V["v1"]["status"], V["v3"]["status"]), ("posted", "trial", "trial"))
+        bot.push(**tap("lc:v1", message_id=5))                       # check v1: keep as a variant
+        r.poll()
+        self.assertTrue(V["v1"]["checked"])
+        self.assertEqual(V["v1"]["status"], "pending")               # nothing uploaded yet
+        self.assertIn("\u2705", bot.markups[5]["inline_keyboard"][0][1]["text"])
+        bot.push(**tap("lu:v2", message_id=7))                       # uploaded v2
+        r.poll()
+        self.assertEqual((V["v2"]["status"], V["v1"]["status"], V["v3"]["status"]), ("posted", "trial", "pending"))
         self.assertIn(("F2", "id:Done/Uploaded/Afro Samurai"), self.drive.moved)
         self.assertIn(("F1", "id:Done/Facebook trials/Afro Samurai"), self.drive.moved)
-        self.assertNotIn("d1", r.library())                          # the drawing is used up
-        self.assertIn("d2", r.library())
+        self.assertEqual(r.library()["d1"], ["v3"])                  # the unchecked one still waits
+        bot.push(**tap("lc:v3", message_id=8))                       # checked after the upload: a trial at once
+        r.poll()
+        self.assertEqual(V["v3"]["status"], "trial")
         bot.push(**msg(OWNER, text="/videos trials"))
         r.poll()
         self.assertEqual(len([1 for k, _, p in bot.sent if k == "video" and p.startswith("Trial")]), 2)
-        bot.push(**tap("lx:v2", message_id=7))                       # undo
+        bot.push(**tap("ld:v4", message_id=9))                       # discard
         r.poll()
-        self.assertEqual({V[k]["status"] for k in ("v1", "v2", "v3")}, {"pending"})
-        self.assertIn(("F2", "id:Done/Shorts/Afro Samurai"), self.drive.moved)
-        self.assertEqual(len(r.library()["d1"]), 3)
-        bot.push(**tap("ld:v4", message_id=9))                       # decline
+        self.assertEqual(V["v4"]["status"], "discarded")
+        self.assertIn(("F4", "id:Delete Me/Gojo"), self.drive.moved)
+        bot.push(**tap("lx:v4", message_id=9))                       # undo the discard
         r.poll()
-        self.assertEqual(V["v4"]["status"], "skipped")
-        self.assertNotIn("d2", r.library())
+        self.assertEqual(V["v4"]["status"], "pending")
+        self.assertIn(("F4", "id:Done/Shorts/Gojo"), self.drive.moved)
+
+    def test_unuse_takes_back_mistaken_uploads_and_discard_clears_a_drawing(self):
+        bot, state, r = self.setup()
+        V = state["variants"]
+        bot.push(**tap("lc:v1", message_id=5))
+        bot.push(**tap("lu:v2", message_id=7))
+        bot.push(**tap("lu:v4", message_id=9))
+        r.poll()
+        bot.push(**msg(OWNER, text="/unuse"))
+        r.poll()
+        self.assertEqual({V[k]["status"] for k in ("v1", "v2", "v3", "v4")}, {"pending"})
+        self.assertTrue(V["v1"]["checked"])                          # the check mark is kept
+        self.assertFalse(any(v.get("used_at") or v.get("dropped_at") for v in V.values()))
+        self.assertTrue(any("Took back 2 Uploaded" in t for t in bot.texts()))
+        bot.push(**tap("lu:v2", message_id=7))                       # one really uploaded, then the drawing discarded
+        r.poll()
+        bot.push(**msg(OWNER, text="/discard afro"))
+        r.poll()
+        self.assertEqual({V[k]["status"] for k in ("v1", "v2", "v3")}, {"discarded"})
+        self.assertEqual(V["v4"]["status"], "pending")               # other drawings untouched
+        for f in ("F1", "F2", "F3"):
+            self.assertIn((f, "id:Delete Me/Afro Samurai"), self.drive.moved)
+        self.assertNotIn("d1", r.library())
 
 
 class StyleLearningTest(unittest.TestCase):

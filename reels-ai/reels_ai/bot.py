@@ -174,6 +174,10 @@ class Runner(AuditMixin, SponsorMixin, LibraryMixin, CommandsMixin, DriveMixin, 
             self.send_radar()
         elif cmd in ("/videos", "/library"):
             self.send_library(text.split(maxsplit=1)[1] if len(text.split(maxsplit=1)) > 1 else "")
+        elif cmd == "/unuse":
+            self.unuse(text.split(maxsplit=1)[1] if len(text.split(maxsplit=1)) > 1 else "")
+        elif cmd == "/discard":
+            self.discard_named(text.split(maxsplit=1)[1] if len(text.split(maxsplit=1)) > 1 else "")
         elif cmd == "/sponsors":
             self.send_sponsors()
         elif cmd == "/audit":
@@ -201,7 +205,7 @@ class Runner(AuditMixin, SponsorMixin, LibraryMixin, CommandsMixin, DriveMixin, 
         if q["from"]["id"] != self.owner:
             return self.bot.answer_callback(q["id"], "Not yours")
         action, _, vid = (q.get("data") or "").partition(":")
-        if action in ("lu", "ld", "lx"):
+        if action in ("lu", "lc", "ld", "lx"):
             return self.on_library(action, vid, q)
         if action in ("ta", "ts"):
             return self.on_rewrite(action, vid, q)

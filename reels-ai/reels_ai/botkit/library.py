@@ -1,14 +1,17 @@
-"""Your video library: look at every finished Short, and tell the bot which ones you used.
+"""Your video library: look at every finished Short and sort it with three buttons.
 
-/videos            every Short that is ready, grouped by drawing, each with Used / Decline buttons
+/videos            every Short not yet sorted, grouped by drawing
 /videos <name>     only that drawing's
-/videos trials     the versions set aside for Facebook trial reels
+/videos trials     the variants kept for Facebook trial reels
+/unuse [name]      take back every Uploaded tap (or only that drawing's)
+/discard <name>    send every Short of a drawing to Delete Me
 
-Used      the video is marked as posted and its 4K file moves to Drive > Done > Uploaded > <name>.
-          The drawing's other versions become Facebook trial variants and move to
-          Done > Facebook trials > <name>, so a drawing is never posted twice as the main video.
-Decline   the video leaves your library (its file stays in Done > Shorts).
-Undo      puts a Used tap back as it was.
+Uploaded   you posted this one: its 4K file moves to Drive > Done > Uploaded > <name>.
+Variant    a check mark: keep this version. Once a version of the same drawing is Uploaded, the
+           checked ones become Facebook trial variants (Done > Facebook trials > <name>).
+Discard    you don't want it: its file moves to Drive > Delete Me > <name>. Nothing is ever
+           deleted by the bot; you empty that folder yourself.
+Undo       under an Uploaded or Discarded video, puts it back.
 """
 from __future__ import annotations
 
@@ -21,14 +24,16 @@ from .common import STYLE_LABELS, _norm_name, label_markup
 READY = ("approved", "pending")
 
 
-def library_markup(vid: str) -> dict:
-    return {"inline_keyboard": [[{"text": "✅ Used", "callback_data": f"lu:{vid}"},
-                                 {"text": "❌ Decline", "callback_data": f"ld:{vid}"}]]}
+def library_markup(vid: str, checked: bool = False) -> dict:
+    return {"inline_keyboard": [[{"text": "\U0001f4e4 Uploaded", "callback_data": f"lu:{vid}"},
+                                 {"text": "\u2705 Variant" if checked else "\u2611\ufe0f Variant",
+                                  "callback_data": f"lc:{vid}"},
+                                 {"text": "\u274c Discard", "callback_data": f"ld:{vid}"}]]}
 
 
 def undo_markup(vid: str, text: str) -> dict:
     return {"inline_keyboard": [[{"text": text, "callback_data": "noop:0"}],
-                                [{"text": "↩️ Undo", "callback_data": f"lx:{vid}"}]]}
+                                [{"text": "\u21a9\ufe0f Undo", "callback_data": f"lx:{vid}"}]]}
 
 
 class LibraryMixin:
@@ -37,13 +42,20 @@ class LibraryMixin:
         name = d.get("subject") or Path(d.get("drive_name") or did).stem
         return name + (f" ({d['part']['label']})" if d.get("part") else "")
 
+    def folder_name(self, v: dict) -> str:
+        d = self.state["drawings"].get(v["drawing"], {})
+        return d.get("subject") or Path(d.get("drive_name") or v["drawing"]).stem
+
+    def uploaded(self, did: str) -> bool:
+        """Has a version of this drawing been marked Uploaded?"""
+        return any(x["drawing"] == did and x.get("used_at") for x in self.state["variants"].values())
+
     def library(self, want: str = "") -> dict[str, list[str]]:
-        """Drawings with Shorts you haven't used or declined: {drawing id: [variant ids]}."""
-        used = {v["drawing"] for v in self.state["variants"].values() if v.get("dropped_at")}
+        """Shorts you haven't sorted yet: {drawing id: [variant ids]}."""
         out: dict[str, list[str]] = {}
         for vid, v in self.state["variants"].items():
-            if (v["status"] in READY and not v.get("dropped_at") and v["drawing"] not in used
-                    and not self.retired_variant(v) and v.get("file_id")
+            if (v["status"] in READY and not v.get("dropped_at") and not self.retired_variant(v)
+                    and v.get("file_id")
                     and (not want or want in _norm_name(self.drawing_name(v["drawing"])))):
                 out.setdefault(v["drawing"], []).append(vid)
         return out
@@ -65,7 +77,7 @@ class LibraryMixin:
                 self.send_one(vid, f"{self.drawing_name(did)} · {k} of {len(vids)} · "
                                    f"{STYLE_LABELS.get(v['style'], v['style'])} · {v.get('seconds', '?')}s · {vid}"
                               + (f"\n\U0001f39e 4K: {v['full_link']}" if v.get("full_link") else ""),
-                              library_markup(vid))
+                              library_markup(vid, bool(v.get("checked"))))
         first = self.state["variants"][sorted(next(iter(lib.values())))[0]]
         if len(lib) == 1 and first.get("caption"):
             self.say(first["caption"])
@@ -100,48 +112,109 @@ class LibraryMixin:
             print(f"warn: couldn't move the file to {folder}: {str(e)[:150]}")
             return False
 
+    def to_trial(self, x: dict, by: str) -> None:
+        x.update(was=x["status"], status="trial", trial_from=by)
+        self.file_to(x, f"Done/Facebook trials/{self.folder_name(x)}")
+
+    def put_back(self, v: dict) -> None:
+        """Undo an Uploaded or Discard mark, and the trial variants an upload made."""
+        vid = next(k for k, x in self.state["variants"].items() if x is v)
+        was_upload = bool(v.get("used_at"))
+        v["status"] = v.pop("was", "approved")
+        for key in ("used_at", "dropped_at", "drop_no"):
+            v.pop(key, None)
+        self.file_to(v, f"Done/Shorts/{self.folder_name(v)}")
+        if was_upload and not self.uploaded(v["drawing"]):
+            for x in self.state["variants"].values():
+                if x["drawing"] == v["drawing"] and x["status"] == "trial" and x.get("trial_from", vid) == vid:
+                    x["status"] = x.pop("was", "approved")
+                    x.pop("trial_from", None)
+                    self.file_to(x, f"Done/Shorts/{self.folder_name(x)}")
+
+    def discard(self, v: dict) -> None:
+        v.update(was=v["status"] if v["status"] in READY else "approved", status="discarded")
+        for key in ("used_at", "dropped_at", "drop_no", "checked", "trial_from"):
+            v.pop(key, None)
+        self.file_to(v, f"Delete Me/{self.folder_name(v)}")
+
     def on_library(self, action: str, vid: str, q: dict) -> None:
         v = self.state["variants"].get(vid)
         mid = q.get("message", {}).get("message_id")
         if not v:
             return self.bot.answer_callback(q["id"], "That video is gone")
-        name = self.state["drawings"].get(v["drawing"], {}).get("subject") or \
-            Path(self.state["drawings"].get(v["drawing"], {}).get("drive_name") or v["drawing"]).stem
+        open_ = v["status"] in READY + ("trial",)
+        if action == "lc":                                   # the check mark: keep as a variant
+            if not open_:
+                return self.bot.answer_callback(q["id"], f"Already {v['status']}")
+            if v["status"] == "trial":                       # unchecking a trial variant
+                v["status"] = v.pop("was", "approved")
+                v.pop("trial_from", None)
+                v["checked"] = False
+                self.file_to(v, f"Done/Shorts/{self.folder_name(v)}")
+            else:
+                v["checked"] = not v.get("checked")
+                if v["checked"] and self.uploaded(v["drawing"]):
+                    self.to_trial(v, "")                     # its drawing is already posted
+            on = bool(v.get("checked"))
+            self.bot.answer_callback(q["id"], "Kept as a variant" if on else "Unchecked")
+            return self.bot.edit_markup(self.owner, mid, library_markup(vid, on))
         if action == "ld":
-            if v["status"] not in READY + ("trial",):
+            if not open_:
                 return self.bot.answer_callback(q["id"], f"Already {v['status']}")
-            v["was"], v["status"] = v["status"], "skipped"
-            self.bot.answer_callback(q["id"], "Declined")
-            return self.bot.edit_markup(self.owner, mid, label_markup("❌ Declined: out of your library"))
+            self.discard(v)
+            self.bot.answer_callback(q["id"], "Moved to Delete Me")
+            return self.bot.edit_markup(self.owner, mid, undo_markup(vid, "\u274c Discarded \u00b7 in Delete Me"))
         if action == "lu":
-            if v["status"] not in READY + ("trial",):
+            if not open_:
                 return self.bot.answer_callback(q["id"], f"Already {v['status']}")
-            was_trial = v["status"] == "trial"
             n = max((x.get("drop_no", 0) for x in self.state["variants"].values()), default=0) + 1
-            v.update(was=v["status"], status="posted", used_at=iso(self.clock()), dropped_at=iso(self.clock()), drop_no=n)
-            moved = self.file_to(v, f"Done/Uploaded/{name}")
-            sibs = [] if was_trial else [x for x in self.state["variants"].values()
-                                         if x["drawing"] == v["drawing"] and x is not v and x["status"] in READY]
+            v.update(was=v["status"] if v["status"] in READY else "approved", status="posted",
+                     used_at=iso(self.clock()), dropped_at=iso(self.clock()), drop_no=n)
+            v.pop("trial_from", None)
+            moved = self.file_to(v, f"Done/Uploaded/{self.folder_name(v)}")
+            sibs = [x for x in self.state["variants"].values()
+                    if x["drawing"] == v["drawing"] and x is not v and x["status"] in READY and x.get("checked")]
             for x in sibs:
-                x["was"], x["status"] = x["status"], "trial"
-                self.file_to(x, f"Done/Facebook trials/{name}")
-            v["made_trials"] = len(sibs)
-            self.bot.answer_callback(q["id"], "Marked as used")
-            self.bot.edit_markup(self.owner, mid, undo_markup(vid, "✅ Used" + (" · file in Done › Uploaded" if moved else "")))
+                self.to_trial(x, vid)
+            self.bot.answer_callback(q["id"], "Marked as uploaded")
+            self.bot.edit_markup(self.owner, mid, undo_markup(
+                vid, "\U0001f4e4 Uploaded" + (" \u00b7 file in Done \u203a Uploaded" if moved else "")))
             if sibs:
-                self.say(f"✅ {name}: marked as used. Its {len(sibs)} other version(s) are now Facebook trial "
-                         "variants (Drive › Done › Facebook trials). /videos trials shows them.")
+                self.say(f"\U0001f9ea {self.folder_name(v)}: {len(sibs)} checked version(s) are now Facebook trial "
+                         "variants. /videos trials shows them.")
             return None
         if action == "lx":
-            if v["status"] != "posted" or not v.get("used_at"):
+            if not (v["status"] == "discarded" or (v["status"] == "posted" and v.get("used_at"))):
                 return self.bot.answer_callback(q["id"], "Nothing to undo")
-            v["status"] = v.pop("was", "approved")
-            for key in ("used_at", "dropped_at", "drop_no", "made_trials"):
-                v.pop(key, None)
-            self.file_to(v, f"Done/Shorts/{name}")
-            for x in self.state["variants"].values():
-                if x["drawing"] == v["drawing"] and x["status"] == "trial":
-                    x["status"] = x.pop("was", "approved")
-                    self.file_to(x, f"Done/Shorts/{name}")
+            self.put_back(v)
             self.bot.answer_callback(q["id"], "Put back")
-            return self.bot.edit_markup(self.owner, mid, library_markup(vid))
+            return self.bot.edit_markup(self.owner, mid, library_markup(vid, bool(v.get("checked"))))
+
+    def unuse(self, arg: str = "") -> None:
+        """/unuse [name]: take back Uploaded taps made by mistake."""
+        want = _norm_name(arg)
+        marked = [v for v in self.state["variants"].values() if v["status"] == "posted" and v.get("used_at")
+                  and (not want or want in _norm_name(self.drawing_name(v["drawing"])))]
+        if not marked:
+            return self.say("No videos are marked Uploaded" + (f" for \u201c{arg}\u201d." if arg else "."))
+        names = sorted({self.folder_name(v) for v in marked})
+        for v in marked:
+            self.put_back(v)
+        self.say(f"\u21a9\ufe0f Took back {len(marked)} Uploaded mark(s): {', '.join(names)}. Those videos and their "
+                 "trial variants are back in /videos, and their files are back in Done \u203a Shorts.")
+
+    def discard_named(self, arg: str) -> None:
+        """/discard <name>: every Short of the matching drawings goes to Delete Me."""
+        want = _norm_name(arg)
+        if not want:
+            return self.say("Tell me which drawing: /discard Deku")
+        live = READY + ("trial", "posted", "skipped", "spare")
+        hit = [v for v in self.state["variants"].values() if v["status"] in live
+               and want in _norm_name(self.drawing_name(v["drawing"]))]
+        if not hit:
+            return self.say(f"No Shorts match \u201c{arg}\u201d.")
+        names = sorted({self.folder_name(v) for v in hit})
+        for v in hit:
+            self.discard(v)
+        self.say(f"\u274c Discarded {len(hit)} Short(s) of {', '.join(names)}. Their files are in Drive \u203a Delete Me; "
+                 "nothing is deleted until you empty that folder. Your recordings are untouched.")
