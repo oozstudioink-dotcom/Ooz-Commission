@@ -49,6 +49,15 @@ class DriveMixin:
             return self.drive_problem(e)
         self.state.pop("drive_error", None)
         seen = self.state.setdefault("drive_seen", [])
+        from ..series import all_series
+        made = self.state.setdefault("series_folders", [])
+        for ser in all_series(self.cfg):                # the series folders exist before you need them
+            if ser["folder"] not in made:
+                try:
+                    self.drive.folder(f"Longform/{ser['folder']}")
+                    made.append(ser["folder"])
+                except Exception as e:  # noqa: BLE001
+                    print(f"warn: series folder: {str(e)[:120]}")
         self.follow_known(sources, seen, parse_name)
         new = [src for src in sources if src[0]["id"] not in seen]
         labels: dict[str, str] = {}
@@ -195,7 +204,19 @@ class DriveMixin:
         try:
             if not d.get("keep_in_place"):          # LongDraw sessions stay in their project folder
                 named = self.labelled_subject(d)
-                if named and self.cfg.get("drive", {}).get("processed_to_longform", True):
+                from ..series import match as series_match
+                ser = series_match(self.cfg, d.get("drive_name") or "")
+                if ser:                             # part of a series: its own lesson folder there
+                    lesson = Path(d.get("drive_name") or named or did).stem
+                    self.drive.move(d["drive_id"], self.drive.folder(f"Longform/{ser['folder']}/{lesson}"),
+                                    self.drive.folder("Inbox"))
+                    for x in self.state["drawings"].values():
+                        if x.get("drive_id") == d["drive_id"]:
+                            x.update(keep_in_place=True, drive_where=f"Longform \u203a {ser['name']} \u203a {lesson}")
+                    self.say(f"\U0001f4da Moved {d.get('drive_name')} to Drive \u203a Longform \u203a "
+                             f"{ser['folder'].replace('/', ' \u203a ')} \u203a {lesson}. "
+                             f"Send /longform {lesson} to build that lesson's video.")
+                elif named and self.cfg.get("drive", {}).get("processed_to_longform", True):
                     # a named recording goes to its own LongDraw folder, ready for /longform <name>
                     self.drive.move(d["drive_id"], self.drive.folder(f"Longform/{named}"), self.drive.folder("Inbox"))
                     for x in self.state["drawings"].values():

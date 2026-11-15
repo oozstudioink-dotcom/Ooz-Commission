@@ -115,7 +115,10 @@ def _fit_cover(img: Image.Image, w: int, h: int) -> Image.Image:
 
 
 def make_thumbnail(art: Image.Image, episode: int, out: Path, size: tuple[int, int] = (1920, 1080),
-                   logo: Image.Image | None = None, words: tuple[str, str] = ("LONG", "DRAW")) -> Path:
+                   logo: Image.Image | None = None, words: tuple[str, str] = ("LONG", "DRAW"),
+                   badge: str = "EP.", kicker: str = "") -> Path:
+    """badge: the word before the number ("EP." or "LESSON"). kicker: a small red tab over the
+    art panel, used by series thumbnails (e.g. "BOOK STUDY")."""
     w, h = size
     canvas = Image.new("RGB", size, BG)
 
@@ -149,11 +152,17 @@ def make_thumbnail(art: Image.Image, episode: int, out: Path, size: tuple[int, i
 
     # episode badge
     ex0, ey0, ex1, ey1 = _box("ep", w, h)
-    d.rectangle((ex0, ey0, ex1, ey1), outline=CREAM, width=max(2, int(w * 0.0016)))
     ef = font("black", int((ey1 - ey0) * 0.5))
-    text = f"EP. {episode:02d}"
-    spaced = " ".join(text.replace(" ", " "))           # tracked-out look
+    spaced = " ".join(f"{badge} {episode:02d}")          # tracked-out look
+    ex1 = max(ex1, ex0 + int(d.textlength(spaced, font=ef) + (ey1 - ey0) * 0.9))   # longer words widen the box
+    d.rectangle((ex0, ey0, ex1, ey1), outline=CREAM, width=max(2, int(w * 0.0016)))
     d.text(((ex0 + ex1) / 2, (ey0 + ey1) / 2), spaced, font=ef, fill=CREAM, anchor="mm")
+    if kicker:                                           # red tab on the art panel's top-left corner
+        kf = font("black", int(h * 0.03))
+        ktext = " ".join(kicker.upper())
+        kw, kh = int(d.textlength(ktext, font=kf) + h * 0.04), int(h * 0.058)
+        d.rectangle((ax0, ay0 - kh // 2, ax0 + kw, ay0 + kh // 2), fill=RED)
+        d.text((ax0 + kw / 2, ay0), ktext, font=kf, fill=(255, 255, 255), anchor="mm")
 
     # LONG / DRAW
     _big_word(d, words[0], _box("long", w, h), CREAM)

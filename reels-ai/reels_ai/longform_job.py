@@ -51,8 +51,17 @@ def _notify(text: str) -> None:
                 print(f"warn: telegram: {e}")
 
 
-def list_projects(drive: Drive) -> list[dict]:
-    return [f for f in drive.list(drive.folder("Longform"), "folder") if f["name"] != "Finished"]
+def list_projects(drive: Drive, cfg: dict | None = None) -> list[dict]:
+    """Project folders in Longform, and the lessons inside each series folder. Each has "path":
+    its place under Longform ('Sasuke', or 'Educational Drawing/How to Draw/Lesson name')."""
+    from .series import all_series, roots
+    skip = {"finished"} | roots(cfg or {})
+    out = [{**f, "path": f["name"]} for f in drive.list(drive.folder("Longform"), "folder")
+           if f["name"].lower() not in skip]
+    for s in all_series(cfg or {}):
+        for f in drive.list(drive.folder(f"Longform/{s['folder']}"), "folder"):
+            out.append({**f, "path": f"{s['folder']}/{f['name']}"})
+    return out
 
 
 def run(project: str) -> None:
@@ -64,9 +73,15 @@ def run(project: str) -> None:
     drive = Drive(*env, root=cfg.get("drive", {}).get("root", "Ooz Reels"))
     t0 = time.time()
 
-    folder = next((f for f in list_projects(drive) if f["name"].lower() == project.lower()), None)
+    from .series import of_path
+    projects = list_projects(drive, cfg)
+    want = project.strip("/").lower()
+    folder = next((f for f in projects if want in (f["path"].lower(), f["name"].lower())), None)
+    series = of_path(cfg, folder["path"]) if folder else None
+    if series:
+        lcfg = {**lcfg, "series": series}
     if not folder:
-        names = ", ".join(f["name"] for f in list_projects(drive)) or "none yet"
+        names = ", ".join(f["name"] for f in projects) or "none yet"
         _notify(f"⚠️ No Longform folder called “{project}”. Projects: {names}")
         raise SystemExit(1)
     files = drive.list(folder["id"], "")
@@ -80,9 +95,11 @@ def run(project: str) -> None:
     # 'Deku - My Hero Academia' keeps the series name
     _notify("\U0001f4cb Session order: " + ", ".join(f["name"] for f in videos))
 
-    done = drive.folder("Done/Longform")
+    done_path = f"Done/Longform/{series['name']}" if series else "Done/Longform"   # a series counts its own lessons
+    done = drive.folder(done_path)
     episode = episode_from_names([f["name"] for f in drive.list(done, "folder")],
-                                 int(lcfg.get("next_episode", 3)))
+                                 1 if series else int(lcfg.get("next_episode", 3)))
+    tag = f"{series.get('badge', 'Lesson').title()} {episode:02d}" if series else f"EP {episode:02d}"
     raw_hours = sum(int((f.get("videoMediaMetadata") or {}).get("durationMillis", 0)) for f in videos) / 3.6e6
     _notify(f"\U0001f3ac LongDraw EP. {episode:02d} · {folder['name']}: starting on {len(videos)} "
             f"session(s), about {raw_hours:.1f} h of footage. This takes a while; I'll message you when it's done.")
@@ -118,14 +135,14 @@ def run(project: str) -> None:
                     log=print)
         mins = res["seconds"] / 60
         title, desc, tags = youtube_text(title_name, episode, res["chapters"], pcfg, res["speed"],
-                                         res["raw"], res.get("tracks"), lcfg.get("music_source", "YouTube Audio Library"))
+                                         res["raw"], res.get("tracks"), lcfg.get("music_source", "YouTube Audio Library"), series=series)
 
-        ep_folder = drive.folder(f"Done/Longform/EP {episode:02d} - {folder['name']}")
+        ep_folder = drive.folder(f"{done_path}/{tag} - {folder['name']}")
         up = drive.upload(res["video"], ep_folder)
         drive.upload(res["thumbnail"], ep_folder, mime="image/png")
         desc_file = work / "description.txt"
         desc_file.write_text(f"{title}\n\n{desc}\n")
-        drive.upload(desc_file, ep_folder, f"EP {episode:02d} - YouTube title and description.txt", "text/plain")
+        drive.upload(desc_file, ep_folder, f"{tag} - YouTube title and description.txt", "text/plain")
 
         lines = [f"✅ LongDraw EP. {episode:02d} · {folder['name']} is ready",
                  f"{mins:.0f} min · {res['raw'] / 3600:.1f} h of footage · {res['speed']:.1f}x speed",
@@ -151,7 +168,7 @@ def run(project: str) -> None:
                              "upload it by hand with the title and description file there.")
         lines += ["", "Chapters:", res["chapters"]]
         try:
-            drive.move(folder["id"], drive.folder("Longform/Finished"), drive.folder("Longform"))
+            drive.move_to(folder["id"], drive.folder("Longform/Finished"))
         except Exception as e:  # noqa: BLE001
             print(f"warn: couldn't move the project folder: {e}")
         lines.append(f"\n(took {(time.time() - t0) / 60:.0f} min; the session files moved to Longform › Finished)")

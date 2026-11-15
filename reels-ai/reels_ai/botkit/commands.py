@@ -129,11 +129,13 @@ class CommandsMixin:
             self.say("LongDraw needs Google Drive connected (the drive scope on YT_REFRESH_TOKEN).")
             return
         try:
-            folders = [f["name"] for f in self.drive.list(self.drive.folder("Longform"), "folder")
-                       if f["name"] != "Finished"]
+            from ..longform_job import list_projects
+            found = list_projects(self.drive, self.cfg)
         except Exception as e:  # noqa: BLE001
             return self.drive_problem(e)
-        match = next((n for n in folders if n.lower() == project.lower()), None) if project else None
+        folders = [f["path"].replace("/", " \u203a ") for f in found]
+        hit = next((f for f in found if project.lower() in (f["name"].lower(), f["path"].lower())), None) if project else None
+        match = hit["path"] if hit else None
         if not match:
             listing = "\n".join(f"\u2022 {n}" for n in folders) or "(none yet: make a folder in Drive \u203a Ooz Reels \u203a Longform)"
             hint = f"No project called \u201c{project}\u201d. " if project else ""

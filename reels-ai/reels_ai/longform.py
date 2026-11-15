@@ -186,15 +186,17 @@ def _duration(p: Path) -> float:
     return float(out or 0)
 
 
-def render_intro(out: Path, size: tuple[int, int], episode: int, project: str, seconds: float = 3.0) -> float:
+def render_intro(out: Path, size: tuple[int, int], episode: int, project: str, seconds: float = 3.0,
+                 words: tuple[str, str] = ("LONG", "DRAW"), badge: str = "EP.") -> float:
     from PIL import Image, ImageDraw
     from .fx import font
     W, H = size
     img = Image.new("RGB", (W, H), (0, 0, 0))
     d = ImageDraw.Draw(img)
-    d.text((W // 2, int(H * 0.30)), "LONG", font=_anton(int(H * 0.26)), fill=CREAM, anchor="mm")
-    d.text((W // 2, int(H * 0.56)), "DRAW", font=_anton(int(H * 0.26)), fill=RED, anchor="mm")
-    d.text((W // 2, int(H * 0.77)), " ".join(f"EP. {episode:02d}"), font=font("black", int(H * 0.05)),
+    big = int(H * 0.26 * min(1.0, 5.2 / max(len(words[0]), len(words[1]), 1)))   # long words still fit
+    d.text((W // 2, int(H * 0.30)), words[0], font=_anton(big), fill=CREAM, anchor="mm")
+    d.text((W // 2, int(H * 0.56)), words[1], font=_anton(big), fill=RED, anchor="mm")
+    d.text((W // 2, int(H * 0.77)), " ".join(f"{badge} {episode:02d}"), font=font("black", int(H * 0.05)),
            fill=CREAM, anchor="mm")
     if project:
         d.text((W // 2, int(H * 0.85)), " ".join(project.upper()), font=font("bold", int(H * 0.03)),
@@ -274,6 +276,9 @@ def build(sessions: list[Session], out_dir: Path, project: str, episode: int, cf
           log=print) -> dict:
     """Returns {"video", "thumbnail", "thumbnail_yt", "chapters", "seconds", "speed", ...}."""
     out_dir.mkdir(parents=True, exist_ok=True)
+    from .series import brand
+    look = brand(cfg.get("series"))                      # LongDraw, or a series' own words and badge
+    stem = f"LongDraw EP {episode:02d}" if not cfg.get("series") else f"{look['badge'].title()} {episode:02d}"
     size = SIZES.get(cfg.get("resolution", "4k"), SIZES["4k"])
     lo, hi = cfg.get("target_minutes", [20, 30])
     work = Path(tempfile.mkdtemp(dir=out_dir))
@@ -291,7 +296,7 @@ def build(sessions: list[Session], out_dir: Path, project: str, episode: int, cf
             if any(s.portrait for s in sessions) else []
         parts, chapters, clock = [], [], 0.0
         intro = work / "000_intro.mp4"
-        clock += render_intro(intro, size, episode, project)
+        clock += render_intro(intro, size, episode, project, words=look['words'], badge=look['badge'])
         parts.append(intro)
         chapters.append((0.0, "Intro"))
         for i, s in enumerate(sessions):
@@ -316,7 +321,7 @@ def build(sessions: list[Session], out_dir: Path, project: str, episode: int, cf
             name = track_name(b)
             if name not in tracks:
                 tracks.append(name)
-        video = out_dir / f"LongDraw EP {episode:02d} - {project}.mp4"
+        video = out_dir / f"{stem} - {project}.mp4"
         _run(["ffmpeg", "-v", "error", "-y", "-i", str(silent), "-i", str(audio), "-map", "0:v", "-map", "1:a",
               "-c", "copy", "-shortest", "-movflags", "+faststart", str(video)])
 
@@ -338,8 +343,9 @@ def build(sessions: list[Session], out_dir: Path, project: str, episode: int, cf
                 except Exception as e:  # noqa: BLE001
                     print(f"warn: thumbnail frame: {e}")
             art_img = crop_art(clearest(frames))
-        thumb = make_thumbnail(art_img, episode, out_dir / f"LongDraw EP {episode:02d} - thumbnail.png")
-        thumb_yt = youtube_jpeg(thumb, out_dir / f"LongDraw EP {episode:02d} - thumbnail.jpg")
+        thumb = make_thumbnail(art_img, episode, out_dir / f"{stem} - thumbnail.png", words=look["words"],
+                               badge=look["badge"], kicker=look["kicker"])
+        thumb_yt = youtube_jpeg(thumb, out_dir / f"{stem} - thumbnail.jpg")
         if len(chapters) < 3 or any(b[0] - a[0] < 10 for a, b in zip(chapters, chapters[1:])):
             chapters = [c for c in chapters if c[0] == 0.0 or c[1] != "Intro"]
         chapter_text = "\n".join(f"{fmt_ts(t)} {name}" for t, name in chapters)
@@ -353,8 +359,10 @@ def build(sessions: list[Session], out_dir: Path, project: str, episode: int, cf
 
 def youtube_text(project: str, episode: int, chapters: str, panel_cfg: dict, speed: float,
                  raw_s: float, tracks: list[str] | None = None,
-                 music_source: str = "YouTube Audio Library") -> tuple[str, str, list[str]]:
+                 music_source: str = "YouTube Audio Library", series: dict | None = None) -> tuple[str, str, list[str]]:
     title = f"LongDraw EP. {episode:02d} | {project} | Manga Inking Timelapse"[:100]
+    if series:
+        title = f"{series['name']} | {series.get('badge', 'Lesson').title()} {episode:02d} | {project}"[:100]
     socials = "\n".join(f"{p}: {h}" for p, h in panel_cfg.get("socials", []))
     link = panel_cfg.get("link", "")
     music = ""
@@ -387,7 +395,7 @@ def subject_title(name: str, i: int) -> str:
 
 
 def episode_from_names(names: list[str], floor: int) -> int:
-    nums = [int(m.group(1)) for n in names if (m := re.search(r"EP\.?\s*(\d+)", n, re.I))]
+    nums = [int(m.group(1)) for n in names if (m := re.search(r"^\s*(?:EP|LESSON|PART)\.?\s*(\d+)", n, re.I))]
     return max([floor] + [n + 1 for n in nums])
 
 
