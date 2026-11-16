@@ -78,7 +78,7 @@ class AuditMixin:
             k = r.get("video")
             if not isinstance(k, int) or k not in weak:
                 continue
-            v, new = measured[k], audit.safe_rewrite(measured[k], r)
+            v, new = measured[k], audit.safe_rewrite(measured[k], r, self.cfg.get("youtube", {}).get("description_template", ""))
             if not new:
                 continue
             key = v["id"]
@@ -86,7 +86,9 @@ class AuditMixin:
                 **new, "category": v["category"], "at": iso(self.clock()), "status": "proposed",
                 "old": {"title": v["title"], "description": v["description"], "tags": v["tags"]}}
             self.say(f"✏️ Proposed rewrite · youtu.be/{key}\n\nNow: {v['title']}\nNew: {new['title']}\n\n"
-                     f"Description:\n{new['description'][:600]}\n\nTags: {', '.join(new['tags'])}\n\nWhy: {new['why']}\n\n"
+                     f"Hashtags: {' '.join(new['hashtags'])}\nTags: {', '.join(new['tags'])}\n"
+                     f"Description: your template{' (from config)' if self.cfg.get('youtube', {}).get('description_template') else ', with only the hashtag line changed'}\n\n"
+                     f"Why: {new['why']}\n\n"
                      "Nothing changes on YouTube unless you tap Apply. /undo_rewrite puts the old one back.",
                      reply_markup=rewrite_markup(key))
 
@@ -130,7 +132,7 @@ class AuditMixin:
         trending = self.state.get("radar", {}).get("trending", [])
         requests = list(self.state.get("requests", {}).values())
         styles = [s for s in self.cfg["variants"]["styles"] if s in STYLE_LABELS]
-        days = audit.plan_days(self.local(self.clock()))
+        days = audit.plan_days(self.local(self.clock()), 7, self.cfg.get("delivery", {}).get("drop_days"))
         plan = None
         route = self.route("calendar")
         if (trending or requests) and route:

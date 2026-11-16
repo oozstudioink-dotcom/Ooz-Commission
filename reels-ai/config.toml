@@ -9,7 +9,8 @@ timezone = "America/New_York"   # used for post_times below
 #              Nothing is auto-posted.
 # "platforms": per-platform schedules below, with optional auto-posting (method = "api").
 mode = "drops"
-drop_times = ["17:00"]               # one drawing a day, at 5 PM
+drop_times = ["12:00"]               # noon
+drop_days = ["Mon", "Wed", "Fri"]    # three Shorts a week; the LongDraw goes up Fridays at noon
 # Each day = ONE drawing: the bot sends `options` versions of it to choose from, the caption, and
 # a 4:5 still of the finished piece for the Instagram feed post. The drawing is then used up, so
 # no drawing is posted twice. split names the platforms the Short goes to.
@@ -52,7 +53,7 @@ method = "api"                   # connection check passed 2026-11-07 (Ooz Studi
 privacy = "public"               # YouTube keeps API uploads private until Google's audit is approved
 category_id = 1                  # Film & Animation
 max_per_day = 1
-post_times = ["17:00"]
+post_times = ["12:00"]
 
 [platforms.instagram]
 # Off since 2026-11-12: Instagram flagged the account for "automated account activity". The bot
@@ -124,7 +125,7 @@ memory_in_drive = true           # the bot's memory lives privately in Drive > O
 
 [longform]
 # "LongDraw" YouTube videos built from Drive > Longform/<project>/ sessions.
-next_episode = 2                 # EP. number for the next upload (counts up automatically)
+next_episode = 5                 # the lowest number the next LongDraw can get (Afro Samurai = EP 05); counts up from the Done > Longform folders
 target_minutes = [20, 30]        # speed is picked so the cut lands in this range
 resolution = "4k"                # "4k" (3840x2160) or "1080p"
 art_panel_name = "YT_Longform_Finished_Art_Panel"   # optional image in the project folder for the thumbnail
@@ -148,8 +149,8 @@ socials = [
 ]
 schedule_title = "Upload schedule"
 schedule = [                     # "MAIN TEXT | small line under it"
-  "New Shorts | every day \u00b7 5 PM EST",
-  "LongDraw | every Friday \u00b7 5 PM EST",
+  "New Shorts | Mon \u00b7 Wed \u00b7 Fri \u00b7 12 PM EST",
+  "LongDraw | every Friday \u00b7 12 PM EST",
 ]
 
 [panels.advert]
@@ -230,3 +231,16 @@ match = ["anatomy", "tom fox", "form and pose"]
 words = ["ANATOMY", "STUDY"]
 badge = "LESSON"
 kicker = "Book study"
+
+[youtube]
+# The description every video keeps. The auditor (/audit) only changes a video's title, tags and
+# the hashtag line at the end; the rest of the description is this text, word for word. LongDraw
+# descriptions end with it too. Links written with https:// are clickable in long videos.
+description_template = """
+I'm a comic artist and character designer, inking everything by hand. Here I share the whole process, from the first stick figure to the last line of ink.
+
+Commissions are open: https://oozstudioink-dotcom.github.io/Ooz-Commission/
+Portfolio: https://oozstudioink-dotcom.github.io/Ooz-Commission/portfolio.html
+
+New Shorts every Monday, Wednesday and Friday at 12 PM ET. A full LongDraw every Friday at 12 PM ET.
+"""

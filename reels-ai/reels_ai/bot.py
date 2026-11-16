@@ -179,6 +179,8 @@ class Runner(AuditMixin, SponsorMixin, LibraryMixin, InboxToolsMixin, CommandsMi
             self.inbox_command()
         elif cmd == "/combine":
             self.combine_command(text.split(maxsplit=1)[1] if len(text.split(maxsplit=1)) > 1 else "")
+        elif cmd == "/rethumb":
+            self.rethumb_command(text.split(maxsplit=1)[1] if len(text.split(maxsplit=1)) > 1 else "")
         elif cmd == "/reupload":
             self.reupload_command(text.split(maxsplit=1)[1] if len(text.split(maxsplit=1)) > 1 else "")
         elif cmd == "/unuse":

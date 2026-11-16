@@ -102,6 +102,17 @@ class InboxToolsMixin:
                  + (f"\n{replaced} Short(s) made from the separate pieces left your library." if replaced else "")
                  + "\nShorts arrive in /videos when it's done.")
 
+    def rethumb_command(self, arg: str) -> None:
+        name, _, ep = arg.strip().rpartition(" ")
+        if not (name.strip() and ep.isdigit()):
+            return self.say("Tell me the video and its new number: /rethumb Afro Samurai 2")
+        try:
+            dispatch_workflow("longform.yml", {"project": "-", "rethumb": f"{name.strip()} {int(ep)}"})
+            self.say(f"\U0001f5bc Re-numbering \u201c{name.strip()}\u201d as episode {int(ep):02d}: new thumbnail, Drive "
+                     "folder name and YouTube title. I'll message you when it's done.")
+        except Exception as e:  # noqa: BLE001
+            self.say(f"\u26a0\ufe0f Couldn't start it: {str(e)[:200]}")
+
     def reupload_command(self, arg: str) -> None:
         if not arg.strip():
             return self.say("Which video? /reupload Afro Samurai (any part of its folder name in "

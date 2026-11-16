@@ -135,7 +135,8 @@ def run(project: str) -> None:
                     log=print)
         mins = res["seconds"] / 60
         title, desc, tags = youtube_text(title_name, episode, res["chapters"], pcfg, res["speed"],
-                                         res["raw"], res.get("tracks"), lcfg.get("music_source", "YouTube Audio Library"), series=series)
+                                         res["raw"], res.get("tracks"), lcfg.get("music_source", "YouTube Audio Library"), series=series,
+                                         template=cfg.get("youtube", {}).get("description_template", ""))
 
         ep_folder = drive.folder(f"{done_path}/{tag} - {folder['name']}")
         up = drive.upload(res["video"], ep_folder)
@@ -229,5 +230,80 @@ def reupload(query: str) -> None:
     except Exception as e:
         _notify(f"\u274c Re-upload of \u201c{query}\u201d failed: {str(e)[:300]}")
         raise
+    finally:
+        shutil.rmtree(work, ignore_errors=True)
+
+
+def art_from_thumbnail(png) -> "Image.Image":
+    """The finished page back out of a LongDraw thumbnail: the art panel, without the dark
+    background and its shadow."""
+    import numpy as np
+    from PIL import Image
+    from .thumbnail import BG, _box
+    img = Image.open(png).convert("RGB")
+    x0, y0, x1, y1 = _box("art", img.width, img.height)
+    panel = np.array(img.crop((x0, y0, x1, y1)))       # the art sits inside this box; the shadow falls outside
+    lit = np.abs(panel.astype(int) - np.array(BG)).max(axis=2) > 40      # brighter than the background
+    ys, xs = np.nonzero(lit)
+    if len(xs) < 100:
+        return Image.fromarray(panel)
+    return Image.fromarray(panel[ys.min():ys.max() + 1, xs.min():xs.max() + 1])
+
+
+def rethumb(query: str, episode: int) -> None:
+    """Give a finished LongDraw a new episode number: a new thumbnail (from its own art), the
+    Drive folder and the YouTube title renamed, and the new thumbnail set on YouTube."""
+    from .series import all_series, brand, of_path
+    from .thumbnail import make_thumbnail, youtube_jpeg
+    from .youtube import YouTube
+    cfg = load_config()
+    env = [os.environ.get(k, "").strip() for k in ("YT_CLIENT_ID", "YT_CLIENT_SECRET", "YT_REFRESH_TOKEN")]
+    drive = Drive(*env, root=cfg.get("drive", {}).get("root", "Ooz Reels"))
+    places = ["Done/Longform"] + [f"Done/Longform/{s_['name']}" for s_ in all_series(cfg)]
+    want = re.sub(r"[^a-z0-9]+", "", query.lower())
+    hits = [(p, f) for p in places for f in drive.list(drive.folder(p), "folder")
+            if want in re.sub(r"[^a-z0-9]+", "", f["name"].lower())]
+    if not hits:
+        _notify(f"\u26a0\ufe0f No finished video in Drive \u203a Done \u203a Longform matches \u201c{query}\u201d.")
+        raise SystemExit(1)
+    place, folder = max(hits, key=lambda h: h[1].get("createdTime", ""))
+    series = next((s_ for s_ in all_series(cfg) if place.endswith(s_["name"])), None)
+    look = brand(series)
+    name = re.sub(r"^\s*(?:EP|LESSON|PART)\.?\s*\d+\s*-\s*", "", folder["name"], flags=re.I)
+    files = drive.list(folder["id"], "")
+    png = next((f for f in files if f["name"].lower().endswith(".png")), None)
+    if not png:
+        _notify(f"\u26a0\ufe0f \u201c{folder['name']}\u201d has no thumbnail to take the art from.")
+        raise SystemExit(1)
+    work = Path(tempfile.mkdtemp())
+    try:
+        art = art_from_thumbnail(drive.download(png["id"], work / "old.png"))
+        tag = f"{look['badge'].title()} {episode:02d}" if series else f"EP {episode:02d}"
+        out = make_thumbnail(art, episode, work / f"{tag} - thumbnail.png", words=look["words"],
+                             badge=look["badge"], kicker=look["kicker"])
+        drive.upload(out, folder["id"], mime="image/png")
+        drive.rename(folder["id"], f"{tag} - {name}")
+        lines = [f"\U0001f5bc {name}: thumbnail now says {look['badge']} {episode:02d}; Drive folder renamed to "
+                 f"\u201c{tag} - {name}\u201d."]
+        yt = YouTube(*env)
+        me = yt.whoami()
+        vids = yt.videos([v["id"] for v in yt.recent_videos(me["uploads"], 50)])
+        subject = parse_name(name)[0] or name            # 'Bruce _Lee - ink only' -> 'Bruce Lee'
+        key = re.sub(r"[^a-z0-9]+", "", subject.lower())
+        match = [v for v in vids if key and key in re.sub(r"[^a-z0-9]+", "", v["title"].lower()) and v["seconds"] > 90]
+        if not match:
+            lines.append("I couldn't find it on YouTube by its name; upload the new thumbnail from the Drive folder "
+                         "by hand (YouTube Studio \u203a the video \u203a Thumbnail).")
+        else:
+            v = match[0]
+            title = re.sub(r"(EP\.?|Lesson)\s*\d+", lambda m: f"{m.group(1)} {episode:02d}", v["title"], count=1, flags=re.I)
+            if title != v["title"]:
+                yt.update_video(v["id"], title, v["description"], v["tags"], v["category"])
+            try:
+                yt.set_thumbnail(v["id"], youtube_jpeg(out, work / "t.jpg"))
+                lines.append(f"YouTube: thumbnail replaced and title is now \u201c{title}\u201d (youtu.be/{v['id']}).")
+            except Exception as e:  # noqa: BLE001
+                lines.append(f"YouTube title updated, but the thumbnail wasn't set ({str(e)[:120]}).")
+        _notify("\n".join(lines))
     finally:
         shutil.rmtree(work, ignore_errors=True)

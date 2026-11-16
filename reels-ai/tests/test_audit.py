@@ -50,15 +50,23 @@ class MeasureTest(unittest.TestCase):
         self.assertIn("Kakashi inked", text.split("Falling behind")[0])
         self.assertIn("drawing 4", text.split("Falling behind")[1])
 
-    def test_a_rewrite_keeps_your_links_and_bad_ones_are_dropped(self):
-        new = audit.safe_rewrite(VIDEOS[1], {"title": "  Naruto   inked by hand ", "description": "Watch the ink go on.",
-                                             "tags": ["#naruto", "naruto", "<b>"], "why": "names the subject"})
-        self.assertEqual(new["title"], "Naruto inked by hand")
-        self.assertIn("https://ooz.example/commissions", new["description"])
+    def test_a_rewrite_changes_only_title_tags_and_hashtags(self):
+        video = {**VIDEOS[1], "description": "Inked by hand https://ooz.example/commissions\n\n#old #tags"}
+        new = audit.safe_rewrite(video, {"title": "  Naruto   inked by hand #viral", "hashtags": ["#Naruto", "anime art", "naruto"],
+                                         "tags": ["#naruto", "naruto", "<b>"], "why": "names the subject"})
+        self.assertEqual(new["title"], "Naruto inked by hand")                 # no hashtags in the title
+        self.assertEqual(new["description"], "Inked by hand https://ooz.example/commissions\n\n#naruto #animeart")
         self.assertEqual(new["tags"], ["naruto", "b"])
-        self.assertIsNone(audit.safe_rewrite(VIDEOS[1], {"title": "x", "description": "d", "tags": []}))
-        self.assertIsNone(audit.safe_rewrite(VIDEOS[1], {"title": VIDEOS[1]["title"],
-                                                         "description": VIDEOS[1]["description"], "tags": []}))
+        tpl = audit.safe_rewrite(video, {"title": "Naruto inked by hand", "hashtags": ["#naruto"], "tags": []},
+                                 template="\nMy fixed text https://site\n")
+        self.assertEqual(tpl["description"], "My fixed text https://site\n\n#naruto")   # the template, word for word
+        self.assertIsNone(audit.safe_rewrite(VIDEOS[1], {"title": "x", "hashtags": [], "tags": []}))
+        self.assertIsNone(audit.safe_rewrite({**VIDEOS[1], "description": "d\n\n#a"},
+                                             {"title": VIDEOS[1]["title"], "hashtags": ["#a"], "tags": []}))
+
+    def test_posting_days_only(self):
+        days = audit.plan_days(datetime(2026, 11, 16, tzinfo=timezone.utc), 7, ["Mon", "Wed", "Fri"])
+        self.assertEqual(days, ["Mon Nov 16", "Wed Nov 18", "Fri Nov 20"])
 
     def test_simple_calendar_puts_requests_first_and_never_repeats(self):
         days = audit.plan_days(NOW)
@@ -85,9 +93,9 @@ class BotAuditTest(unittest.TestCase):
     def test_audit_proposes_and_changes_youtube_only_when_you_tap_apply(self):
         r = self.runner()
         words = {"summary": "Named characters do best.", "findings": ["Titles without a name fall behind."],
-                 "rewrites": [{"video": 1, "title": "Naruto inked by hand", "description": "Ink only.",
+                 "rewrites": [{"video": 1, "title": "Naruto inked by hand", "hashtags": ["#naruto"],
                                "tags": ["naruto"], "why": "names the subject"},
-                              {"video": 2, "title": "Should be ignored", "description": "not weak", "tags": [], "why": ""}],
+                              {"video": 2, "title": "Should be ignored", "hashtags": [], "tags": [], "why": ""}],
                  "tokens": {"in": 2000, "out": 800}}
         with mock.patch.dict(os.environ, {"ANTHROPIC_API_KEY": "k"}), mock.patch.object(audit, "propose", return_value=words):
             self.bot.push(**msg(OWNER, text="/audit"))
@@ -99,7 +107,8 @@ class BotAuditTest(unittest.TestCase):
         self.bot.push(**tap("ta:id1"))
         r.poll()
         self.assertEqual(self.yt.updated[0][:2], ("id1", "Naruto inked by hand"))
-        self.assertIn("https://ooz.example/commissions", self.yt.updated[0][2])
+        self.assertTrue(self.yt.updated[0][2].endswith("#naruto"))
+        self.assertIn("comic artist", self.yt.updated[0][2])              # the description template from config
         self.bot.push(**tap("ta:id1"))                                   # a second tap does nothing
         self.bot.push(**msg(OWNER, text="/undo_rewrite"))
         r.poll()

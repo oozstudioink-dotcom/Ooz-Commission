@@ -29,6 +29,7 @@ def load_config():
     drop machinery, which stays in the bot behind [delivery] auto_drop."""
     cfg = _load_config()
     cfg["delivery"]["auto_drop"] = True
+    cfg["delivery"].pop("drop_days", None)        # every day: these tests check the drop machinery
     return cfg
 
 OWNER, STRANGER = 111, 999
@@ -743,7 +744,7 @@ class SplitDropsTest(FakeVariantsMixin, unittest.TestCase):
         self.assertEqual(r.bank()["drops"], 4)                        # counted in drawings
         bot.push(**msg(OWNER, text="/queue"))
         r.poll()
-        self.assertTrue(any("Drawings ready: 4 = 4 days of uploads" in t for t in bot.texts()))
+        self.assertTrue(any("Drawings ready: 4 = 4 posting days" in t for t in bot.texts()))
         for day in range(5):
             clock.t = datetime(2026, 11, 7, 20, tzinfo=timezone.utc) + timedelta(days=day)
             r.poll()
@@ -974,6 +975,47 @@ class InboxToolsTest(unittest.TestCase):
         self.assertEqual((info["width"], info["height"]), (360, 640))
         self.assertAlmostEqual(info["duration"], 5.0, delta=0.2)
         self.assertGreater(made[0], made[1])                         # the longer part gets more frames
+
+
+class ScheduleAndRethumbTest(unittest.TestCase):
+    def test_drops_only_on_posting_days(self):
+        cfg = _load_config()
+        cfg["delivery"].update(auto_drop=True, drop_days=["Mon", "Wed", "Fri"], drop_times=["12:00"])
+        cfg["timezone"] = "UTC"
+        bot, state = FakeBot(), fresh_state()
+        state["owner_chat_id"] = OWNER
+        state["drawings"] = {f"d{i}": {"subject": f"S{i}", "status": "rendered"} for i in range(4)}
+        state["variants"] = {f"v{i}": {"drawing": f"d{i}", "style": "one_take", "status": "approved", "file_id": f"f{i}",
+                                       "caption": "c", "hook": "h", "seconds": 12} for i in range(4)}
+        clock = Clock(datetime(2026, 11, 17, 13, tzinfo=timezone.utc))          # a Tuesday
+        r = Runner(bot, state, cfg, clock=clock)
+        r.post_still = lambda options: None
+        r.drop_due()
+        self.assertFalse(any(v.get("dropped_at") for v in state["variants"].values()))
+        clock.t = datetime(2026, 11, 18, 13, tzinfo=timezone.utc)                # Wednesday, after noon
+        r.drop_due()
+        self.assertEqual(sum(1 for v in state["variants"].values() if v.get("dropped_at")), 1)
+        bot.push(**msg(OWNER, text="/queue"))
+        r.poll()
+        self.assertTrue(any("at 3 a week" in t for t in bot.texts()))
+
+    def test_art_comes_back_out_of_a_thumbnail(self):
+        from PIL import Image
+        from reels_ai.longform_job import art_from_thumbnail
+        from reels_ai.thumbnail import make_thumbnail
+        art = Image.new("RGB", (600, 800), (240, 238, 230))
+        tmp = Path(tempfile.mkdtemp())
+        make_thumbnail(art, 2, tmp / "t.png")
+        back = art_from_thumbnail(tmp / "t.png")
+        self.assertAlmostEqual(back.width / back.height, 600 / 800, delta=0.03)
+        self.assertGreater(back.height, 600)
+
+    def test_longdraw_description_ends_with_the_template(self):
+        from reels_ai.longform import youtube_text
+        _, desc, _ = youtube_text("Gojo", 3, "0:00 Intro", {"socials": [["Instagram", "@old"]], "link": "x"}, 4.0, 3600,
+                                  template="My own words https://site")
+        self.assertIn("My own words https://site", desc)
+        self.assertNotIn("@old", desc)
 
 
 class StyleLearningTest(unittest.TestCase):
@@ -1850,7 +1892,7 @@ class LongformJobTest(unittest.TestCase):
                            {"id": "s1", "name": "Naruto.MOV", "mimeType": "video/quicktime",
                             "createdTime": "2026-11-01", "videoMediaMetadata": {"durationMillis": "3600000"}},
                            {"id": "a1", "name": "YT_Longform_Finished_Art_Panel.jpg", "mimeType": "image/jpeg"}],
-                    "id:Done/Longform": [{"id": "e3", "name": "EP 03 - Old page", "mimeType": "folder"}],
+                    "id:Done/Longform": [{"id": "e3", "name": "EP 05 - Old page", "mimeType": "folder"}],
                     "id:Beats": [{"id": "b1", "name": "lofi.mp3", "mimeType": "audio/mpeg"}],
                     "id:Side Panels": [{"id": "x", "name": "other.mov", "mimeType": "video/quicktime",
                                         "createdTime": "1"},
@@ -1918,17 +1960,17 @@ class LongformJobTest(unittest.TestCase):
         titles, srcs, episode, advert, art, nbeats, hdrs = calls["built"]
         self.assertEqual(titles, ["Naruto", "Deku"])                  # recording order
         self.assertEqual(srcs, ["https://drive/s1", "https://drive/s2"])
-        self.assertEqual(episode, 4)                                  # after EP 03 in Done
+        self.assertEqual(episode, 6)                                  # after EP 05 in Done
         self.assertEqual(advert, "advert.mov")
         self.assertTrue(art.startswith("art"))
         self.assertEqual(nbeats, 1)
         self.assertEqual(hdrs, ["-headers", "Authorization: Bearer AT\r\n"])
-        self.assertTrue(calls["yt"][0].startswith("LongDraw EP. 04 | Shinobi Page"))
+        self.assertTrue(calls["yt"][0].startswith("LongDraw EP. 06 | Shinobi Page"))
         self.assertIn("0:03 Naruto", calls["yt"][1])
         self.assertIn("linktr.ee/oozstudioink", calls["yt"][1])
         self.assertEqual(calls["thumb"], "Y")
         self.assertIn(("p1", "id:Longform/Finished"), calls["moves"])
-        self.assertEqual({f for f, _ in calls["uploads"]}, {"id:Done/Longform/EP 04 - Shinobi Page"})
+        self.assertEqual({f for f, _ in calls["uploads"]}, {"id:Done/Longform/EP 06 - Shinobi Page"})
 
 
 class AdvertTest(unittest.TestCase):

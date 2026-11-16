@@ -29,12 +29,13 @@ drawing videos, and which videos are weak.
 Write:
 - "summary": two or three plain sentences on what is working and what is not, from the numbers.
 - "findings": up to four specific, practical observations (patterns in titles, length, subjects).
-- "rewrites": for each weak video listed, a better title, description and tags.
+- "rewrites": for each weak video listed, a better title, hashtags and tags. The description is not
+  yours to write: the channel uses one fixed description.
 
 Rules for rewrites. Title: under 60 characters, the character or subject first, plain words a \
-person would search, no clickbait and no claim the video doesn't deliver, at most one hashtag. \
-Description: two or three short lines; keep every link, credit and @mention from the current \
-description exactly; end with a question. Tags: 8 to 12, the character and series first. Use \
+person would search, no clickbait and no claim the video doesn't deliver, no hashtags in the \
+title. Hashtags: 3 to 5, lowercase, the character first, then the series, then #shorts for a \
+Short. Tags: 8 to 12, the character and series first. Use \
 only character and series names that already appear in that video's own title, description or \
 tags: never guess who is in a drawing. If a video has no name, keep the rewrite about the \
 drawing and the inking. Keep "#shorts" if the current title or description has it."""
@@ -45,9 +46,10 @@ SCHEMA = {"type": "object", "additionalProperties": False, "required": ["summary
               "findings": {"type": "array", "items": {"type": "string"}},
               "rewrites": {"type": "array", "items": {
                   "type": "object", "additionalProperties": False,
-                  "required": ["video", "title", "description", "tags", "why"],
+                  "required": ["video", "title", "hashtags", "tags", "why"],
                   "properties": {"video": {"type": "integer"}, "title": {"type": "string"},
-                                 "description": {"type": "string"}, "why": {"type": "string"},
+                                 "hashtags": {"type": "array", "items": {"type": "string"}},
+                                 "why": {"type": "string"},
                                  "tags": {"type": "array", "items": {"type": "string"}}}}}}}
 
 PLAN_SYSTEM = """You plan one week of short drawing videos for a traditional manga inking artist. \
@@ -135,24 +137,41 @@ def propose(measured: list[dict], weak: list[int], trending: list[dict], model: 
     return _ask(SYSTEM, SCHEMA, text, model, client)
 
 
-def safe_rewrite(video: dict, r: dict) -> dict | None:
-    """A proposal checked before you ever see it: right lengths, links kept, nothing empty."""
+def with_hashtags(body: str, hashtags: list[str]) -> str:
+    """A description with its hashtag line (the last line made only of hashtags) replaced."""
+    lines = (body or "").rstrip().split("\n")
+    while lines and lines[-1].strip() and all(w.startswith("#") for w in lines[-1].split()):
+        lines.pop()
+    body = "\n".join(lines).rstrip()
+    return (body + ("\n\n" if body else "") + " ".join(hashtags)).strip()
+
+
+def safe_rewrite(video: dict, r: dict, template: str = "") -> dict | None:
+    """A proposal checked before you ever see it: a sensible title, clean hashtags, and the
+    description left as you wrote it (your template, or the video's own) with only the
+    hashtag line changed."""
     title = re.sub(r"\s+", " ", str(r.get("title") or "")).strip()[:100]
-    desc = str(r.get("description") or "").strip()[:4900]
+    title = re.sub(r"\s*#\w+", "", title).strip()
     tags = [re.sub(r"[<>#]", "", str(t)).strip()[:40] for t in r.get("tags") or []]
     tags = list(dict.fromkeys(t for t in tags if t))[:15]
-    if len(title) < 5 or not desc or "<" in title or ">" in title:
+    hashtags = ["#" + re.sub(r"[^\w]", "", str(h).lstrip("#").lower()) for h in r.get("hashtags") or []]
+    hashtags = list(dict.fromkeys(h for h in hashtags if len(h) > 1))[:5]
+    if "#shorts" in (video.get("title", "") + video.get("description", "")).lower() and "#shorts" not in hashtags:
+        hashtags.append("#shorts")
+    if len(title) < 5 or "<" in title or ">" in title:
         return None
-    for link in re.findall(r"https?://\S+", video.get("description", "")):
-        if link not in desc:                           # never lose a link you put there
-            desc += f"\n{link}"
+    desc = with_hashtags(template.strip() or video.get("description", ""), hashtags)[:4900]
     if title == video.get("title") and desc == video.get("description"):
         return None
-    return {"title": title, "description": desc, "tags": tags, "why": str(r.get("why") or "").strip()[:200]}
+    return {"title": title, "description": desc, "tags": tags, "hashtags": hashtags,
+            "why": str(r.get("why") or "").strip()[:200]}
 
 
-def plan_days(start: datetime, days: int = 7) -> list[str]:
-    return [(start + timedelta(days=k)).strftime("%a %b %-d") for k in range(days)]
+def plan_days(start: datetime, days: int = 7, weekdays: list[str] | None = None) -> list[str]:
+    """The posting days in the next `days` days ("Mon", "Wed", "Fri"); every day if none given."""
+    want = {w[:3].title() for w in weekdays or []}
+    out = [(start + timedelta(days=k)) for k in range(days)]
+    return [d.strftime("%a %b %-d") for d in out if not want or d.strftime("%a") in want]
 
 
 def simple_plan(day_names: list[str], trending: list[dict], requests: list[dict], styles: list[str]) -> list[dict]:
