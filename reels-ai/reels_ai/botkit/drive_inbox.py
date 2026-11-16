@@ -169,16 +169,50 @@ class DriveMixin:
             if kept.get("path"):
                 kept["path"].unlink(missing_ok=True)
             tmp = kept["dir"]
-        path = make_proxy(self.drive.media_url(d["drive_id"]), self.drive.token(),
-                          tmp / f"{d['drive_id']}.mp4", dur, max_side=3840 if self.shorts_4k else 2560)
+        side = 3840 if self.shorts_4k else 2560
+        if d.get("drive_ids") and len(d["drive_ids"]) > 1:    # recordings you split: read each, join them
+            path = self.joined_source(d, tmp, side)
+        else:
+            path = make_proxy(self.drive.media_url(d["drive_id"]), self.drive.token(),
+                              tmp / f"{d['drive_id']}.mp4", dur, max_side=side)
         if kept is not None:
             kept.update(id=d["drive_id"], path=path)
         return path
 
+    def joined_source(self, d: dict, tmp: Path, side: int) -> Path:
+        """One working copy from several recordings, in order, each getting frames in proportion
+        to its length; different sizes are fitted to the first one's."""
+        import subprocess
+        from ..drive import make_proxy
+        ids, durs = d["drive_ids"], d.get("drive_durations") or []
+        total = sum(x for x in durs if x) or 0
+        parts = []
+        for k, fid in enumerate(ids):
+            dur = durs[k] if k < len(durs) and durs[k] else None
+            share = (dur / total) if (dur and total) else 1 / len(ids)
+            parts.append(make_proxy(self.drive.media_url(fid), self.drive.token(), tmp / f"part{k}.mp4",
+                                    dur or 30 * 60, max_side=side, target_frames=max(300, int(2700 * share))))
+            print(f"read part {k + 1} of {len(ids)}")
+        from ..media import probe
+        first = probe(parts[0])
+        W, H = first["width"], first["height"]
+        chain = "".join(f"[{k}:v]scale={W}:{H}:force_original_aspect_ratio=decrease,pad={W}:{H}:(ow-iw)/2:(oh-ih)/2,"
+                        f"setsar=1,fps=30[v{k}];" for k in range(len(parts)))
+        chain += "".join(f"[v{k}]" for k in range(len(parts))) + f"concat=n={len(parts)}:v=1:a=0[out]"
+        out = tmp / f"{ids[0]}_joined.mp4"
+        cmd = ["ffmpeg", "-v", "error", "-y"]
+        for p_ in parts:
+            cmd += ["-i", str(p_)]
+        subprocess.run(cmd + ["-filter_complex", chain, "-map", "[out]", "-an", "-c:v", "libx264", "-crf", "16",
+                              "-preset", "veryfast", "-pix_fmt", "yuv420p", str(out)], check=True)
+        for p_ in parts:
+            p_.unlink(missing_ok=True)
+        return out
+
     def drive_raw(self, d: dict) -> dict:
         """How Process cuts read short real-speed moments straight from the original on Drive."""
-        if not self.drive:
-            return {}
+        if not self.drive or (d.get("drive_ids") and len(d["drive_ids"]) > 1):
+            return {}                                    # joined recordings: no real-speed reads
         if not d.get("duration"):                 # Drive didn't say: ask the file itself
             try:
                 from ..drive import remote_duration
@@ -202,6 +236,11 @@ class DriveMixin:
         Done/Shorts. Returns {style: Drive link}."""
         links: dict[str, str] = {}
         try:
+            for extra in (d.get("drive_ids") or [])[1:]:   # the other pieces of a joined recording
+                try:
+                    self.drive.move_to(extra, self.drive.folder("Inbox/Processed"))
+                except Exception as e:  # noqa: BLE001
+                    print(f"warn: couldn't move a joined piece: {e}")
             if not d.get("keep_in_place"):          # LongDraw sessions stay in their project folder
                 named = self.labelled_subject(d)
                 from ..series import match as series_match

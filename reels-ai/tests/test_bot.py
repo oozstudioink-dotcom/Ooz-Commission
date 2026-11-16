@@ -13,6 +13,7 @@ import os
 import shutil
 import tempfile
 import unittest
+from unittest import mock
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
@@ -901,6 +902,78 @@ class LibraryTest(unittest.TestCase):
         for f in ("F1", "F2", "F3"):
             self.assertIn((f, "id:Delete Me/Afro Samurai"), self.drive.moved)
         self.assertNotIn("d1", r.library())
+
+
+class InboxToolsTest(unittest.TestCase):
+    def setup(self, files):
+        class D:
+            moved = []
+            def __init__(self): self.files = files
+            def folder(self, path=""): return "id:" + path
+            def list(self, folder_id, kind="video"): return self.files if folder_id == "id:Inbox" else []
+            def move_to(self, fid, to): self.moved.append((fid, to))
+            def media_url(self, fid): return f"https://drive/{fid}"
+            def token(self): return "AT"
+        bot, state = FakeBot(), fresh_state()
+        state["owner_chat_id"] = OWNER
+        return bot, state, Runner(bot, state, _load_config(), drive=D())
+
+    def test_inbox_requeues_what_never_became_shorts(self):
+        files = [{"id": "a", "name": "Afro_Samurai.MOV"}, {"id": "b", "name": "IMG_1.MOV"},
+                 {"id": "c", "name": "Gojo.MOV"}, {"id": "n", "name": "New.MOV"}]
+        bot, state, r = self.setup(files)
+        state["drive_seen"] = ["a", "b", "c", "n"]
+        state["drawings"] = {
+            "d1": {"source": "drive", "drive_id": "a", "drive_name": "Afro_Samurai.MOV", "status": "failed",
+                   "error": "took longer than a whole run twice", "attempts": 3, "keep_in_place": False},
+            "d2": {"source": "drive", "drive_id": "b", "drive_name": "IMG_1.MOV", "status": "naming"},
+            "d3": {"source": "drive", "drive_id": "c", "drive_name": "Gojo.MOV", "status": "rendered"}}
+        r.inbox_command()
+        D = state["drawings"]
+        self.assertEqual((D["d1"]["status"], D["d2"]["status"], D["d3"]["status"]), ("queued", "queued", "rendered"))
+        self.assertNotIn("keep_in_place", D["d1"])                  # still moved out of Inbox when done
+        self.assertNotIn("n", state["drive_seen"])                   # never made: picked up on the next look
+        self.assertTrue(any("3 queued" in t for t in bot.texts()))
+
+    def test_combine_joins_split_recordings_in_order(self):
+        files = [{"id": "g2", "name": "Gojo 2.MOV", "videoMediaMetadata": {"durationMillis": "600000"}},
+                 {"id": "g10", "name": "Gojo 10.MOV", "videoMediaMetadata": {"durationMillis": "300000"}},
+                 {"id": "g1", "name": "Gojo 1.MOV", "videoMediaMetadata": {"durationMillis": "900000"}},
+                 {"id": "x", "name": "Other.MOV"}]
+        bot, state, r = self.setup(files)
+        state["drawings"] = {"d1": {"source": "drive", "drive_id": "g1", "drive_name": "Gojo 1.MOV", "status": "rendered"}}
+        state["variants"] = {"v1": {"drawing": "d1", "style": "one_take", "status": "pending"}}
+        state["next_id"] = 5
+        r.combine_command("Gojo")
+        new = [d for d in state["drawings"].values() if d.get("drive_ids")][0]
+        self.assertEqual(new["drive_ids"], ["g1", "g2", "g10"])
+        self.assertEqual((new["status"], new["subject"], new["duration"]), ("queued", "Gojo", 1800.0))
+        self.assertEqual(state["drawings"]["d1"]["status"], "combined")
+        self.assertEqual(state["variants"]["v1"]["status"], "replaced")
+        self.assertTrue(all(i in state["drive_seen"] for i in ("g1", "g2", "g10")))
+        self.assertEqual(r.drive_raw(new), {})                       # no real-speed reads across files
+
+    def test_joined_working_copy_plays_the_parts_in_order(self):
+        import subprocess
+        from reels_ai.botkit import drive_inbox
+        from reels_ai.media import probe
+        bot, state, r = self.setup([])
+        tmp = Path(tempfile.mkdtemp())
+        made = []
+
+        def fake_proxy(url, token, dst, dur, max_side=2560, target_frames=2700):
+            size = "360x640" if not made else "720x1280"              # different sizes get fitted
+            subprocess.run(["ffmpeg", "-v", "error", "-y", "-f", "lavfi", "-i", f"color=c=white:s={size}:r=30",
+                            "-t", "2" if not made else "3", "-pix_fmt", "yuv420p", str(dst)], check=True)
+            made.append(target_frames)
+            return Path(dst)
+        d = {"drive_id": "g1", "drive_ids": ["g1", "g2"], "drive_durations": [600, 300]}
+        with mock.patch("reels_ai.drive.make_proxy", fake_proxy):
+            out = r.joined_source(d, tmp, 2560)
+        info = probe(out)
+        self.assertEqual((info["width"], info["height"]), (360, 640))
+        self.assertAlmostEqual(info["duration"], 5.0, delta=0.2)
+        self.assertGreater(made[0], made[1])                         # the longer part gets more frames
 
 
 class StyleLearningTest(unittest.TestCase):

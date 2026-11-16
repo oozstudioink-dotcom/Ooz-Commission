@@ -178,3 +178,56 @@ def run(project: str) -> None:
         raise
     finally:
         shutil.rmtree(work, ignore_errors=True)
+
+
+def reupload(query: str) -> None:
+    """Upload a finished long video from Drive > Done > Longform to YouTube again, privately, with
+    its saved title, description and thumbnail (for a copy stuck on 'processing')."""
+    from .series import all_series
+    from .thumbnail import youtube_jpeg
+    from .youtube import YouTube
+    cfg = load_config()
+    env = [os.environ.get(k, "").strip() for k in ("YT_CLIENT_ID", "YT_CLIENT_SECRET", "YT_REFRESH_TOKEN")]
+    drive = Drive(*env, root=cfg.get("drive", {}).get("root", "Ooz Reels"))
+    places = ["Done/Longform"] + [f"Done/Longform/{s_['name']}" for s_ in all_series(cfg)]
+    want = re.sub(r"[^a-z0-9]+", "", query.lower())
+    hits = [f for p in places for f in drive.list(drive.folder(p), "folder")
+            if want in re.sub(r"[^a-z0-9]+", "", f["name"].lower())]
+    if not hits:
+        _notify(f"\u26a0\ufe0f No finished video in Drive \u203a Done \u203a Longform matches \u201c{query}\u201d.")
+        raise SystemExit(1)
+    folder = max(hits, key=lambda f: f.get("createdTime", ""))
+    files = drive.list(folder["id"], "")
+    video = next((f for f in files if f.get("mimeType", "").startswith("video/")), None)
+    if not video:
+        _notify(f"\u26a0\ufe0f \u201c{folder['name']}\u201d has no video file in it.")
+        raise SystemExit(1)
+    work = Path(tempfile.mkdtemp(dir=os.environ.get("LONGFORM_WORK", None)))
+    try:
+        title, desc = folder["name"], ""
+        txt = next((f for f in files if f["name"].lower().endswith(".txt")), None)
+        if txt:
+            body = drive.read_text(txt["id"]).strip().split("\n", 1)
+            title, desc = body[0].strip(), (body[1].strip() if len(body) > 1 else "")
+        _notify(f"\U0001f4e4 Re-uploading \u201c{title}\u201d ({int(video.get('size') or 0) / 1e9:.1f} GB). "
+                "This takes a while for 4K.")
+        local = drive.download(video["id"], work / "video.mp4")
+        yt = YouTube(*env)
+        y = yt.upload_file(local, title, desc, [], cfg.get("longform", {}).get("privacy", "private"))
+        lines = [f"\u2705 Re-uploaded: {y['permalink']}",
+                 "It's private. Check it finishes processing in YouTube Studio, schedule it, then delete the "
+                 "stuck copy there (Studio \u203a Content \u203a \u22ee \u203a Delete forever)."]
+        png = next((f for f in files if f["name"].lower().endswith(".png")), None)
+        if png:
+            try:
+                yt.set_thumbnail(y["id"], youtube_jpeg(drive.download(png["id"], work / "t.png"), work / "t.jpg"))
+            except Exception as e:  # noqa: BLE001
+                lines.append(f"Thumbnail not set ({str(e)[:120]}); it's in the Drive folder.")
+        _notify("\n".join(lines))
+    except SystemExit:
+        raise
+    except Exception as e:
+        _notify(f"\u274c Re-upload of \u201c{query}\u201d failed: {str(e)[:300]}")
+        raise
+    finally:
+        shutil.rmtree(work, ignore_errors=True)
