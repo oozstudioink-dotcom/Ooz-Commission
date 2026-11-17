@@ -135,6 +135,7 @@ class AuditMixin:
         template and their own hashtags; LongDraws: chapters and credits kept, links block replaced).
         Shows what would change and waits for a tap."""
         from .. import audit
+        from ..about import HEADING, about, with_about
         yt = self.clients.get("youtube")
         template = self.cfg.get("youtube", {}).get("description_template", "")
         if not yt:
@@ -150,6 +151,8 @@ class AuditMixin:
         for v in videos:
             line = self._episode_for(v, numbers) if v.get("seconds", 0) > 90 else ""
             new = audit.fixed_description(v, template, episode=line)
+            if v.get("seconds", 0) > 90 and HEADING.lower() not in new.lower():   # LongDraws: who it is
+                new = with_about(new, about(v["title"], self._model()))
             if v.get("seconds", 0) > 90 and not audit.EP_LINE.match(new.split("\n", 1)[0]):
                 unnumbered.append(v["title"])
             if new.strip() != (v.get("description") or "").strip():
@@ -164,7 +167,8 @@ class AuditMixin:
         more = f"\n…and {len(todo) - 25} more" if len(todo) > 25 else ""
         self.say(f"\U0001f4dd {len(todo)} of your last {len(videos)} videos have an old description:\n{names}{more}\n\n"
                  "Shorts get your template plus their own hashtags. LongDraws start with their episode "
-                 "(LongDraw EP. 05) and keep their chapters and music credits; only the old links part becomes "
+                 "(LongDraw EP. 05), get a short note on the character when it's from a known manga or comic, "
+                 "and keep their chapters and music credits; only the old links part becomes "
                  "your template. Titles and tags stay as they are." + missing,
                  reply_markup={"inline_keyboard": [[{"text": f"✅ Update all {len(todo)}", "callback_data": "fd:all"},
                                                     {"text": "❌ Skip", "callback_data": "fs:all"}]]})

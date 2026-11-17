@@ -243,11 +243,11 @@ def beat_tape(beats: list[Path], seconds: float, out: Path, xfade: float = 3.0, 
             total += max(durs[b] - xfade, 1.0)
             if total >= seconds + xfade:
                 break
-    if played is not None:
+    if played is not None:                           # (track, the second it starts in the video)
         start = 0.0
         for b in order:
             if start < seconds:
-                played.append(b)
+                played.append((b, start))
             start += max(durs[b] - xfade, 1.0)
     cmd = ["ffmpeg", "-v", "error", "-y"]
     for b in order:
@@ -316,11 +316,7 @@ def build(sessions: list[Session], out_dir: Path, project: str, episode: int, cf
             p.unlink(missing_ok=True)
         played: list[Path] = []
         audio = beat_tape(beats, clock, work / "beats.m4a", seed=episode, played=played)
-        tracks = []
-        for b in played:                                  # unique, in first-heard order
-            name = track_name(b)
-            if name not in tracks:
-                tracks.append(name)
+        tracks = [(track_name(b), start) for b, start in played]   # every song, when it starts
         video = out_dir / f"{stem} - {project}.mp4"
         _run(["ffmpeg", "-v", "error", "-y", "-i", str(silent), "-i", str(audio), "-map", "0:v", "-map", "1:a",
               "-c", "copy", "-shortest", "-movflags", "+faststart", str(video)])
@@ -360,7 +356,7 @@ def build(sessions: list[Session], out_dir: Path, project: str, episode: int, cf
 def youtube_text(project: str, episode: int, chapters: str, panel_cfg: dict, speed: float,
                  raw_s: float, tracks: list[str] | None = None,
                  music_source: str = "YouTube Audio Library", series: dict | None = None,
-                 template: str = "") -> tuple[str, str, list[str]]:
+                 template: str = "", note: str = "") -> tuple[str, str, list[str]]:
     title = f"LongDraw EP. {episode:02d} | {project} | Manga Inking Timelapse"[:100]
     if series:
         title = f"{series['name']} | {series.get('badge', 'Lesson').title()} {episode:02d} | {project}"[:100]
@@ -369,13 +365,16 @@ def youtube_text(project: str, episode: int, chapters: str, panel_cfg: dict, spe
     music = ""
     if tracks:
         src = f" ({music_source})" if music_source else ""
-        music = f"\n\nMusic{src}:\n" + "\n".join(f"\u2022 {t}" for t in tracks)
+        # "• 12:40 Song" (a bullet first, so YouTube never mistakes the list for chapters)
+        music = f"\n\nMusic{src}:\n" + "\n".join(
+            f"\u2022 {fmt_ts(t[1])} {t[0]}" if isinstance(t, (list, tuple)) else f"\u2022 {t}" for t in tracks)
     tags_line = "#manga #mangaart #inking #timelapse #drawing #traditionalart #oozstudioink"
     from .audit import episode_line
     head = (f"{episode_line(episode, series)}\n\n"
             f"{project}: {raw_s / 3600:.1f} hours of pencils and ink, sped up {speed:.1f}x. "
             f"Hand-drawn manga page by Ooz Studio Ink \u270d\U0001f3fe\n\n"
             + ("" if link and link in template else f"Commissions are open: {link}\n\n")
+            + (f"About this drawing\n{note}\n\n" if note else "")
             + f"Chapters\n{chapters}\n\n"
             + (template.strip() if template.strip() else socials))
     room = 4900 - len(head) - len(tags_line) - 4               # YouTube limit: 5000 characters

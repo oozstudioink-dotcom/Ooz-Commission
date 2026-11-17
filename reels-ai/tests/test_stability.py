@@ -106,3 +106,28 @@ class HandoverTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class LongDrawDescriptionTest(unittest.TestCase):
+    def test_every_song_is_listed_with_when_it_starts(self):
+        from reels_ai.longform import youtube_text
+        _, desc, _ = youtube_text("Gojo", 6, "0:00 Intro\n0:05 Gojo\n9:00 Ink", {}, 4.0, 3600,
+                                  [("Night Walk", 0.0), ("Late Ink", 192.0), ("Night Walk", 3725.0)])
+        self.assertIn("Music (YouTube Audio Library):\n• 0:00 Night Walk\n• 3:12 Late Ink\n"
+                      "• 1:02:05 Night Walk", desc)
+
+    def test_about_this_drawing_only_for_a_known_character(self):
+        from reels_ai import about
+        from reels_ai.longform import youtube_text
+        known = lambda s, sc, t: {"known": True, "note": "Afro is the lead of Afro Samurai, a manga by Takashi Okazaki."}
+        unsure = lambda s, sc, t: {"known": False, "note": "Maybe someone?"}
+        self.assertIn("Takashi Okazaki", about.about("Afro Samurai", ask=known))
+        self.assertEqual(about.about("my own guy", ask=unsure), "")
+        self.assertEqual(about.about("Afro Samurai", ask=lambda *a: 1 / 0), "")          # a failure: no note
+        _, desc, _ = youtube_text("Afro Samurai", 5, "0:00 Intro\n0:05 Afro\n9:00 Ink", {}, 4.0, 3600,
+                                  note="Afro is the lead of Afro Samurai.")
+        self.assertLess(desc.index("About this drawing\nAfro is the lead"), desc.index("Chapters"))
+        old = "LongDraw EP. 01\n\nShinobi: 2 hours\n\nI'm a comic artist."
+        got = about.with_about(old, "Note.")
+        self.assertEqual(got, "LongDraw EP. 01\n\nShinobi: 2 hours\n\nAbout this drawing\nNote.\n\nI'm a comic artist.")
+        self.assertEqual(about.with_about(got, "Other."), got)                            # once only
