@@ -1980,7 +1980,7 @@ class LongformJobTest(unittest.TestCase):
         self.assertEqual(hdrs, ["-headers", "Authorization: Bearer AT\r\n"])
         self.assertTrue(calls["yt"][0].startswith("LongDraw EP. 06 | Shinobi Page"))
         self.assertIn("0:03 Naruto", calls["yt"][1])
-        self.assertIn("linktr.ee/oozstudioink", calls["yt"][1])
+        self.assertEqual(calls["yt"][1].count("Commissions are open: https://oozstudioink-dotcom.github.io/Ooz-Commission/"), 1)
         self.assertEqual(calls["thumb"], "Y")
         self.assertIn(("p1", "id:Longform/Finished"), calls["moves"])
         self.assertEqual({f for f, _ in calls["uploads"]}, {"id:Done/Longform/EP 06 - Shinobi Page"})
