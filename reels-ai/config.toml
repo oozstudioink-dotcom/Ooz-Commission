@@ -138,7 +138,7 @@ music_source = "YouTube Audio Library"   # credited with the track list in each 
 # rotate_minutes: your advert animation (Drive > Ooz Reels > Side Panels), socials, schedule.
 rotate_minutes = 5
 allow_upscale = false            # never enlarge the advert (keeps it sharp)
-link = "linktr.ee/oozstudioink"
+link = "https://oozstudioink-dotcom.github.io/Ooz-Commission/"   # your commissions page
 socials = [
   ["Instagram", "@oozstudioink1"],
   ["TikTok", "@oozstudioink1"],

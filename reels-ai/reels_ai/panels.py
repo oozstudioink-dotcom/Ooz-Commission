@@ -12,6 +12,7 @@ stacked beside the drawing by longform.py.
 from __future__ import annotations
 
 import random
+import re
 import subprocess
 from pathlib import Path
 
@@ -47,6 +48,15 @@ def left_card(w: int, h: int) -> np.ndarray:
     return cv2.cvtColor(np.array(img), cv2.COLOR_RGB2BGR)
 
 
+def link_lines(link: str) -> list[str]:
+    """How the web address reads on the panel: no https://, and a long one split at its path."""
+    bare = re.sub(r"^https?://(www\.)?", "", link.strip()).rstrip("/")
+    host, slash, path = bare.partition("/")
+    if len(bare) <= 24 or not path:
+        return [bare.upper() if len(bare) <= 24 else bare]
+    return [host, slash + path]                      # web paths are case-sensitive: shown as typed
+
+
 def socials_card(w: int, h: int, socials: list[list[str]], link: str) -> np.ndarray:
     img = Image.new("RGB", (w, h), (0, 0, 0))
     d = ImageDraw.Draw(img)
@@ -60,7 +70,12 @@ def socials_card(w: int, h: int, socials: list[list[str]], link: str) -> np.ndar
         _text(d, (cx, y), _spaced(platform.upper()), font("bold", int(w * 0.03)), GREY)
         _text(d, (cx, y + int(h * 0.03)), handle, font("black", int(w * 0.06)), CREAM)
     if link:
-        _text(d, (cx, int(top + len(rows) * step + h * 0.03)), link.upper(), font("bold", int(w * 0.045)), RED)
+        y = int(top + len(rows) * step + h * 0.03)
+        for k, line in enumerate(link_lines(link)):
+            size = int(w * 0.045)                    # shrink a long web address until it fits the panel
+            while size > 10 and d.textlength(line, font=font("bold", size)) > w * 0.9:
+                size -= 1
+            _text(d, (cx, y + k * int(h * 0.035)), line, font("bold", size), RED)
     return cv2.cvtColor(np.array(img), cv2.COLOR_RGB2BGR)
 
 
