@@ -371,7 +371,9 @@ def youtube_text(project: str, episode: int, chapters: str, panel_cfg: dict, spe
         src = f" ({music_source})" if music_source else ""
         music = f"\n\nMusic{src}:\n" + "\n".join(f"\u2022 {t}" for t in tracks)
     tags_line = "#manga #mangaart #inking #timelapse #drawing #traditionalart #oozstudioink"
-    head = (f"{project}: {raw_s / 3600:.1f} hours of pencils and ink, sped up {speed:.1f}x. "
+    from .audit import episode_line
+    head = (f"{episode_line(episode, series)}\n\n"
+            f"{project}: {raw_s / 3600:.1f} hours of pencils and ink, sped up {speed:.1f}x. "
             f"Hand-drawn manga page by Ooz Studio Ink \u270d\U0001f3fe\n\n"
             + ("" if link and link in template else f"Commissions are open: {link}\n\n")
             + f"Chapters\n{chapters}\n\n"

@@ -29,8 +29,10 @@ drawing videos, and which videos are weak.
 Write:
 - "summary": two or three plain sentences on what is working and what is not, from the numbers.
 - "findings": up to four specific, practical observations (patterns in titles, length, subjects).
-- "rewrites": for each weak video listed, a better title, hashtags and tags. The description is not
-  yours to write: the channel uses one fixed description.
+- "rewrites": for each weak video listed, a better title, hashtags and tags. Also for each video that \
+is not out yet (private or scheduled): it has no views to judge, so judge only its title, and \
+rewrite it when it isn't searchable (no character or series name, or words nobody searches for); \
+leave a good title out. The description is not yours to write: the channel uses one fixed description.
 
 Rules for rewrites. Title: under 60 characters, the character or subject first, plain words a \
 person would search, no clickbait and no claim the video doesn't deliver, no hashtags in the \
@@ -38,7 +40,9 @@ title. Hashtags: 3 to 5, lowercase, the character first, then the series, then #
 Short. Tags: 8 to 12, the character and series first. Use \
 only character and series names that already appear in that video's own title, description or \
 tags: never guess who is in a drawing. If a video has no name, keep the rewrite about the \
-drawing and the inking. Keep "#shorts" if the current title or description has it."""
+drawing and the inking. Keep "#shorts" if the current title or description has it. For a long \
+video whose title has an episode marker such as "LongDraw EP. 05", keep that marker word for word; \
+a long video's title may run to 90 characters."""
 
 SCHEMA = {"type": "object", "additionalProperties": False, "required": ["summary", "findings", "rewrites"],
           "properties": {
@@ -66,6 +70,16 @@ PLAN_SCHEMA = {"type": "object", "additionalProperties": False, "required": ["da
                        "hook": {"type": "string"}, "why": {"type": "string"}}}}}}
 
 
+def is_upcoming(v: dict, now: datetime) -> bool:
+    """Private or scheduled: nobody can see it yet, so its views say nothing about its title."""
+    if v.get("privacy", "public") != "public":
+        return True
+    try:
+        return datetime.fromisoformat(v.get("publish_at", "").replace("Z", "+00:00")) > now
+    except ValueError:
+        return False
+
+
 def measure(videos: list[dict], now: datetime) -> list[dict]:
     """Each video with its age, views per day, and pace against the channel's usual (median)."""
     out = []
@@ -77,13 +91,20 @@ def measure(videos: list[dict], now: datetime) -> list[dict]:
         age = max(0.25, (now - when).total_seconds() / 86400)
         out.append({**v, "age_days": round(age, 1), "per_day": v["views"] / age,
                     "engagement": (v.get("likes", 0) + v.get("comments", 0)) / max(1, v["views"])})
-    judged = [v["per_day"] for v in out if v["age_days"] >= MIN_AGE_DAYS]
+    judged = [v["per_day"] for v in out if v["age_days"] >= MIN_AGE_DAYS and not is_upcoming(v, now)]
     usual = median(judged) if judged else 0.0
     for v in out:
         v["pace"] = round(v["per_day"] / usual, 2) if usual else 1.0
-        v["verdict"] = ("new" if v["age_days"] < MIN_AGE_DAYS else
+        v["verdict"] = ("upcoming" if is_upcoming(v, now) else "new" if v["age_days"] < MIN_AGE_DAYS else
                         "weak" if v["pace"] < WEAK else "strong" if v["pace"] > STRONG else "usual")
     return out
+
+
+def upcoming(measured: list[dict], n: int = 5) -> list[int]:
+    """Indexes of videos not out yet (private or scheduled), soonest first: their titles get checked
+    before they go public."""
+    up = [k for k, v in enumerate(measured) if v["verdict"] == "upcoming"]
+    return sorted(up, key=lambda k: measured[k].get("publish_at") or "9999")[:n]
 
 
 def weakest(measured: list[dict], n: int = 3) -> list[int]:
@@ -98,9 +119,12 @@ def _n(v: float) -> str:
 
 def report(measured: list[dict], words: dict | None = None) -> str:
     """The audit as one Telegram message."""
-    judged = [v for v in measured if v["verdict"] != "new"]
+    judged = [v for v in measured if v["verdict"] not in ("new", "upcoming")]
+    soon = [v for v in measured if v["verdict"] == "upcoming"]
+    note = (f"\n\nNot out yet: {len(soon)} private or scheduled video(s). Their titles are checked below, "
+            "not their views.") if soon else ""
     if not judged:
-        return "\U0001f50e Channel audit: no videos old enough to judge yet (they need two days)."
+        return "\U0001f50e Channel audit: no videos old enough to judge yet (they need two days)." + note
     lines = [f"\U0001f50e Channel audit: your last {len(measured)} videos",
              f"Usual pace: {_n(median(v['per_day'] for v in judged))} views a day per video"]
     if words and words.get("summary"):
@@ -116,7 +140,7 @@ def report(measured: list[dict], words: dict | None = None) -> str:
         lines.append("\nNothing is falling clearly behind.")
     for f in (words or {}).get("findings", [])[:4]:
         lines.append(f"\n• {f.strip()}")
-    return "\n".join(lines)
+    return "\n".join(lines) + note
 
 
 def _ask(system: str, schema: dict, text: str, model: str, client=None, max_tokens: int = 6000,
@@ -125,15 +149,22 @@ def _ask(system: str, schema: dict, text: str, model: str, client=None, max_toke
     return ask(system, schema, text, model=model, max_tokens=max_tokens, effort="medium", route=route, client=client)
 
 
-def propose(measured: list[dict], weak: list[int], trending: list[dict], model: str, client=None) -> dict:
-    """Claude's reading of the audit and its rewrites for the weak videos (see SCHEMA)."""
+def propose(measured: list[dict], weak: list[int], trending: list[dict], model: str, client=None,
+            soon: list[int] | None = None) -> dict:
+    """Claude's reading of the audit and its rewrites for the weak videos and the titles of videos
+    not out yet (see SCHEMA)."""
     rows = [f"{k}. [{v['verdict']}, pace {v['pace']}] {v['title']} | {_n(v['views'])} views in {v['age_days']} days, "
             f"{v['seconds']} s, {v.get('likes', 0)} likes, {v.get('comments', 0)} comments" for k, v in enumerate(measured)]
     detail = [f"Video {k}\ntitle: {measured[k]['title']}\ndescription: {measured[k]['description'][:600]}\n"
               f"tags: {', '.join(measured[k]['tags'][:15])}" for k in weak]
     trends = ", ".join(f"{t['name']} ({t.get('series') or '?'})" for t in trending) or "none known"
+    later = [f"Video {k} ({'long video' if measured[k]['seconds'] > 90 else 'Short'}, "
+             f"{'scheduled for ' + measured[k]['publish_at'] if measured[k].get('publish_at') else 'private'})\n"
+             f"title: {measured[k]['title']}\ndescription: {measured[k]['description'][:400]}\n"
+             f"tags: {', '.join(measured[k]['tags'][:15])}" for k in soon or []]
     text = ("Recent videos:\n" + "\n".join(rows) + f"\n\nTrending in drawing videos this week: {trends}\n\n"
-            "Weak videos to rewrite:\n\n" + ("\n\n".join(detail) or "(none)"))
+            "Weak videos to rewrite:\n\n" + ("\n\n".join(detail) or "(none)")
+            + "\n\nNot out yet, check the titles:\n\n" + ("\n\n".join(later) or "(none)"))
     return _ask(SYSTEM, SCHEMA, text, model, client)
 
 
@@ -146,10 +177,61 @@ def with_hashtags(body: str, hashtags: list[str]) -> str:
     return (body + ("\n\n" if body else "") + " ".join(hashtags)).strip()
 
 
+EP_LINE = re.compile(r"^\s*(?:LongDraw\s+EP\.?\s*\d+|.+\s\u00b7\s(?:Lesson|Part|EP\.?)\s*\d+)\s*$", re.I)
+
+
+def episode_line(episode: int, series: dict | None = None) -> str:
+    """The first line of every LongDraw description: "LongDraw EP. 05" (a series: "Name · Lesson 02")."""
+    if series:
+        return f"{series['name']} \u00b7 {str(series.get('badge') or 'Lesson').title()} {int(episode):02d}"
+    return f"LongDraw EP. {int(episode):02d}"
+
+
+def guess_episode_line(video: dict) -> str:
+    """A long video's episode line from what it already says: its title ("EP. 05", "Name | Lesson 02"),
+    an episode line already on top of its description, or an old "LongDraw #01" in the description."""
+    title, desc = video.get("title", "") or "", video.get("description", "") or ""
+    if m := re.search(r"\bEP\.?\s*(\d+)", title, re.I):
+        return episode_line(int(m.group(1)))
+    if m := re.match(r"\s*(.+?)\s*\|\s*(Lesson|Part)\s*(\d+)", title, re.I):
+        return episode_line(int(m.group(3)), {"name": m.group(1), "badge": m.group(2)})
+    first = desc.split("\n", 1)[0]
+    if EP_LINE.match(first):
+        return first.strip()
+    if m := re.search(r"LongDraw\s*(?:EP\.?|#)\s*(\d+)", desc[:400], re.I):
+        return episode_line(int(m.group(1)))
+    return ""
+
+
+def with_episode_line(desc: str, line: str) -> str:
+    """The description with `line` as its first line (an old episode line on top is replaced)."""
+    if not line:
+        return desc
+    head, _, rest = (desc or "").partition("\n")
+    body = rest.lstrip("\n") if EP_LINE.match(head) else (desc or "")
+    return f"{line}\n\n{body}".rstrip() if body.strip() else line
+
+
+def fixed_description(video: dict, template: str, hashtags: list[str] | None = None, episode: str = "") -> str:
+    """The description a video should have. A Short: your template word for word, then its hashtag
+    line (kept from the video unless new hashtags are given). A long video starts with its episode
+    line ("LongDraw EP. 05": `episode`, or worked out from the video) and keeps its chapters and music
+    credits; only its old links list (or an older template) becomes the current template."""
+    desc = video.get("description", "") or ""
+    if hashtags is None:
+        last = desc.rstrip().split("\n")[-1] if desc.strip() else ""
+        hashtags = last.split() if last.strip() and all(w.startswith("#") for w in last.split()) else []
+    if video.get("seconds", 0) > 90:
+        base = with_episode_line(refresh_description(desc, template), episode or guess_episode_line(video))
+        return (with_hashtags(base, hashtags) if hashtags else base)[:4900]
+    return with_hashtags(template.strip() or desc, hashtags)[:4900]
+
+
 def safe_rewrite(video: dict, r: dict, template: str = "") -> dict | None:
     """A proposal checked before you ever see it: a sensible title, clean hashtags, and the
     description left as you wrote it (your template, or the video's own) with only the
     hashtag line changed."""
+    long = video.get("seconds", 0) > 90
     title = re.sub(r"\s+", " ", str(r.get("title") or "")).strip()[:100]
     title = re.sub(r"\s*#\w+", "", title).strip()
     tags = [re.sub(r"[<>#]", "", str(t)).strip()[:40] for t in r.get("tags") or []]
@@ -160,11 +242,38 @@ def safe_rewrite(video: dict, r: dict, template: str = "") -> dict | None:
         hashtags.append("#shorts")
     if len(title) < 5 or "<" in title or ">" in title:
         return None
-    desc = with_hashtags(template.strip() or video.get("description", ""), hashtags)[:4900]
+    old_ep = re.search(r"EP\.?\s*\d+", video.get("title", ""), re.I)
+    if old_ep and old_ep.group(0).lower() not in title.lower():
+        return None                                  # a LongDraw keeps its episode number
+    desc = fixed_description(video, template, hashtags)
     if title == video.get("title") and desc == video.get("description"):
         return None
     return {"title": title, "description": desc, "tags": tags, "hashtags": hashtags,
             "why": str(r.get("why") or "").strip()[:200]}
+
+
+SOCIAL_LINE = re.compile(r"^(Instagram|TikTok|YouTube|X|Threads|Facebook|LinkedIn)\s*:", re.I)
+
+
+def refresh_description(desc: str, template: str) -> str:
+    """Swap an older LongDraw description's socials block (or an older template) for the current template.
+    Everything else (chapters, music credits, hashtags) stays as it was."""
+    template = template.strip()
+    if not template or template in desc:
+        return desc
+    parts = desc.split("\n\n")
+    first = template.split("\n\n")[0]
+    for i, part in enumerate(parts):                                   # an older version of the template
+        if part.startswith(first[:40]):
+            end = i
+            while end + 1 < len(parts) and not parts[end + 1].startswith(("Music", "#")):
+                end += 1
+            return "\n\n".join(parts[:i] + [template] + parts[end + 1:])[:4900]
+    for i, part in enumerate(parts):
+        rows = [r for r in part.splitlines() if r.strip()]
+        if rows and all(SOCIAL_LINE.match(r) for r in rows):           # the old "Instagram: @..." list
+            return "\n\n".join(parts[:i] + [template] + parts[i + 1:])[:4900]
+    return desc
 
 
 def plan_days(start: datetime, days: int = 7, weekdays: list[str] | None = None) -> list[str]:

@@ -1,5 +1,7 @@
-numpy>=1.26
-opencv-python-headless>=4.9
-Pillow>=10.0
-anthropic>=2.0
-faster-whisper>=1.0
+# Upper bounds keep a surprise major release from breaking the bot on its next restart.
+# Raise one on purpose (and run the tests) when you want the new version.
+numpy>=1.26,<3
+opencv-python-headless>=4.9,<6
+Pillow>=10.0,<13
+anthropic>=2.0,<3
+faster-whisper>=1.0,<2

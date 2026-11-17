@@ -84,7 +84,11 @@ class YouTube:
             data = body
         req = urllib.request.Request(url, data=data, method=method, headers=h)
         try:
-            r = urllib.request.urlopen(req, timeout=300 if data else self.timeout)
+            if method in ("GET", "PUT") and not isinstance(body, bytes):    # safe to send twice
+                from .drive import _retry
+                r = _retry(lambda: urllib.request.urlopen(req, timeout=300 if data else self.timeout))
+            else:                                   # an upload is never repeated by itself
+                r = urllib.request.urlopen(req, timeout=300 if data else self.timeout)
         except urllib.error.HTTPError as e:
             raise YouTubeError(_describe(e)) from None
         with r:
@@ -93,7 +97,7 @@ class YouTube:
     # ------------------------------------------------------------------ account
     def whoami(self) -> dict:
         res = self._req("GET", f"{self.api}/channels",
-                        {"part": "snippet,statistics,contentDetails", "mine": "true"})
+                        {"part": "snippet,statistics,contentDetails,status", "mine": "true"})
         items = res.get("items") or []
         if not items:
             raise YouTubeError("this Google account has no YouTube channel (pick the channel when signing in)")
@@ -123,7 +127,7 @@ class YouTube:
     def videos(self, ids: list[str]) -> list[dict]:
         out = []
         for k in range(0, len(ids), 50):
-            res = self._req("GET", f"{self.api}/videos", {"part": "snippet,statistics,contentDetails",
+            res = self._req("GET", f"{self.api}/videos", {"part": "snippet,statistics,contentDetails,status",
                                                           "id": ",".join(ids[k:k + 50])})
             for v in res.get("items", []):
                 m = re.fullmatch(r"PT(?:(\d+)M)?(?:(\d+)S)?", v["contentDetails"].get("duration", ""))
@@ -135,6 +139,8 @@ class YouTube:
                             "description": v["snippet"].get("description", ""),
                             "published": v["snippet"].get("publishedAt", ""),
                             "category": v["snippet"].get("categoryId", "1"),
+                            "privacy": v.get("status", {}).get("privacyStatus", "public"),
+                            "publish_at": v.get("status", {}).get("publishAt", ""),
                             "seconds": (int(m.group(1) or 0) * 60 + int(m.group(2) or 0)) if m else 999})
         return out
 

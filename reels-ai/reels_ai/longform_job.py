@@ -13,6 +13,7 @@ from pathlib import Path
 
 from .drive import Drive
 from .drive import parse_name, session_order
+from .audit import episode_line, fixed_description, refresh_description  # noqa: F401  (also used by the tests)
 from .longform import Session, build, episode_from_names, subject_title, youtube_text
 from .state import load_config, load_state
 from .telegram import Bot
@@ -193,12 +194,13 @@ def reupload(query: str) -> None:
     drive = Drive(*env, root=cfg.get("drive", {}).get("root", "Ooz Reels"))
     places = ["Done/Longform"] + [f"Done/Longform/{s_['name']}" for s_ in all_series(cfg)]
     want = re.sub(r"[^a-z0-9]+", "", query.lower())
-    hits = [f for p in places for f in drive.list(drive.folder(p), "folder")
+    hits = [(p, f) for p in places for f in drive.list(drive.folder(p), "folder")
             if want in re.sub(r"[^a-z0-9]+", "", f["name"].lower())]
     if not hits:
         _notify(f"\u26a0\ufe0f No finished video in Drive \u203a Done \u203a Longform matches \u201c{query}\u201d.")
         raise SystemExit(1)
-    folder = max(hits, key=lambda f: f.get("createdTime", ""))
+    place, folder = max(hits, key=lambda h: h[1].get("createdTime", ""))
+    series = next((s_ for s_ in all_series(cfg) if place.endswith(s_["name"])), None)
     files = drive.list(folder["id"], "")
     video = next((f for f in files if f.get("mimeType", "").startswith("video/")), None)
     if not video:
@@ -215,7 +217,9 @@ def reupload(query: str) -> None:
         if num:                                      # the folder's number wins (after a /rethumb)
             title = re.sub(r"(EP\.?|Lesson)\s*\d+", lambda m: f"{m.group(1)} {int(num.group(1)):02d}", title,
                            count=1, flags=re.I)
-        desc = refresh_description(desc, cfg.get("youtube", {}).get("description_template", ""))
+        desc = fixed_description({"title": title, "description": desc, "seconds": 3600},
+                                 cfg.get("youtube", {}).get("description_template", ""),
+                                 episode=episode_line(int(num.group(1)), series) if num else "")
         _notify(f"\U0001f4e4 Re-uploading \u201c{title}\u201d ({int(video.get('size') or 0) / 1e9:.1f} GB). "
                 "This takes a while for 4K.")
         local = drive.download(video["id"], work / "video.mp4")
@@ -255,30 +259,6 @@ def art_from_thumbnail(png) -> "Image.Image":
     if len(xs) < 100:
         return Image.fromarray(panel)
     return Image.fromarray(panel[ys.min():ys.max() + 1, xs.min():xs.max() + 1])
-
-
-SOCIAL_LINE = re.compile(r"^(Instagram|TikTok|YouTube|X|Threads|Facebook|LinkedIn)\s*:", re.I)
-
-
-def refresh_description(desc: str, template: str) -> str:
-    """Swap an older LongDraw description's socials block (or an older template) for the current template.
-    Everything else (chapters, music credits, hashtags) stays as it was."""
-    template = template.strip()
-    if not template or template in desc:
-        return desc
-    parts = desc.split("\n\n")
-    first = template.split("\n\n")[0]
-    for i, part in enumerate(parts):                                   # an older version of the template
-        if part.startswith(first[:40]):
-            end = i
-            while end + 1 < len(parts) and not parts[end + 1].startswith(("Music", "#")):
-                end += 1
-            return "\n\n".join(parts[:i] + [template] + parts[end + 1:])[:4900]
-    for i, part in enumerate(parts):
-        rows = [r for r in part.splitlines() if r.strip()]
-        if rows and all(SOCIAL_LINE.match(r) for r in rows):           # the old "Instagram: @..." list
-            return "\n\n".join(parts[:i] + [template] + parts[i + 1:])[:4900]
-    return desc
 
 
 def rethumb(query: str, episode: int) -> None:
@@ -328,7 +308,8 @@ def rethumb(query: str, episode: int) -> None:
         else:
             v = match[0]
             title = re.sub(r"(EP\.?|Lesson)\s*\d+", lambda m: f"{m.group(1)} {episode:02d}", v["title"], count=1, flags=re.I)
-            desc = refresh_description(v["description"], cfg.get("youtube", {}).get("description_template", ""))
+            desc = fixed_description(v, cfg.get("youtube", {}).get("description_template", ""),
+                                     episode=episode_line(episode, series))
             if title != v["title"] or desc != v["description"]:
                 yt.update_video(v["id"], title, desc, v["tags"], v["category"])
             if desc != v["description"]:
