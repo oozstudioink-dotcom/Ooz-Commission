@@ -34,10 +34,11 @@ from .botkit.common import (  # noqa: F401 - re-exported: other modules and test
 from .botkit.auditing import AuditMixin
 from .botkit.sponsoring import SponsorMixin
 from .botkit.library import LibraryMixin
+from .botkit.inbox_tools import InboxToolsMixin
 from .botkit.connect import check, tiktok_connect  # noqa: F401
 
 
-class Runner(AuditMixin, SponsorMixin, LibraryMixin, CommandsMixin, DriveMixin, InventoryMixin, NamingMixin, DropsMixin, PostingMixin, LearningMixin, RenderMixin):
+class Runner(AuditMixin, SponsorMixin, LibraryMixin, InboxToolsMixin, CommandsMixin, DriveMixin, InventoryMixin, NamingMixin, DropsMixin, PostingMixin, LearningMixin, RenderMixin):
     def __init__(self, bot: Bot, state: dict, config: dict, clock=now, clients: dict | None = None,
                  drive=None, checkpoint=None):
         self.bot, self.state, self.cfg, self.clock = bot, state, config, clock
@@ -174,6 +175,14 @@ class Runner(AuditMixin, SponsorMixin, LibraryMixin, CommandsMixin, DriveMixin, 
             self.send_radar()
         elif cmd in ("/videos", "/library"):
             self.send_library(text.split(maxsplit=1)[1] if len(text.split(maxsplit=1)) > 1 else "")
+        elif cmd == "/inbox":
+            self.inbox_command()
+        elif cmd == "/combine":
+            self.combine_command(text.split(maxsplit=1)[1] if len(text.split(maxsplit=1)) > 1 else "")
+        elif cmd == "/rethumb":
+            self.rethumb_command(text.split(maxsplit=1)[1] if len(text.split(maxsplit=1)) > 1 else "")
+        elif cmd == "/reupload":
+            self.reupload_command(text.split(maxsplit=1)[1] if len(text.split(maxsplit=1)) > 1 else "")
         elif cmd == "/unuse":
             self.unuse(text.split(maxsplit=1)[1] if len(text.split(maxsplit=1)) > 1 else "")
         elif cmd == "/discard":

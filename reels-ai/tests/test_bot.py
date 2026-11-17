@@ -13,6 +13,7 @@ import os
 import shutil
 import tempfile
 import unittest
+from unittest import mock
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
@@ -28,6 +29,7 @@ def load_config():
     drop machinery, which stays in the bot behind [delivery] auto_drop."""
     cfg = _load_config()
     cfg["delivery"]["auto_drop"] = True
+    cfg["delivery"].pop("drop_days", None)        # every day: these tests check the drop machinery
     return cfg
 
 OWNER, STRANGER = 111, 999
@@ -742,7 +744,7 @@ class SplitDropsTest(FakeVariantsMixin, unittest.TestCase):
         self.assertEqual(r.bank()["drops"], 4)                        # counted in drawings
         bot.push(**msg(OWNER, text="/queue"))
         r.poll()
-        self.assertTrue(any("Drawings ready: 4 = 4 days of uploads" in t for t in bot.texts()))
+        self.assertTrue(any("Drawings ready: 4 = 4 posting days" in t for t in bot.texts()))
         for day in range(5):
             clock.t = datetime(2026, 11, 7, 20, tzinfo=timezone.utc) + timedelta(days=day)
             r.poll()
@@ -901,6 +903,132 @@ class LibraryTest(unittest.TestCase):
         for f in ("F1", "F2", "F3"):
             self.assertIn((f, "id:Delete Me/Afro Samurai"), self.drive.moved)
         self.assertNotIn("d1", r.library())
+
+
+class InboxToolsTest(unittest.TestCase):
+    def setup(self, files):
+        class D:
+            moved = []
+            def __init__(self): self.files = files
+            def folder(self, path=""): return "id:" + path
+            def list(self, folder_id, kind="video"): return self.files if folder_id == "id:Inbox" else []
+            def move_to(self, fid, to): self.moved.append((fid, to))
+            def media_url(self, fid): return f"https://drive/{fid}"
+            def token(self): return "AT"
+        bot, state = FakeBot(), fresh_state()
+        state["owner_chat_id"] = OWNER
+        return bot, state, Runner(bot, state, _load_config(), drive=D())
+
+    def test_inbox_requeues_what_never_became_shorts(self):
+        files = [{"id": "a", "name": "Afro_Samurai.MOV"}, {"id": "b", "name": "IMG_1.MOV"},
+                 {"id": "c", "name": "Gojo.MOV"}, {"id": "n", "name": "New.MOV"}]
+        bot, state, r = self.setup(files)
+        state["drive_seen"] = ["a", "b", "c", "n"]
+        state["drawings"] = {
+            "d1": {"source": "drive", "drive_id": "a", "drive_name": "Afro_Samurai.MOV", "status": "failed",
+                   "error": "took longer than a whole run twice", "attempts": 3, "keep_in_place": False},
+            "d2": {"source": "drive", "drive_id": "b", "drive_name": "IMG_1.MOV", "status": "naming"},
+            "d3": {"source": "drive", "drive_id": "c", "drive_name": "Gojo.MOV", "status": "rendered"}}
+        r.inbox_command()
+        D = state["drawings"]
+        self.assertEqual((D["d1"]["status"], D["d2"]["status"], D["d3"]["status"]), ("queued", "queued", "rendered"))
+        self.assertNotIn("keep_in_place", D["d1"])                  # still moved out of Inbox when done
+        self.assertNotIn("n", state["drive_seen"])                   # never made: picked up on the next look
+        self.assertTrue(any("3 queued" in t for t in bot.texts()))
+
+    def test_combine_joins_split_recordings_in_order(self):
+        files = [{"id": "g2", "name": "Gojo 2.MOV", "videoMediaMetadata": {"durationMillis": "600000"}},
+                 {"id": "g10", "name": "Gojo 10.MOV", "videoMediaMetadata": {"durationMillis": "300000"}},
+                 {"id": "g1", "name": "Gojo 1.MOV", "videoMediaMetadata": {"durationMillis": "900000"}},
+                 {"id": "x", "name": "Other.MOV"}]
+        bot, state, r = self.setup(files)
+        state["drawings"] = {"d1": {"source": "drive", "drive_id": "g1", "drive_name": "Gojo 1.MOV", "status": "rendered"}}
+        state["variants"] = {"v1": {"drawing": "d1", "style": "one_take", "status": "pending"}}
+        state["next_id"] = 5
+        r.combine_command("Gojo")
+        new = [d for d in state["drawings"].values() if d.get("drive_ids")][0]
+        self.assertEqual(new["drive_ids"], ["g1", "g2", "g10"])
+        self.assertEqual((new["status"], new["subject"], new["duration"]), ("queued", "Gojo", 1800.0))
+        self.assertEqual(state["drawings"]["d1"]["status"], "combined")
+        self.assertEqual(state["variants"]["v1"]["status"], "replaced")
+        self.assertTrue(all(i in state["drive_seen"] for i in ("g1", "g2", "g10")))
+        self.assertEqual(r.drive_raw(new), {})                       # no real-speed reads across files
+
+    def test_joined_working_copy_plays_the_parts_in_order(self):
+        import subprocess
+        from reels_ai.botkit import drive_inbox
+        from reels_ai.media import probe
+        bot, state, r = self.setup([])
+        tmp = Path(tempfile.mkdtemp())
+        made = []
+
+        def fake_proxy(url, token, dst, dur, max_side=2560, target_frames=2700):
+            size = "360x640" if not made else "720x1280"              # different sizes get fitted
+            subprocess.run(["ffmpeg", "-v", "error", "-y", "-f", "lavfi", "-i", f"color=c=white:s={size}:r=30",
+                            "-t", "2" if not made else "3", "-pix_fmt", "yuv420p", str(dst)], check=True)
+            made.append(target_frames)
+            return Path(dst)
+        d = {"drive_id": "g1", "drive_ids": ["g1", "g2"], "drive_durations": [600, 300]}
+        with mock.patch("reels_ai.drive.make_proxy", fake_proxy):
+            out = r.joined_source(d, tmp, 2560)
+        info = probe(out)
+        self.assertEqual((info["width"], info["height"]), (360, 640))
+        self.assertAlmostEqual(info["duration"], 5.0, delta=0.2)
+        self.assertGreater(made[0], made[1])                         # the longer part gets more frames
+
+
+class ScheduleAndRethumbTest(unittest.TestCase):
+    def test_old_longdraw_descriptions_get_the_current_template(self):
+        from reels_ai.longform_job import refresh_description
+        tpl = "I draw comics.\n\nInstagram: https://www.instagram.com/new/"
+        old = ("Sasuke: 2.0 hours\n\nChapters\n0:00 Start\n\nInstagram: @old\nTikTok: @t\nFacebook: Ooz"
+               "\n\nMusic (YouTube Audio Library):\n\u2022 Song\n\n#manga")
+        new = refresh_description(old, tpl)
+        self.assertEqual(new, "Sasuke: 2.0 hours\n\nChapters\n0:00 Start\n\n" + tpl
+                         + "\n\nMusic (YouTube Audio Library):\n\u2022 Song\n\n#manga")
+        self.assertEqual(refresh_description(new, tpl), new)                 # already current: untouched
+        older = new.replace("https://www.instagram.com/new/", "@old")
+        self.assertEqual(refresh_description(older, tpl), new)               # an older template is swapped too
+        self.assertEqual(refresh_description("just text", tpl), "just text")
+
+    def test_drops_only_on_posting_days(self):
+        cfg = _load_config()
+        cfg["delivery"].update(auto_drop=True, drop_days=["Mon", "Wed", "Fri"], drop_times=["12:00"])
+        cfg["timezone"] = "UTC"
+        bot, state = FakeBot(), fresh_state()
+        state["owner_chat_id"] = OWNER
+        state["drawings"] = {f"d{i}": {"subject": f"S{i}", "status": "rendered"} for i in range(4)}
+        state["variants"] = {f"v{i}": {"drawing": f"d{i}", "style": "one_take", "status": "approved", "file_id": f"f{i}",
+                                       "caption": "c", "hook": "h", "seconds": 12} for i in range(4)}
+        clock = Clock(datetime(2026, 11, 17, 13, tzinfo=timezone.utc))          # a Tuesday
+        r = Runner(bot, state, cfg, clock=clock)
+        r.post_still = lambda options: None
+        r.drop_due()
+        self.assertFalse(any(v.get("dropped_at") for v in state["variants"].values()))
+        clock.t = datetime(2026, 11, 18, 13, tzinfo=timezone.utc)                # Wednesday, after noon
+        r.drop_due()
+        self.assertEqual(sum(1 for v in state["variants"].values() if v.get("dropped_at")), 1)
+        bot.push(**msg(OWNER, text="/queue"))
+        r.poll()
+        self.assertTrue(any("at 3 a week" in t for t in bot.texts()))
+
+    def test_art_comes_back_out_of_a_thumbnail(self):
+        from PIL import Image
+        from reels_ai.longform_job import art_from_thumbnail
+        from reels_ai.thumbnail import make_thumbnail
+        art = Image.new("RGB", (600, 800), (240, 238, 230))
+        tmp = Path(tempfile.mkdtemp())
+        make_thumbnail(art, 2, tmp / "t.png")
+        back = art_from_thumbnail(tmp / "t.png")
+        self.assertAlmostEqual(back.width / back.height, 600 / 800, delta=0.03)
+        self.assertGreater(back.height, 600)
+
+    def test_longdraw_description_ends_with_the_template(self):
+        from reels_ai.longform import youtube_text
+        _, desc, _ = youtube_text("Gojo", 3, "0:00 Intro", {"socials": [["Instagram", "@old"]], "link": "x"}, 4.0, 3600,
+                                  template="My own words https://site")
+        self.assertIn("My own words https://site", desc)
+        self.assertNotIn("@old", desc)
 
 
 class StyleLearningTest(unittest.TestCase):
@@ -1777,7 +1905,7 @@ class LongformJobTest(unittest.TestCase):
                            {"id": "s1", "name": "Naruto.MOV", "mimeType": "video/quicktime",
                             "createdTime": "2026-11-01", "videoMediaMetadata": {"durationMillis": "3600000"}},
                            {"id": "a1", "name": "YT_Longform_Finished_Art_Panel.jpg", "mimeType": "image/jpeg"}],
-                    "id:Done/Longform": [{"id": "e3", "name": "EP 03 - Old page", "mimeType": "folder"}],
+                    "id:Done/Longform": [{"id": "e3", "name": "EP 05 - Old page", "mimeType": "folder"}],
                     "id:Beats": [{"id": "b1", "name": "lofi.mp3", "mimeType": "audio/mpeg"}],
                     "id:Side Panels": [{"id": "x", "name": "other.mov", "mimeType": "video/quicktime",
                                         "createdTime": "1"},
@@ -1845,17 +1973,17 @@ class LongformJobTest(unittest.TestCase):
         titles, srcs, episode, advert, art, nbeats, hdrs = calls["built"]
         self.assertEqual(titles, ["Naruto", "Deku"])                  # recording order
         self.assertEqual(srcs, ["https://drive/s1", "https://drive/s2"])
-        self.assertEqual(episode, 4)                                  # after EP 03 in Done
+        self.assertEqual(episode, 6)                                  # after EP 05 in Done
         self.assertEqual(advert, "advert.mov")
         self.assertTrue(art.startswith("art"))
         self.assertEqual(nbeats, 1)
         self.assertEqual(hdrs, ["-headers", "Authorization: Bearer AT\r\n"])
-        self.assertTrue(calls["yt"][0].startswith("LongDraw EP. 04 | Shinobi Page"))
+        self.assertTrue(calls["yt"][0].startswith("LongDraw EP. 06 | Shinobi Page"))
         self.assertIn("0:03 Naruto", calls["yt"][1])
         self.assertIn("linktr.ee/oozstudioink", calls["yt"][1])
         self.assertEqual(calls["thumb"], "Y")
         self.assertIn(("p1", "id:Longform/Finished"), calls["moves"])
-        self.assertEqual({f for f, _ in calls["uploads"]}, {"id:Done/Longform/EP 04 - Shinobi Page"})
+        self.assertEqual({f for f, _ in calls["uploads"]}, {"id:Done/Longform/EP 06 - Shinobi Page"})
 
 
 class AdvertTest(unittest.TestCase):

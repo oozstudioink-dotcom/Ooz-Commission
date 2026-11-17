@@ -26,6 +26,13 @@ def bot(args: argparse.Namespace) -> None:
 
 
 def longform(args: argparse.Namespace) -> None:
+    if getattr(args, "rethumb", None):
+        from .longform_job import rethumb
+        name, _, ep = args.rethumb.rpartition(" ")
+        return rethumb(name.strip(), int(ep))
+    if getattr(args, "reupload", None):
+        from .longform_job import reupload
+        return reupload(args.reupload)
     from .longform_job import run
 
     run(args.project)
@@ -55,7 +62,9 @@ def main() -> None:
                    help="check = read-only connection test of the social accounts")
     b.set_defaults(func=bot)
     lf = sub.add_parser("longform", help="build a LongDraw from Drive > Longform > PROJECT")
-    lf.add_argument("--project", required=True)
+    lf.add_argument("--project", default="")
+    lf.add_argument("--rethumb", default="", help="'<name> <episode>': renumber a finished LongDraw")
+    lf.add_argument("--reupload", default="", help="upload a finished video in Done > Longform to YouTube again")
     lf.set_defaults(func=longform)
     ts = sub.add_parser("testset", help="run the editor on the real recordings in tests/golden.toml and compare")
     ts.add_argument("--only", help="just the recordings whose name contains this")

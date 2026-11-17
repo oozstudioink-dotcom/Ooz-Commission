@@ -359,7 +359,8 @@ def build(sessions: list[Session], out_dir: Path, project: str, episode: int, cf
 
 def youtube_text(project: str, episode: int, chapters: str, panel_cfg: dict, speed: float,
                  raw_s: float, tracks: list[str] | None = None,
-                 music_source: str = "YouTube Audio Library", series: dict | None = None) -> tuple[str, str, list[str]]:
+                 music_source: str = "YouTube Audio Library", series: dict | None = None,
+                 template: str = "") -> tuple[str, str, list[str]]:
     title = f"LongDraw EP. {episode:02d} | {project} | Manga Inking Timelapse"[:100]
     if series:
         title = f"{series['name']} | {series.get('badge', 'Lesson').title()} {episode:02d} | {project}"[:100]
@@ -372,7 +373,8 @@ def youtube_text(project: str, episode: int, chapters: str, panel_cfg: dict, spe
     tags_line = "#manga #mangaart #inking #timelapse #drawing #traditionalart #oozstudioink"
     head = (f"{project}: {raw_s / 3600:.1f} hours of pencils and ink, sped up {speed:.1f}x. "
             f"Hand-drawn manga page by Ooz Studio Ink \u270d\U0001f3fe\n\n"
-            f"Commissions are open: {link}\n\nChapters\n{chapters}\n\n{socials}")
+            f"Commissions are open: {link}\n\nChapters\n{chapters}\n\n"
+            + (template.strip() if template.strip() else socials))
     room = 4900 - len(head) - len(tags_line) - 4               # YouTube limit: 5000 characters
     if len(music) > room:
         music = music[:max(0, room - 2)].rsplit("\n", 1)[0] + "\n\u2026"

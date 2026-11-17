@@ -81,6 +81,9 @@ class DropsMixin:
         if not self.cfg.get("delivery", {}).get("auto_drop", True):
             return
         lt = self.local(self.clock())
+        days = self.cfg.get("delivery", {}).get("drop_days")
+        if days and lt.strftime("%a") not in {d[:3].title() for d in days}:
+            return                                   # not a posting day
         open_slots = sum(1 for hhmm in self.drop_times
                          if lt.time() >= datetime.strptime(hhmm, "%H:%M").time())
         today = [v for v in self.state["variants"].values()
@@ -284,6 +287,9 @@ class DropsMixin:
         v["status"] = "posted"
 
     # ------------------------------------------------------------------ bank
+    def posting_days_per_week(self) -> int:
+        return len(self.cfg.get("delivery", {}).get("drop_days") or []) or 7
+
     def per_day(self, key: str) -> int:
         if key == "drops":
             return max(1, len(self.drop_times))
@@ -312,9 +318,11 @@ class DropsMixin:
         for p, n in self.bank().items():
             label = "Drops" if p == "drops" else PLATFORM_LABELS.get(p, p)
             if p == "drops" and self.split:
-                days = n // self.per_day(p)
-                lines.append(f"Drawings ready: {n} = {days} day{'s' if days != 1 else ''} of uploads")
-                lines.append("Each day: 1 Short (TikTok, YouTube Shorts, Instagram Reels) + 1 Instagram "
+                per_week = self.posting_days_per_week() * self.per_day(p)
+                weeks = n / per_week
+                lines.append(f"Drawings ready: {n} = {n // self.per_day(p)} posting days, about "
+                             f"{weeks:.0f} week{'s' if round(weeks) != 1 else ''} at {per_week} a week")
+                lines.append("Each posting day: 1 Short (TikTok, YouTube Shorts, Instagram Reels) + 1 Instagram "
                              "post, all from the same drawing. Each drawing is used once.")
                 continue
             unit = "videos"

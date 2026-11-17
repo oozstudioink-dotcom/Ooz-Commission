@@ -9,6 +9,16 @@ on:
         description: "Folder name in Drive > Ooz Reels > Longform"
         required: true
         type: string
+      rethumb:
+        description: "Instead of building: '<name> <episode>' gives a finished LongDraw a new episode number (thumbnail, Drive folder, YouTube title)"
+        required: false
+        type: string
+        default: ""
+      reupload:
+        description: "Instead of building: upload this finished video (part of its folder name in Done > Longform) to YouTube again"
+        required: false
+        type: string
+        default: ""
 
 permissions:
   contents: read
@@ -31,6 +41,8 @@ jobs:
       YT_CLIENT_SECRET: ${{ secrets.YT_CLIENT_SECRET }}
       YT_REFRESH_TOKEN: ${{ secrets.YT_REFRESH_TOKEN }}
       PROJECT: ${{ inputs.project }}
+      REUPLOAD: ${{ inputs.reupload }}
+      RETHUMB: ${{ inputs.rethumb }}
     steps:
       - uses: actions/checkout@v5
         with:
@@ -57,7 +69,13 @@ jobs:
       - name: Build LongDraw
         run: |
           if [ -d /mnt/longform ] && [ -w /mnt/longform ]; then export LONGFORM_WORK=/mnt/longform; fi
-          python -m reels_ai longform --project "$PROJECT"
+          if [ -n "$RETHUMB" ]; then
+            python -m reels_ai longform --rethumb "$RETHUMB"
+          elif [ -n "$REUPLOAD" ]; then
+            python -m reels_ai longform --reupload "$REUPLOAD"
+          else
+            python -m reels_ai longform --project "$PROJECT"
+          fi
 
       - name: Alert on failure
         if: failure() || cancelled()
