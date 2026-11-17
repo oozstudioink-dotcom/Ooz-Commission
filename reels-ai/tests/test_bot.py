@@ -978,6 +978,46 @@ class InboxToolsTest(unittest.TestCase):
 
 
 class ScheduleAndRethumbTest(unittest.TestCase):
+    def test_reupload_takes_the_new_number_thumbnail_and_template(self):
+        from reels_ai import longform_job as job
+        got = {}
+
+        class D:
+            def __init__(self, *a, **k): pass
+            def folder(self, path=""): return "id:" + path
+            def list(self, fid, kind="video"):
+                if fid == "id:Done/Longform":
+                    return [{"id": "f", "name": "EP 05 - Afro Samurai", "mimeType": "folder"}]
+                if fid == "f":
+                    return [{"id": "v", "name": "v.mp4", "mimeType": "video/mp4", "size": "1"},
+                            {"id": "t", "name": "t.txt", "mimeType": "text/plain"},
+                            {"id": "old", "name": "EP 03 - thumbnail.png", "createdTime": "2026-11-01"},
+                            {"id": "new", "name": "EP 05 - thumbnail.png", "createdTime": "2026-11-17"}]
+                return []
+            def read_text(self, fid):
+                return "LongDraw EP. 03 | Afro Samurai | Manga Inking Timelapse\nIntro\n\nInstagram: @old\n\n#manga"
+            def download(self, fid, dst):
+                got.setdefault("downloads", []).append(fid)
+                Path(dst).write_bytes(b"x")
+                return Path(dst)
+
+        class Y:
+            def __init__(self, *a): pass
+            def upload_file(self, path, title, desc, tags, privacy):
+                got["up"] = (title, desc)
+                return {"id": "y", "permalink": "https://youtu.be/y"}
+            def set_thumbnail(self, vid, jpg): got["thumb"] = vid
+
+        with mock.patch.object(job, "Drive", D), mock.patch("reels_ai.youtube.YouTube", Y), \
+                mock.patch("reels_ai.thumbnail.youtube_jpeg", lambda a, b: b), mock.patch.object(job, "_notify"):
+            job.reupload("afro")
+        title, desc = got["up"]
+        self.assertEqual(title, "LongDraw EP. 05 | Afro Samurai | Manga Inking Timelapse")
+        self.assertNotIn("@old", desc)
+        self.assertIn("instagram.com/oozstudioink1", desc)
+        self.assertIn("new", got["downloads"])
+        self.assertNotIn("old", got["downloads"])
+
     def test_old_longdraw_descriptions_get_the_current_template(self):
         from reels_ai.longform_job import refresh_description
         tpl = "I draw comics.\n\nInstagram: https://www.instagram.com/new/"
