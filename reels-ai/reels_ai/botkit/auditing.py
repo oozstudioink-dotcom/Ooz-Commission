@@ -145,22 +145,70 @@ class AuditMixin:
             videos = self._channel_videos(yt, 50)
         except Exception as e:  # noqa: BLE001
             return self.say(f"\U0001f50e Couldn't read your channel: {str(e)[:150]}")
-        todo = {}
+        numbers = self._longdraw_numbers()
+        todo, unnumbered = {}, []
         for v in videos:
-            new = audit.fixed_description(v, template)
+            line = self._episode_for(v, numbers) if v.get("seconds", 0) > 90 else ""
+            new = audit.fixed_description(v, template, episode=line)
+            if v.get("seconds", 0) > 90 and not audit.EP_LINE.match(new.split("\n", 1)[0]):
+                unnumbered.append(v["title"])
             if new.strip() != (v.get("description") or "").strip():
                 todo[v["id"]] = {"title": v["title"], "tags": v["tags"], "category": v["category"],
                                  "old": v.get("description", ""), "new": new}
+        missing = ("\n\nNo episode number found for: " + "; ".join(t[:50] for t in unnumbered)
+                   + ". Give it one with /rethumb <name> <number>.") if unnumbered else ""
         if not todo:
-            return self.say(f"\u2705 All {len(videos)} recent videos already have your current description.")
+            return self.say(f"\u2705 All {len(videos)} recent videos already have your current description." + missing)
         self.state["desc_fix"] = {"at": iso(self.clock()), "videos": todo, "status": "proposed"}
         names = "\n".join(f"• {t['title'][:60]}" for t in list(todo.values())[:25])
         more = f"\n…and {len(todo) - 25} more" if len(todo) > 25 else ""
         self.say(f"\U0001f4dd {len(todo)} of your last {len(videos)} videos have an old description:\n{names}{more}\n\n"
-                 "Shorts get your template plus their own hashtags. LongDraws keep their chapters and music "
-                 "credits; only the old links part becomes your template. Titles and tags stay as they are.",
+                 "Shorts get your template plus their own hashtags. LongDraws start with their episode "
+                 "(LongDraw EP. 05) and keep their chapters and music credits; only the old links part becomes "
+                 "your template. Titles and tags stay as they are." + missing,
                  reply_markup={"inline_keyboard": [[{"text": f"✅ Update all {len(todo)}", "callback_data": "fd:all"},
                                                     {"text": "❌ Skip", "callback_data": "fs:all"}]]})
+
+    def _longdraw_numbers(self) -> list[tuple[str, str, str]]:
+        """Every finished LongDraw in Drive › Done › Longform with an episode number in its folder name:
+        (its saved YouTube title, its subject, its episode line), names squashed for matching."""
+        import re
+        from .. import audit
+        from ..drive import parse_name
+        from ..series import all_series
+        if not self.drive:
+            return []
+        squash = lambda t: re.sub(r"[^a-z0-9]+", "", (t or "").lower())  # noqa: E731
+        out = []
+        try:
+            for place, ser in [("Done/Longform", None)] + [(f"Done/Longform/{s_['name']}", s_)
+                                                          for s_ in all_series(self.cfg)]:
+                for f in self.drive.list(self.drive.folder(place), "folder"):
+                    m = re.match(r"\s*(?:EP|LESSON|PART)\.?\s*(\d+)\s*-\s*(.+)$", f["name"], re.I)
+                    if not m:
+                        continue
+                    saved = ""
+                    txt = next((x for x in self.drive.list(f["id"], "") if x["name"].lower().endswith(".txt")), None)
+                    if txt:
+                        saved = self.drive.read_text(txt["id"]).strip().split("\n", 1)[0]
+                    subject = parse_name(m.group(2))[0] or m.group(2)
+                    out.append((squash(saved), squash(subject), audit.episode_line(int(m.group(1)), ser)))
+        except Exception as e:  # noqa: BLE001 - the numbers in the videos themselves are used instead
+            print(f"warn: LongDraw numbers from Drive: {str(e)[:150]}")
+        return out
+
+    @staticmethod
+    def _episode_for(video: dict, numbers: list[tuple[str, str, str]]) -> str:
+        """The episode line for a long video: the Drive folder with its saved title, else the folder
+        whose subject is in its title (the longest subject wins); "" leaves it to the video itself."""
+        import re
+        title = re.sub(r"[^a-z0-9]+", "", (video.get("title") or "").lower())
+        exact = [line for saved, _, line in numbers if saved and saved == title]
+        if exact:
+            return exact[0]
+        named = sorted(((len(subj), line) for _, subj, line in numbers if len(subj) >= 3 and subj in title),
+                       reverse=True)
+        return named[0][1] if named else ""
 
     def on_desc_fix(self, action: str, q: dict) -> None:
         fix = self.state.get("desc_fix") or {}
@@ -181,6 +229,10 @@ class AuditMixin:
                 done += 1
             except Exception as e:  # noqa: BLE001
                 failed.append(f"{t['title'][:40]}: {str(e)[:80]}")
+                if "insufficient" in str(e).lower() or "forbidden" in str(e).lower():
+                    failed.append("Stopped: the Google sign-in can't edit videos (it needs the permission to "
+                                  "manage your YouTube videos, not only upload).")
+                    break
         self.bot.edit_markup(self.owner, mid, label_markup(f"✅ Updated {done} on YouTube"))
         self.say(f"\U0001f4dd Updated {done} description(s)." + ("\nNot changed:\n" + "\n".join(failed) if failed else "")
                  + "\n/undo_descriptions puts the old ones back.")

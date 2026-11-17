@@ -2064,6 +2064,7 @@ class MusicCreditsTest(unittest.TestCase):
                                       4.2, 7200, ["Night Walk - Jason Farnham", "Late Night Ink"])
         self.assertIn("Music (YouTube Audio Library):\n• Night Walk - Jason Farnham\n• Late Night Ink", desc)
         self.assertTrue(desc.rstrip().endswith("#oozstudioink"))
+        self.assertTrue(desc.startswith("LongDraw EP. 03\n\n"))          # the episode is the first line
         long_desc = youtube_text("P", 3, "0:00 Intro", {}, 1, 60, [f"Track {i:03d} " + "x" * 60 for i in range(200)])[1]
         self.assertLessEqual(len(long_desc), 4900)
 

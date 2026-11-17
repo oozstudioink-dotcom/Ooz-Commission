@@ -177,16 +177,52 @@ def with_hashtags(body: str, hashtags: list[str]) -> str:
     return (body + ("\n\n" if body else "") + " ".join(hashtags)).strip()
 
 
-def fixed_description(video: dict, template: str, hashtags: list[str] | None = None) -> str:
+EP_LINE = re.compile(r"^\s*(?:LongDraw\s+EP\.?\s*\d+|.+\s\u00b7\s(?:Lesson|Part|EP\.?)\s*\d+)\s*$", re.I)
+
+
+def episode_line(episode: int, series: dict | None = None) -> str:
+    """The first line of every LongDraw description: "LongDraw EP. 05" (a series: "Name · Lesson 02")."""
+    if series:
+        return f"{series['name']} \u00b7 {str(series.get('badge') or 'Lesson').title()} {int(episode):02d}"
+    return f"LongDraw EP. {int(episode):02d}"
+
+
+def guess_episode_line(video: dict) -> str:
+    """A long video's episode line from what it already says: its title ("EP. 05", "Name | Lesson 02"),
+    an episode line already on top of its description, or an old "LongDraw #01" in the description."""
+    title, desc = video.get("title", "") or "", video.get("description", "") or ""
+    if m := re.search(r"\bEP\.?\s*(\d+)", title, re.I):
+        return episode_line(int(m.group(1)))
+    if m := re.match(r"\s*(.+?)\s*\|\s*(Lesson|Part)\s*(\d+)", title, re.I):
+        return episode_line(int(m.group(3)), {"name": m.group(1), "badge": m.group(2)})
+    first = desc.split("\n", 1)[0]
+    if EP_LINE.match(first):
+        return first.strip()
+    if m := re.search(r"LongDraw\s*(?:EP\.?|#)\s*(\d+)", desc[:400], re.I):
+        return episode_line(int(m.group(1)))
+    return ""
+
+
+def with_episode_line(desc: str, line: str) -> str:
+    """The description with `line` as its first line (an old episode line on top is replaced)."""
+    if not line:
+        return desc
+    head, _, rest = (desc or "").partition("\n")
+    body = rest.lstrip("\n") if EP_LINE.match(head) else (desc or "")
+    return f"{line}\n\n{body}".rstrip() if body.strip() else line
+
+
+def fixed_description(video: dict, template: str, hashtags: list[str] | None = None, episode: str = "") -> str:
     """The description a video should have. A Short: your template word for word, then its hashtag
-    line (kept from the video unless new hashtags are given). A long video keeps its chapters and
-    music credits; only its old links list (or an older template) becomes the current template."""
+    line (kept from the video unless new hashtags are given). A long video starts with its episode
+    line ("LongDraw EP. 05": `episode`, or worked out from the video) and keeps its chapters and music
+    credits; only its old links list (or an older template) becomes the current template."""
     desc = video.get("description", "") or ""
     if hashtags is None:
         last = desc.rstrip().split("\n")[-1] if desc.strip() else ""
         hashtags = last.split() if last.strip() and all(w.startswith("#") for w in last.split()) else []
     if video.get("seconds", 0) > 90:
-        base = refresh_description(desc, template)
+        base = with_episode_line(refresh_description(desc, template), episode or guess_episode_line(video))
         return (with_hashtags(base, hashtags) if hashtags else base)[:4900]
     return with_hashtags(template.strip() or desc, hashtags)[:4900]
 

@@ -1,11 +1,21 @@
 # The Ooz Reels bot, always on: each run serves for up to 5 hours and starts the next one.
-# The timer below is only a safety net (it restarts the bot if a run ever dies).
+# The timer below is only a safety net (it restarts the bot if a run ever dies); a run it queues
+# waits until the running bot finishes instead of interrupting it. Merging new code to main
+# starts a run straight away.
 # Needs repo secret TELEGRAM_BOT_TOKEN. Optional: TELEGRAM_OWNER_ID to pin the owner chat.
 name: reels-bot
 
 on:
   schedule:
     - cron: "23 */2 * * *"
+  # Merging new bot code starts a run with it; the running bot hands over within a minute.
+  push:
+    branches: [main]
+    paths:
+      - "reels-ai/reels_ai/**"
+      - "reels-ai/config.toml"
+      - "reels-ai/requirements.txt"
+      - ".github/workflows/reels-bot.yml"
   workflow_dispatch:
     inputs:
       task:
@@ -56,6 +66,8 @@ jobs:
       - uses: actions/setup-python@v6
         with:
           python-version: "3.12"
+          cache: pip                             # each restart installs from cache, not the internet
+          cache-dependency-path: reels-ai/requirements.txt
 
       - name: Check social connections (posts nothing)
         if: inputs.task == 'check'

@@ -84,6 +84,14 @@ class Runner(AuditMixin, SponsorMixin, LibraryMixin, InboxToolsMixin, CommandsMi
                     self.on_message(u["message"])
             except TelegramError as e:
                 print(f"warn: update {u['update_id']}: {e}")
+            except Exception as e:  # noqa: BLE001 - one bad command must not stop the others or the bot
+                import traceback
+                traceback.print_exc()
+                try:
+                    self.say(f"\u26a0\ufe0f That didn't work ({type(e).__name__}: {str(e)[:200]}). "
+                             "Nothing else was affected; try again, or tell Claude what you sent.")
+                except Exception:  # noqa: BLE001
+                    pass
         if not self.state["paused"]:
             self.auto_approve()
             if self.drops_mode:
@@ -345,8 +353,10 @@ def run(phase: str) -> None:
 
 
 def runs_waiting() -> int:
-    """How many runs of this workflow are queued behind this one on GitHub (a new version of the
-    code, a check you started, the safety timer). 0 anywhere else or when GitHub can't be asked."""
+    """How many runs of this workflow are queued behind this one on GitHub that should take over
+    now: a new version of the code, a check you started. The two-hourly safety timer's run is not
+    counted: it only matters when the bot has stopped, and it takes over when this run ends.
+    0 anywhere else or when GitHub can't be asked."""
     import json as _json
     import urllib.request
     repo, token = os.environ.get("GITHUB_REPOSITORY", ""), os.environ.get("GITHUB_TOKEN", "")
@@ -357,10 +367,10 @@ def runs_waiting() -> int:
     for status in ("queued", "pending"):
         try:
             req = urllib.request.Request(
-                f"https://api.github.com/repos/{repo}/actions/workflows/{wf}/runs?status={status}&per_page=1",
+                f"https://api.github.com/repos/{repo}/actions/workflows/{wf}/runs?status={status}&per_page=20",
                 headers={"Authorization": f"Bearer {token}", "Accept": "application/vnd.github+json"})
             with urllib.request.urlopen(req, timeout=20) as r:
-                n += int(_json.load(r).get("total_count", 0))
+                n += sum(1 for run in _json.load(r).get("workflow_runs", []) if run.get("event") != "schedule")
         except Exception as e:  # noqa: BLE001 - asking is optional
             print(f"warn: couldn't ask GitHub about waiting runs: {str(e)[:100]}")
     return n

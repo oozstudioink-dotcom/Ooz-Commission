@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import json
 import mimetypes
+import urllib.error
 import urllib.request
 import uuid
 from pathlib import Path
@@ -21,21 +22,40 @@ class Bot:
 
     # ------------------------------------------------------------ transport
     def _call(self, method: str, params: dict | None = None, files: dict | None = None) -> object:
+        """One Bot API call. Telegram saying "too many requests" (it says how long to wait) or a
+        5xx, and a connection that never opened, are retried a few times; anything else is raised."""
+        import time
         url = f"{API}/bot{self.token}/{method}"
         params = {k: v for k, v in (params or {}).items() if v is not None}
         if files:
             body, ctype = _multipart(params, files)
         else:
             body, ctype = json.dumps(params).encode(), "application/json"
-        req = urllib.request.Request(url, data=body, headers={"Content-Type": ctype})
-        try:
-            with urllib.request.urlopen(req, timeout=self.timeout) as r:
-                data = json.load(r)
-        except urllib.error.HTTPError as e:
-            data = json.loads(e.read() or b"{}")
-        if not data.get("ok"):
+        for attempt in range(4):
+            req = urllib.request.Request(url, data=body, headers={"Content-Type": ctype})
+            try:
+                with urllib.request.urlopen(req, timeout=self.timeout) as r:
+                    data = json.load(r)
+            except urllib.error.HTTPError as e:
+                try:
+                    data = json.loads(e.read() or b"{}")
+                except ValueError:                  # a proxy's HTML error page
+                    data = {"ok": False, "description": f"HTTP {e.code}", "error_code": e.code}
+                data.setdefault("error_code", e.code)
+            except urllib.error.URLError as e:      # never reached Telegram: safe to send again
+                if attempt == 3 or isinstance(getattr(e, "reason", None), TimeoutError):
+                    raise TelegramError(f"{method}: {e}") from None
+                time.sleep(2 * (attempt + 1))
+                continue
+            if data.get("ok"):
+                return data["result"]
+            code = data.get("error_code")
+            wait = (data.get("parameters") or {}).get("retry_after")
+            if attempt < 3 and (code == 429 or (isinstance(code, int) and code >= 500)):
+                time.sleep(min(60, int(wait or 2 * (attempt + 1))))
+                continue
             raise TelegramError(f"{method}: {data.get('description', data)}")
-        return data["result"]
+        raise TelegramError(f"{method}: gave up")
 
     # ------------------------------------------------------------ methods used
     def get_updates(self, offset: int) -> list[dict]:
@@ -46,6 +66,10 @@ class Bot:
                      force_reply: bool = False) -> dict:
         if force_reply:
             reply_markup = {"force_reply": True, "input_field_placeholder": "New caption"}
+        parts = split_text(text)
+        for part in parts[:-1]:                     # a long message goes in pieces; buttons on the last
+            self._call("sendMessage", {"chat_id": chat_id, "text": part, "link_preview_options": {"is_disabled": True}})
+        text = parts[-1]
         return self._call("sendMessage", {"chat_id": chat_id, "text": text,
                                           "reply_markup": reply_markup,
                                           "link_preview_options": {"is_disabled": True}})
@@ -110,6 +134,21 @@ class Bot:
             while chunk := r.read(1 << 20):
                 f.write(chunk)
         return dst
+
+
+LIMIT = 4096                     # Telegram's longest message
+
+
+def split_text(text: str, limit: int = LIMIT) -> list[str]:
+    """A message in pieces Telegram accepts, cut at line breaks where possible."""
+    text = text or " "
+    parts = []
+    while len(text) > limit:
+        cut = text.rfind("\n", 0, limit)
+        cut = cut if cut > limit // 2 else limit
+        parts.append(text[:cut].rstrip())
+        text = text[cut:].lstrip("\n")
+    return parts + [text]
 
 
 def _multipart(fields: dict, files: dict[str, Path]) -> tuple[bytes, str]:

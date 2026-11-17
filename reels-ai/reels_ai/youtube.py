@@ -84,7 +84,11 @@ class YouTube:
             data = body
         req = urllib.request.Request(url, data=data, method=method, headers=h)
         try:
-            r = urllib.request.urlopen(req, timeout=300 if data else self.timeout)
+            if method in ("GET", "PUT") and not isinstance(body, bytes):    # safe to send twice
+                from .drive import _retry
+                r = _retry(lambda: urllib.request.urlopen(req, timeout=300 if data else self.timeout))
+            else:                                   # an upload is never repeated by itself
+                r = urllib.request.urlopen(req, timeout=300 if data else self.timeout)
         except urllib.error.HTTPError as e:
             raise YouTubeError(_describe(e)) from None
         with r:

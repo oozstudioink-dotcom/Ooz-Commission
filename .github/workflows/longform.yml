@@ -59,6 +59,8 @@ jobs:
       - uses: actions/setup-python@v6
         with:
           python-version: "3.12"
+          cache: pip                             # each restart installs from cache, not the internet
+          cache-dependency-path: reels-ai/requirements.txt
 
       - name: Install video tools
         run: |
