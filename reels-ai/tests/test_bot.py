@@ -978,6 +978,19 @@ class InboxToolsTest(unittest.TestCase):
 
 
 class ScheduleAndRethumbTest(unittest.TestCase):
+    def test_old_longdraw_descriptions_get_the_current_template(self):
+        from reels_ai.longform_job import refresh_description
+        tpl = "I draw comics.\n\nInstagram: https://www.instagram.com/new/"
+        old = ("Sasuke: 2.0 hours\n\nChapters\n0:00 Start\n\nInstagram: @old\nTikTok: @t\nFacebook: Ooz"
+               "\n\nMusic (YouTube Audio Library):\n\u2022 Song\n\n#manga")
+        new = refresh_description(old, tpl)
+        self.assertEqual(new, "Sasuke: 2.0 hours\n\nChapters\n0:00 Start\n\n" + tpl
+                         + "\n\nMusic (YouTube Audio Library):\n\u2022 Song\n\n#manga")
+        self.assertEqual(refresh_description(new, tpl), new)                 # already current: untouched
+        older = new.replace("https://www.instagram.com/new/", "@old")
+        self.assertEqual(refresh_description(older, tpl), new)               # an older template is swapped too
+        self.assertEqual(refresh_description("just text", tpl), "just text")
+
     def test_drops_only_on_posting_days(self):
         cfg = _load_config()
         cfg["delivery"].update(auto_drop=True, drop_days=["Mon", "Wed", "Fri"], drop_times=["12:00"])

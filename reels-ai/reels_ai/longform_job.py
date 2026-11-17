@@ -250,6 +250,30 @@ def art_from_thumbnail(png) -> "Image.Image":
     return Image.fromarray(panel[ys.min():ys.max() + 1, xs.min():xs.max() + 1])
 
 
+SOCIAL_LINE = re.compile(r"^(Instagram|TikTok|YouTube|X|Threads|Facebook|LinkedIn)\s*:", re.I)
+
+
+def refresh_description(desc: str, template: str) -> str:
+    """Swap an older LongDraw description's socials block (or an older template) for the current template.
+    Everything else (chapters, music credits, hashtags) stays as it was."""
+    template = template.strip()
+    if not template or template in desc:
+        return desc
+    parts = desc.split("\n\n")
+    first = template.split("\n\n")[0]
+    for i, part in enumerate(parts):                                   # an older version of the template
+        if part.startswith(first[:40]):
+            end = i
+            while end + 1 < len(parts) and not parts[end + 1].startswith(("Music", "#")):
+                end += 1
+            return "\n\n".join(parts[:i] + [template] + parts[end + 1:])[:4900]
+    for i, part in enumerate(parts):
+        rows = [r for r in part.splitlines() if r.strip()]
+        if rows and all(SOCIAL_LINE.match(r) for r in rows):           # the old "Instagram: @..." list
+            return "\n\n".join(parts[:i] + [template] + parts[i + 1:])[:4900]
+    return desc
+
+
 def rethumb(query: str, episode: int) -> None:
     """Give a finished LongDraw a new episode number: a new thumbnail (from its own art), the
     Drive folder and the YouTube title renamed, and the new thumbnail set on YouTube."""
@@ -297,8 +321,11 @@ def rethumb(query: str, episode: int) -> None:
         else:
             v = match[0]
             title = re.sub(r"(EP\.?|Lesson)\s*\d+", lambda m: f"{m.group(1)} {episode:02d}", v["title"], count=1, flags=re.I)
-            if title != v["title"]:
-                yt.update_video(v["id"], title, v["description"], v["tags"], v["category"])
+            desc = refresh_description(v["description"], cfg.get("youtube", {}).get("description_template", ""))
+            if title != v["title"] or desc != v["description"]:
+                yt.update_video(v["id"], title, desc, v["tags"], v["category"])
+            if desc != v["description"]:
+                lines.append("YouTube: description now ends with your current template (new links and schedule).")
             try:
                 yt.set_thumbnail(v["id"], youtube_jpeg(out, work / "t.jpg"))
                 lines.append(f"YouTube: thumbnail replaced and title is now \u201c{title}\u201d (youtu.be/{v['id']}).")
