@@ -135,9 +135,12 @@ def run(project: str) -> None:
         res = build(sessions, work / "out", title_name, episode, lcfg, beats, advert, pcfg, art,
                     log=print)
         mins = res["seconds"] / 60
+        from .about import about
+        from .eyes import MODEL
+        note = about(title_name, cfg.get("watch", {}).get("model", MODEL))
         title, desc, tags = youtube_text(title_name, episode, res["chapters"], pcfg, res["speed"],
                                          res["raw"], res.get("tracks"), lcfg.get("music_source", "YouTube Audio Library"), series=series,
-                                         template=cfg.get("youtube", {}).get("description_template", ""))
+                                         template=cfg.get("youtube", {}).get("description_template", ""), note=note)
 
         ep_folder = drive.folder(f"{done_path}/{tag} - {folder['name']}")
         up = drive.upload(res["video"], ep_folder)

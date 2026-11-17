@@ -1,0 +1,20 @@
+Profile bios (first person, written to fit each app's limit)
+
+INSTAGRAM  (bio, 128 of 150 characters)
+Comic artist & character designer ✍🏾
+Everything inked by hand, full process weekly
+New Shorts Mon · Wed · Fri
+Commissions open ↓
+Link field: https://oozstudioink-dotcom.github.io/Ooz-Commission/
+
+TIKTOK  (bio, 71 of 80 characters)
+Comic artist & character designer ✍🏾
+Inked by hand · Commissions open ↓
+Website field: https://oozstudioink-dotcom.github.io/Ooz-Commission/
+(TikTok doesn't give every account a website field. If yours has none, change the last line to
+"Inked by hand · Commissions: see YouTube" and link your YouTube channel instead.)
+
+REDDIT  (profile About, 199 of 200 characters)
+Comic artist and character designer. I ink everything by hand and post the whole process, from the first rough lines to the last stroke. Commissions open: oozstudioink-dotcom.github.io/Ooz-Commission
+Display name: Ooz Studio Ink
+Social links (Profile > Edit > Social links): your website, Instagram, TikTok, YouTube
