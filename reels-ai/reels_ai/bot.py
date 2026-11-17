@@ -195,6 +195,10 @@ class Runner(AuditMixin, SponsorMixin, LibraryMixin, InboxToolsMixin, CommandsMi
             self.send_calendar()
         elif cmd == "/undo_rewrite":
             self.undo_rewrite()
+        elif cmd == "/fixdescriptions":
+            self.fix_descriptions()
+        elif cmd == "/undo_descriptions":
+            self.undo_descriptions()
         elif cmd == "/report":
             self.state["report_request"] = True
             self.send_report()
@@ -218,6 +222,8 @@ class Runner(AuditMixin, SponsorMixin, LibraryMixin, InboxToolsMixin, CommandsMi
             return self.on_library(action, vid, q)
         if action in ("ta", "ts"):
             return self.on_rewrite(action, vid, q)
+        if action in ("fd", "fs"):
+            return self.on_desc_fix(action, q)
         if action == "noname":
             d = self.state["drawings"].get(vid)
             if d and d.get("status") == "naming":

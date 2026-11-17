@@ -63,10 +63,12 @@ class AuditMixin:
             print(f"warn: audit: {str(e)[:200]}")
             return None if quiet else self.say(f"\U0001f50e Couldn't read your channel: {str(e)[:150]}")
         weak = audit.weakest(measured, int(ac.get("rewrites", 3)))
+        soon = audit.upcoming(measured, int(ac.get("upcoming", 5)))
         words = None
         if self._claude_ok():
             try:
-                words = audit.propose(measured, weak, self.state.get("radar", {}).get("trending", []), self._model())
+                words = audit.propose(measured, weak, self.state.get("radar", {}).get("trending", []), self._model(),
+                                      soon=soon)
                 print(f"audit: {cost(words) * 100:.1f} cents, ${self.spend(cost(words)):.2f} this month")
             except Exception as e:  # noqa: BLE001 - the measured audit still goes out
                 print(f"warn: audit words: {str(e)[:150]}")
@@ -76,7 +78,7 @@ class AuditMixin:
         self.say(audit.report(measured, words))
         for r in (words or {}).get("rewrites", []):
             k = r.get("video")
-            if not isinstance(k, int) or k not in weak:
+            if not isinstance(k, int) or (k not in weak and k not in soon):
                 continue
             v, new = measured[k], audit.safe_rewrite(measured[k], r, self.cfg.get("youtube", {}).get("description_template", ""))
             if not new:
@@ -85,7 +87,9 @@ class AuditMixin:
             self.state.setdefault("rewrites", {})[key] = {
                 **new, "category": v["category"], "at": iso(self.clock()), "status": "proposed",
                 "old": {"title": v["title"], "description": v["description"], "tags": v["tags"]}}
-            self.say(f"✏️ Proposed rewrite · youtu.be/{key}\n\nNow: {v['title']}\nNew: {new['title']}\n\n"
+            when = ("" if k in weak else
+                    f" · not out yet{' (scheduled ' + v['publish_at'][:10] + ')' if v.get('publish_at') else ' (private)'}")
+            self.say(f"✏️ Proposed rewrite · youtu.be/{key}{when}\n\nNow: {v['title']}\nNew: {new['title']}\n\n"
                      f"Hashtags: {' '.join(new['hashtags'])}\nTags: {', '.join(new['tags'])}\n"
                      f"Description: your template{' (from config)' if self.cfg.get('youtube', {}).get('description_template') else ', with only the hashtag line changed'}\n\n"
                      f"Why: {new['why']}\n\n"
@@ -125,6 +129,76 @@ class AuditMixin:
             return self.say(f"⚠️ Couldn't put it back: {str(e)[:200]}")
         r["status"] = "undone"
         self.say(f"↩️ Put back the old title, description and tags on youtu.be/{key}.")
+
+    def fix_descriptions(self) -> None:
+        """/fixdescriptions: every recent video's description brought to your template (Shorts: the
+        template and their own hashtags; LongDraws: chapters and credits kept, links block replaced).
+        Shows what would change and waits for a tap."""
+        from .. import audit
+        yt = self.clients.get("youtube")
+        template = self.cfg.get("youtube", {}).get("description_template", "")
+        if not yt:
+            return self.say("Fixing descriptions needs the YouTube connection.")
+        if not template.strip():
+            return self.say("There's no description template in config.toml ([youtube] description_template).")
+        try:
+            videos = self._channel_videos(yt, 50)
+        except Exception as e:  # noqa: BLE001
+            return self.say(f"\U0001f50e Couldn't read your channel: {str(e)[:150]}")
+        todo = {}
+        for v in videos:
+            new = audit.fixed_description(v, template)
+            if new.strip() != (v.get("description") or "").strip():
+                todo[v["id"]] = {"title": v["title"], "tags": v["tags"], "category": v["category"],
+                                 "old": v.get("description", ""), "new": new}
+        if not todo:
+            return self.say(f"\u2705 All {len(videos)} recent videos already have your current description.")
+        self.state["desc_fix"] = {"at": iso(self.clock()), "videos": todo, "status": "proposed"}
+        names = "\n".join(f"• {t['title'][:60]}" for t in list(todo.values())[:25])
+        more = f"\n…and {len(todo) - 25} more" if len(todo) > 25 else ""
+        self.say(f"\U0001f4dd {len(todo)} of your last {len(videos)} videos have an old description:\n{names}{more}\n\n"
+                 "Shorts get your template plus their own hashtags. LongDraws keep their chapters and music "
+                 "credits; only the old links part becomes your template. Titles and tags stay as they are.",
+                 reply_markup={"inline_keyboard": [[{"text": f"✅ Update all {len(todo)}", "callback_data": "fd:all"},
+                                                    {"text": "❌ Skip", "callback_data": "fs:all"}]]})
+
+    def on_desc_fix(self, action: str, q: dict) -> None:
+        fix = self.state.get("desc_fix") or {}
+        mid = q.get("message", {}).get("message_id")
+        if fix.get("status") != "proposed":
+            return self.bot.answer_callback(q["id"], "Already handled")
+        if action == "fs":
+            fix["status"] = "skipped"
+            self.bot.answer_callback(q["id"], "Skipped")
+            return self.bot.edit_markup(self.owner, mid, label_markup("❌ Skipped: nothing changed"))
+        fix["status"] = "applied"
+        self.bot.answer_callback(q["id"], "Updating")
+        done, failed = 0, []
+        for vid, t in fix["videos"].items():
+            try:
+                self.clients["youtube"].update_video(vid, t["title"], t["new"], t["tags"], t["category"])
+                t["done"] = True
+                done += 1
+            except Exception as e:  # noqa: BLE001
+                failed.append(f"{t['title'][:40]}: {str(e)[:80]}")
+        self.bot.edit_markup(self.owner, mid, label_markup(f"✅ Updated {done} on YouTube"))
+        self.say(f"\U0001f4dd Updated {done} description(s)." + ("\nNot changed:\n" + "\n".join(failed) if failed else "")
+                 + "\n/undo_descriptions puts the old ones back.")
+
+    def undo_descriptions(self) -> None:
+        fix = self.state.get("desc_fix") or {}
+        done = {k: t for k, t in fix.get("videos", {}).items() if t.get("done")}
+        if fix.get("status") != "applied" or not done:
+            return self.say("There's no description update to undo.")
+        back = 0
+        for vid, t in done.items():
+            try:
+                self.clients["youtube"].update_video(vid, t["title"], t["old"], t["tags"], t["category"])
+                back += 1
+            except Exception as e:  # noqa: BLE001
+                print(f"warn: undo description {vid}: {str(e)[:120]}")
+        fix["status"] = "undone"
+        self.say(f"↩️ Put back {back} old description(s).")
 
     def send_calendar(self) -> None:
         from .. import audit

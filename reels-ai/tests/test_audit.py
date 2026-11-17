@@ -64,6 +64,37 @@ class MeasureTest(unittest.TestCase):
         self.assertIsNone(audit.safe_rewrite({**VIDEOS[1], "description": "d\n\n#a"},
                                              {"title": VIDEOS[1]["title"], "hashtags": ["#a"], "tags": []}))
 
+    def test_private_and_scheduled_videos_get_a_title_check_not_a_verdict(self):
+        later = (NOW + timedelta(days=4)).strftime("%Y-%m-%dT%H:%M:%SZ")
+        vids = VIDEOS + [{**vid(6, "drawing 7", 0, 10), "privacy": "private", "publish_at": later},
+                         {**vid(7, "ink 3", 0, 10), "privacy": "private"}]
+        m = audit.measure(vids, NOW)
+        self.assertEqual([v["verdict"] for v in m[6:]], ["upcoming", "upcoming"])
+        self.assertEqual([v["verdict"] for v in m[:6]], ["usual", "weak", "strong", "usual", "new", "weak"])
+        self.assertNotIn(6, audit.weakest(m, 9))
+        self.assertEqual(audit.upcoming(m), [6, 7])                         # scheduled soonest first
+        self.assertIn("Not out yet: 2", audit.report(m))
+
+    def test_fixed_description_keeps_hashtags_and_longdraw_chapters(self):
+        tpl = "I draw comics.\n\nInstagram: https://www.instagram.com/oozstudioink1/"
+        short = {"description": "old caption linktr.ee/x\n\n#gojo #jjk #shorts", "seconds": 30}
+        self.assertEqual(audit.fixed_description(short, tpl), tpl + "\n\n#gojo #jjk #shorts")
+        long = {"seconds": 3600, "description": "Afro: 2 hours\n\nChapters\n0:00 Start\n\nInstagram: @old\n\n"
+                                                 "Music (YouTube Audio Library):\n\u2022 Song\n\n#manga #inking"}
+        got = audit.fixed_description(long, tpl)
+        self.assertIn("Chapters\n0:00 Start", got)
+        self.assertIn("\u2022 Song", got)
+        self.assertNotIn("@old", got)
+        self.assertTrue(got.endswith("#manga #inking"))
+        self.assertEqual(audit.fixed_description({"description": got, "seconds": 3600}, tpl), got)
+
+    def test_a_longdraw_rewrite_keeps_its_episode_number(self):
+        v = {**VIDEOS[1], "title": "LongDraw EP. 05 | Afro Samurai | Manga Inking Timelapse", "seconds": 3600}
+        self.assertIsNone(audit.safe_rewrite(v, {"title": "Afro Samurai ink drawing", "hashtags": ["#afrosamurai"], "tags": []}))
+        ok = audit.safe_rewrite(v, {"title": "LongDraw EP. 05 | Afro Samurai Manga Art | Ink Timelapse",
+                                    "hashtags": ["#afrosamurai"], "tags": []})
+        self.assertIsNotNone(ok)
+
     def test_posting_days_only(self):
         days = audit.plan_days(datetime(2026, 11, 16, tzinfo=timezone.utc), 7, ["Mon", "Wed", "Fri"])
         self.assertEqual(days, ["Mon Nov 16", "Wed Nov 18", "Fri Nov 20"])
@@ -115,6 +146,22 @@ class BotAuditTest(unittest.TestCase):
         self.assertEqual(len(self.yt.updated), 2)
         self.assertEqual(self.yt.updated[1][:2], ("id1", "drawing 4"))   # the old title is back
         self.assertGreater(sum(r.state["claude_spend"].values()), 0)
+
+    def test_fixdescriptions_lists_then_updates_on_tap_and_can_undo(self):
+        r = self.runner()
+        self.bot.push(**msg(OWNER, text="/fixdescriptions"))
+        r.poll()
+        ask = [t for t in self.texts() if "have an old description" in t]
+        self.assertEqual(len(ask), 1)
+        self.assertEqual(self.yt.updated, [])                            # nothing until the tap
+        self.bot.push(**tap("fd:all"))
+        r.poll()
+        self.assertEqual(len(self.yt.updated), len(VIDEOS))
+        self.assertTrue(all("comic artist" in u[2] for u in self.yt.updated))
+        self.assertEqual(self.yt.updated[0][1], VIDEOS[0]["title"])       # titles untouched
+        self.bot.push(**msg(OWNER, text="/undo_descriptions"))
+        r.poll()
+        self.assertEqual(self.yt.updated[-1][2], VIDEOS[-1]["description"])
 
     def test_without_claude_the_measured_audit_and_a_simple_calendar_still_arrive(self):
         r = self.runner()
