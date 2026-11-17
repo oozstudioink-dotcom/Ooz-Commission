@@ -182,8 +182,9 @@ def run(project: str) -> None:
 
 
 def reupload(query: str) -> None:
-    """Upload a finished long video from Drive > Done > Longform to YouTube again, privately, with
-    its saved title, description and thumbnail (for a copy stuck on 'processing')."""
+    """Upload a finished long video from Drive > Done > Longform to YouTube again, privately: its saved
+    title with the folder's episode number, the saved description with the current template, and the
+    newest thumbnail in the folder (so a /rethumb before it carries over)."""
     from .series import all_series
     from .thumbnail import youtube_jpeg
     from .youtube import YouTube
@@ -210,6 +211,11 @@ def reupload(query: str) -> None:
         if txt:
             body = drive.read_text(txt["id"]).strip().split("\n", 1)
             title, desc = body[0].strip(), (body[1].strip() if len(body) > 1 else "")
+        num = re.match(r"\s*(?:EP|LESSON|PART)\.?\s*(\d+)", folder["name"], re.I)
+        if num:                                      # the folder's number wins (after a /rethumb)
+            title = re.sub(r"(EP\.?|Lesson)\s*\d+", lambda m: f"{m.group(1)} {int(num.group(1)):02d}", title,
+                           count=1, flags=re.I)
+        desc = refresh_description(desc, cfg.get("youtube", {}).get("description_template", ""))
         _notify(f"\U0001f4e4 Re-uploading \u201c{title}\u201d ({int(video.get('size') or 0) / 1e9:.1f} GB). "
                 "This takes a while for 4K.")
         local = drive.download(video["id"], work / "video.mp4")
@@ -218,7 +224,8 @@ def reupload(query: str) -> None:
         lines = [f"\u2705 Re-uploaded: {y['permalink']}",
                  "It's private. Check it finishes processing in YouTube Studio, schedule it, then delete the "
                  "stuck copy there (Studio \u203a Content \u203a \u22ee \u203a Delete forever)."]
-        png = next((f for f in files if f["name"].lower().endswith(".png")), None)
+        pngs = [f for f in files if f["name"].lower().endswith(".png")]
+        png = max(pngs, key=lambda f: f.get("createdTime", "")) if pngs else None   # the newest thumbnail
         if png:
             try:
                 yt.set_thumbnail(y["id"], youtube_jpeg(drive.download(png["id"], work / "t.png"), work / "t.jpg"))

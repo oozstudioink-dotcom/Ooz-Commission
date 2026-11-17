@@ -120,7 +120,7 @@ class InboxToolsMixin:
         try:
             dispatch_workflow("longform.yml", {"project": "-", "reupload": arg.strip()})
             self.say(f"\U0001f4e4 Re-uploading “{arg.strip()}” to YouTube. It goes up privately with its "
-                     "saved title, description and thumbnail; I'll message you the link. Then delete the stuck "
-                     "copy in YouTube Studio.")
+                     "episode number from its Drive folder, its newest thumbnail and your current description; "
+                     "I'll message you the link. If an older copy is on YouTube, delete it in YouTube Studio.")
         except Exception as e:  # noqa: BLE001
             self.say(f"⚠️ Couldn't start the re-upload: {str(e)[:200]}")
