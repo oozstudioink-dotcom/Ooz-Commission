@@ -249,12 +249,45 @@ class RenderMixin:
         self.stop_waiting_for_names()
         guard = float(self.cfg.get("shorts", {}).get("drop_guard_minutes", 20))
         self._proxy = {"dir": Path(tempfile.mkdtemp(dir=work_root))}
+        import threading
+        stop = threading.Event()
+        if self.serving and hasattr(self.bot, "peek_updates"):
+            threading.Thread(target=self.busy_replies, args=(stop,), daemon=True).start()
         try:
             self._render_queue(make_variants, mode, hours, budget, started, done_now, guard, work_root, _time)
         finally:
             import shutil
+            stop.set()
+            self.rendering = None
             shutil.rmtree(self._proxy["dir"], ignore_errors=True)
             self._proxy = None
+
+    def busy_replies(self, stop, every: float = 15.0) -> None:
+        """While a drawing is being made (it can take most of an hour), messages and taps are answered
+        with what the bot is doing; they stay waiting and are handled as soon as it's done. Nothing in
+        the memory is touched here."""
+        import time as _t
+        told: set[int] = set()
+        while not stop.wait(every):
+            now = self.rendering
+            if not now or self.owner is None:
+                continue
+            try:
+                with self._tg_lock:
+                    waiting = self.bot.peek_updates(self.state["update_offset"])
+                mins = max(1, round((_t.time() - now["since"]) / 60))
+                for u in waiting:
+                    if u["update_id"] in told:
+                        continue
+                    told.add(u["update_id"])
+                    if "callback_query" in u:
+                        self.bot.answer_callback(u["callback_query"]["id"],
+                                                 f"Busy making {now['label'][:40]}; I'll do this right after")
+                    elif (u.get("message") or {}).get("chat", {}).get("id") == self.owner:
+                        self.say(f"\u23f3 I'm making the Shorts for {now['label']} right now (started {mins} min "
+                                 "ago). Your message is saved and I'll answer it as soon as that's done.")
+            except Exception as e:  # noqa: BLE001 - only a courtesy
+                print(f"warn: busy reply: {str(e)[:120]}")
 
     def _render_queue(self, make_variants, mode, hours, budget, started, done_now, guard, work_root, _time) -> None:
         for did, d in self._queued_drawings():         # also picks up drawings a split page adds
@@ -296,6 +329,7 @@ class RenderMixin:
                 self.checkpoint()
                 continue
             self.checkpoint()                         # remembered even if this run times out
+            self.rendering = {"label": d.get("subject") or d.get("drive_name") or did, "since": _time.time()}
             with tempfile.TemporaryDirectory(dir=work_root) as tmp:
                 tmp = Path(tmp)
                 try:

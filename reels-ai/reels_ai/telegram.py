@@ -62,6 +62,11 @@ class Bot:
         return self._call("getUpdates", {"offset": offset, "timeout": getattr(self, "wait", 0),
                                          "allowed_updates": ["message", "callback_query"]})
 
+    def peek_updates(self, offset: int) -> list[dict]:
+        """What is waiting, without taking it (the offset doesn't move): for "I'm busy" replies."""
+        return self._call("getUpdates", {"offset": offset, "timeout": 0,
+                                         "allowed_updates": ["message", "callback_query"]})
+
     def send_message(self, chat_id: int, text: str, reply_markup: dict | None = None,
                      force_reply: bool = False) -> dict:
         if force_reply:
