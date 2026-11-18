@@ -22,9 +22,10 @@ from .common import (  # noqa: F401
 class DriveMixin:
     # ------------------------------------------------------------------ Google Drive inbox
     def group_parts(self, new: list[tuple]) -> list[tuple]:
-        """Numbered parts of one drawing uploaded to Inbox together ("Gojo 1", "Gojo 2" …) become one
-        recording by themselves. A numbered part waits [drive] part_wait_minutes after the newest
-        upload of its name, so the other parts can finish uploading. Returns what is left to take in."""
+        """Numbered recordings of one name uploaded to Inbox together ("Gojo 1", "Gojo 2" …): each waits
+        [drive] part_wait_minutes after the newest upload of its name, so all of them arrive; then they
+        are made one by one and you get the /combine command, in case some are parts of one drawing.
+        Returns what is left to take in."""
         import re
         from ..drive import parse_name, part_number
         from ..state import parse
@@ -52,16 +53,13 @@ class DriveMixin:
                 continue
             if len(srcs) < 2:
                 continue
-            rest = [x for x in rest if x not in srcs]
-            first = srcs[0][0]["name"]
-            tags = re.split(r"\s+[-\u2013\u2014]\s+", Path(first).stem)[1:]
-            label = " - ".join([parse_name(first)[0]] + tags)
-            files = [{**src[0], "in_inbox": True} for src in srcs]
-            did, _ = self.combined_drawing(files, label)
-            names = [f["name"] for f in sorted(files, key=lambda f: self.state["drawings"][did]["drive_ids"].index(f["id"]))]
-            self.say(f"\U0001f517 Found {len(files)} parts of {label} in Inbox, joined into one recording in this "
-                     "order:\n" + "\n".join(f"{k}. {n}" for k, n in enumerate(names, 1))
-                     + "\nShorts arrive in /videos when it's done.")
+            # Numbers alone can't tell parts of one drawing from separate drawings on one page, so
+            # nothing is joined without you: each is made on its own, and you get the command.
+            names = sorted((src[0]["name"] for src in srcs), key=lambda n: (part_number(n) or 0, n))
+            stems = [Path(n).stem for n in names]
+            self.say(f"\U0001f517 {len(names)} numbered recordings of {parse_name(names[0])[0]} came in: "
+                     f"{', '.join(names)}. I'm making each on its own. If some are parts of ONE drawing, join "
+                     f"them, e.g. /combine {' and '.join(stems[:2])}")
         return rest
 
     def drive_problem(self, e: Exception) -> None:

@@ -4,7 +4,7 @@
                     never became Shorts (failed, waiting for a name, never seen) is queued again
 /combine <name>     the recordings named <name> 1, <name> 2 … become ONE recording: Shorts are made
                     from all of them in order (found in Inbox, or wherever the bot already filed them).
-                    Parts uploaded together are joined by themselves (see group_parts)
+                    /combine Vegeta01 and Vegeta02 joins exactly those, in that order
 /reupload <name>    a finished long video in Drive > Done > Longform is uploaded to YouTube again
                     (privately, with its saved title, description and thumbnail)
 """
@@ -16,6 +16,21 @@ from ..state import iso, new_id
 from .common import _norm_name, dispatch_workflow
 
 DONE = ("rendered",)
+VIDEO_EXT = {".mov", ".mp4", ".m4v", ".avi", ".mkv"}
+
+
+def _tokens(text: str) -> list[str]:
+    """Words and numbers apart: 'Vegeta01 - ink only' -> ['vegeta', '01', 'ink', 'only']."""
+    import re
+    return re.findall(r"[a-z]+|\d+", _norm_name(text))
+
+
+def _names(arg: str) -> list[str]:
+    """'/combine Vegeta01 and Vegeta02' (or 'Vegeta01, Vegeta02' / 'Vegeta01 + Vegeta02'): the exact
+    recordings, in the order given. One name: []."""
+    import re
+    parts = [p.strip() for p in re.split(r"\s*(?:,|\+|&|\band\b|\bthen\b)\s*", arg or "", flags=re.I) if p.strip()]
+    return parts if len(parts) > 1 else []
 
 
 class InboxToolsMixin:
@@ -70,8 +85,8 @@ class InboxToolsMixin:
         from datetime import timedelta
         from ..drive import part_number
         from ..state import parse
-        words = [w for w in want.split() if not w.isdigit()]
-        hit = lambda name: bool(words) and all(w in _norm_name(Path(name).stem).split() for w in words)  # noqa: E731
+        words = [w for w in _tokens(want) if not w.isdigit()]
+        hit = lambda name: bool(words) and all(w in _tokens(Path(name).stem) for w in words)  # noqa: E731
         out: dict[str, dict] = {}
         for f in self.inbox_files():
             if hit(f["name"]):
@@ -91,11 +106,32 @@ class InboxToolsMixin:
                         "videoMediaMetadata": {"durationMillis": str(int((d.get("duration") or 0) * 1000))}}
         return list(out.values())
 
-    def combined_drawing(self, files: list[dict], label: str) -> tuple[str, int]:
-        """One drawing made from several recordings, in part order. The separate pieces' Shorts
-        leave the library. Returns (drawing id, Shorts replaced)."""
+    def named_recordings(self, names: list[str]) -> tuple[list[dict], list[str]]:
+        """The recordings with exactly these names (".MOV" optional), wherever they are: Inbox first,
+        then any recording the bot took in. Returns (found in the order given, names not found)."""
+        key = lambda n: _norm_name(Path(n).stem if Path(n).suffix.lower() in VIDEO_EXT else n)  # noqa: E731
+        pool: dict[str, dict] = {}
+        for f in self.inbox_files():
+            pool.setdefault(key(f["name"]), {**f, "in_inbox": True})
+        for d in self.state["drawings"].values():
+            fid, name = d.get("drive_id"), d.get("drive_name") or ""
+            if d.get("source") == "drive" and fid and not d.get("drive_ids") and key(name) not in pool:
+                pool[key(name)] = {"id": fid, "name": name, "in_inbox": False,
+                                   "videoMediaMetadata": {"durationMillis": str(int((d.get("duration") or 0) * 1000))}}
+        found, missing = [], []
+        for n in names:
+            f = pool.get(key(n))
+            if f and f not in found:
+                found.append(f)
+            elif not f:
+                missing.append(n)
+        return found, missing
+
+    def combined_drawing(self, files: list[dict], label: str, ordered: bool = False) -> tuple[str, int]:
+        """One drawing made from several recordings, in part order (or as given: ordered=True). The
+        separate pieces' Shorts leave the library. Returns (drawing id, Shorts replaced)."""
         from ..drive import parse_name, session_order
-        files = sorted(files, key=session_order)
+        files = list(files) if ordered else sorted(files, key=session_order)
         ids = [f["id"] for f in files]
         replaced = 0
         for did, d in self.state["drawings"].items():       # the separate pieces stop on their own
@@ -125,9 +161,24 @@ class InboxToolsMixin:
             return self.say("Combining needs Google Drive connected.")
         want = _norm_name(arg)
         if not [w for w in want.split() if not w.isdigit()]:
-            return self.say("Tell me the shared part of the names: /combine Gojo joins “Gojo 1”, "
-                            "“Gojo 2” … into one recording.")
-        from ..drive import session_order
+            return self.say("Tell me which recordings: /combine Vegeta01 and Vegeta02 joins exactly those two, "
+                            "in that order. /combine Gojo joins every numbered Gojo part (Gojo 1, Gojo 2 …).")
+        from ..drive import parse_name, session_order
+        names = _names(arg)
+        if names:                                       # the exact recordings, in the order given
+            try:
+                files, missing = self.named_recordings(names)
+            except Exception as e:  # noqa: BLE001
+                return self.drive_problem(e)
+            if missing or len(files) < 2:
+                return self.say(f"I couldn't find {', '.join(missing) or 'two different recordings'}. Use the "
+                                "file names as they are in Drive, e.g. /combine Vegeta01 and Vegeta02.")
+            label = parse_name(files[0]["name"])[0] or Path(files[0]["name"]).stem
+            did, replaced = self.combined_drawing(files, label, ordered=True)
+            return self.say(f"\U0001f517 Joining {len(files)} recordings into one Short set, in this order:\n"
+                            + "\n".join(f"{k}. {f['name']}" for k, f in enumerate(files, 1))
+                            + (f"\n{replaced} Short(s) made from the separate pieces left your library." if replaced else "")
+                            + "\nShorts arrive in /videos when it's done.")
         try:
             files = self.combine_candidates(want)
         except Exception as e:  # noqa: BLE001
