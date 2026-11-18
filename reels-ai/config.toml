@@ -171,7 +171,7 @@ writer = "claude"                # or "gemini"
 # Routine reading and planning jobs that Gemini's free tier tries first; Claude only steps in when
 # Gemini is busy. Jobs not listed go straight to Claude (watching recordings, judging Shorts,
 # rewrites, sponsor emails). Take a job off the list if Gemini's answers aren't good enough.
-gemini_first = ["radar", "calendar", "sponsors"]
+gemini_first = ["radar", "calendar", "sponsors", "about"]
 model = "gemini-pro-latest"     # the Gemini model used as the fallback
 
 [bank]
@@ -233,21 +233,24 @@ badge = "LESSON"
 kicker = "Book study"
 
 [youtube]
-# The description every video keeps. The auditor (/audit) only changes a video's title, tags and
-# the hashtag line at the end; the rest of the description is this text, word for word. LongDraw
-# descriptions end with it too. Links written with https:// are clickable in long videos.
-description_template = """
-I'm a comic artist and character designer, inking everything by hand. Here I share the whole process, from the first stick figure to the last line of ink.
-
-Commissions are open: https://oozstudioink-dotcom.github.io/Ooz-Commission/
-Portfolio: https://oozstudioink-dotcom.github.io/Ooz-Commission/portfolio.html
-
-Upload schedule
-• New Shorts: Monday, Wednesday and Friday at 12 PM ET
-• LongDraw: every Friday at 12 PM ET
-
-Instagram: https://www.instagram.com/oozstudioink1/
-TikTok: https://www.tiktok.com/@oozstudioink1
-Facebook: https://www.facebook.com/profile.php?id=61596390966478
-X: https://x.com/OozStudioInk
-"""
+# Every YouTube description is built from these (reels_ai/descriptions.py). LongDraws: welcome
+# with the episode, the one-line topic, "About this drawing", the schedule, the commission link,
+# your socials, chapters, the songs, hashtags. Shorts: the intro, the schedule, the commission
+# link, your socials, hashtags. Full https:// links are clickable in long-video descriptions.
+intro = "I'm a comic artist and character designer, and everything I post is drawn and inked by hand."
+welcome = "Welcome to {label}! Thanks for hanging out while this one comes together, from the first pencil lines to the last stroke of ink."
+schedule_title = "Upload schedule (Eastern Time)"
+schedule = [
+  "New Shorts: Monday, Wednesday and Friday at 12 PM EST",
+  "New LongDraw: every Friday at 12 PM EST",
+]
+commission_title = "Commissions are open"
+commission_link = "https://oozstudioink-dotcom.github.io/Ooz-Commission/"
+portfolio_link = "https://oozstudioink-dotcom.github.io/Ooz-Commission/portfolio.html"
+dm_title = "DM me for commissions or questions"
+socials = [
+  ["Instagram", "https://www.instagram.com/oozstudioink1/"],
+  ["TikTok", "https://www.tiktok.com/@oozstudioink1"],
+  ["Facebook", "https://www.facebook.com/profile.php?id=61596390966478"],
+  ["X", "https://x.com/OozStudioInk"],
+]

@@ -1122,12 +1122,47 @@ class ScheduleAndRethumbTest(unittest.TestCase):
         self.assertAlmostEqual(back.width / back.height, 600 / 800, delta=0.03)
         self.assertGreater(back.height, 600)
 
-    def test_longdraw_description_ends_with_the_template(self):
+    def test_longdraw_description_is_laid_out_in_sections(self):
         from reels_ai.longform import youtube_text
-        _, desc, _ = youtube_text("Gojo", 3, "0:00 Intro", {"socials": [["Instagram", "@old"]], "link": "x"}, 4.0, 3600,
-                                  template="My own words https://site")
-        self.assertIn("My own words https://site", desc)
-        self.assertNotIn("@old", desc)
+        cfg = _load_config()
+        _, desc, _ = youtube_text("Gojo", 3, "0:00 Intro\n0:05 Gojo\n9:00 Ink", cfg, 4.0, 3600,
+                                  [("Night Walk - Jason Farnham", 0.0), ("Late Ink", 90.0), ("Night Walk - Jason Farnham", 400.0)],
+                                  info={"subject": "Satoru Gojo", "series": "Jujutsu Kaisen",
+                                        "note": "Gojo is a sorcerer from Jujutsu Kaisen by Gege Akutami."})
+        parts = desc.split("\n\n")
+        self.assertTrue(parts[0].startswith("Welcome to LongDraw EP. 03!"))
+        self.assertEqual(parts[1], "Today: Satoru Gojo from Jujutsu Kaisen, drawn and inked by hand "
+                                   "(1.0 hours of drawing, sped up 4x).")
+        self.assertEqual(parts[2], "About this drawing\nGojo is a sorcerer from Jujutsu Kaisen by Gege Akutami.")
+        self.assertTrue(parts[3].startswith("Upload schedule (Eastern Time)\nNew Shorts: Monday, Wednesday and Friday at 12 PM EST"))
+        self.assertTrue(parts[4].startswith("Commissions are open\nCommission link: https://"))
+        self.assertTrue(parts[5].startswith("DM me"))
+        self.assertIn("Instagram: https://www.instagram.com/oozstudioink1/", parts[5])
+        self.assertTrue(parts[6].startswith("Chapters\n0:00 Intro"))
+        self.assertEqual(parts[7], "Music (YouTube Audio Library)\nNight Walk - Jason Farnham\nLate Ink")   # each once
+        self.assertTrue(parts[8].startswith("#manga"))
+
+    def test_an_old_longdraw_description_is_laid_out_again(self):
+        from reels_ai import descriptions
+        cfg = _load_config()
+        old = ("Sasuke inked by hand, from pencils to final pen lines.\n1.7 hours of pencils and ink, sped up 4.0x. "
+               "Hand-drawn manga page by Ooz Studio Ink\nCommissions are open: linktr.ee/oozstudioink\n"
+               "Instagram: @oozstudioink | TikTok: @oozstudioink1\n"
+               "Music (YouTube Audio Library): High Noon - The Grey Room Density & Time \u2022 A Stroll - The Grey "
+               "Room Density & Time \u2022 A Dyin' Breed - The Grey Room De.\n\n"
+               "About this drawing\nSasuke Uchiha is a central character from Naruto.\n\n#sasuke #naruto")
+        beats = ["High Noon - The Grey Room Density & Time", "A Stroll - The Grey Room Density & Time",
+                 "A Dyin' Breed - The Grey Room Density & Time"]
+        new = descriptions.rebuild_longdraw(cfg, old, "LongDraw EP. 02", "Sasuke", {}, beats)
+        self.assertTrue(new.startswith("Welcome to LongDraw EP. 02!"))
+        self.assertIn("\n\nToday: Sasuke, drawn and inked by hand (1.7 hours of drawing, sped up 4x).\n\n", new)
+        self.assertIn("About this drawing\nSasuke Uchiha is a central character from Naruto.", new)   # kept
+        self.assertIn("Music (YouTube Audio Library)\nHigh Noon - The Grey Room Density & Time\n"
+                      "A Stroll - The Grey Room Density & Time\nA Dyin' Breed - The Grey Room Density & Time", new)
+        self.assertNotIn("linktr.ee", new)
+        self.assertNotIn("@oozstudioink |", new)
+        self.assertTrue(new.endswith("#sasuke #naruto"))
+        self.assertEqual(descriptions.rebuild_longdraw(cfg, new, "LongDraw EP. 02", "Sasuke", {}, beats), new)   # stable
 
 
 class StyleLearningTest(unittest.TestCase):
@@ -2079,7 +2114,7 @@ class LongformJobTest(unittest.TestCase):
         self.assertEqual(hdrs, ["-headers", "Authorization: Bearer AT\r\n"])
         self.assertTrue(calls["yt"][0].startswith("LongDraw EP. 06 | Shinobi Page"))
         self.assertIn("0:03 Naruto", calls["yt"][1])
-        self.assertEqual(calls["yt"][1].count("Commissions are open: https://oozstudioink-dotcom.github.io/Ooz-Commission/"), 1)
+        self.assertEqual(calls["yt"][1].count("Commission link: https://oozstudioink-dotcom.github.io/Ooz-Commission/"), 1)
         self.assertEqual(calls["thumb"], "Y")
         self.assertIn(("p1", "id:Longform/Finished"), calls["moves"])
         self.assertEqual({f for f, _ in calls["uploads"]}, {"id:Done/Longform/EP 06 - Shinobi Page"})
@@ -2118,13 +2153,13 @@ class MusicCreditsTest(unittest.TestCase):
         from reels_ai.longform import track_name, youtube_text
         self.assertEqual(track_name(Path("003_Night_Walk - Jason Farnham.mp3")), "Night Walk - Jason Farnham")
         self.assertEqual(track_name(Path("Late Night Ink.mp3")), "Late Night Ink")
-        title, desc, _ = youtube_text("Shinobi Page", 3, "0:00 Intro\n0:03 Naruto\n10:00 Deku",
-                                      {"socials": [["X", "@OozStudioInk"]], "link": "linktr.ee/oozstudioink"},
+        title, desc, _ = youtube_text("Shinobi Page", 3, "0:00 Intro\n0:03 Naruto\n10:00 Deku", _load_config(),
                                       4.2, 7200, ["Night Walk - Jason Farnham", "Late Night Ink"])
-        self.assertIn("Music (YouTube Audio Library):\n• Night Walk - Jason Farnham\n• Late Night Ink", desc)
+        self.assertIn("Music (YouTube Audio Library)\nNight Walk - Jason Farnham\nLate Night Ink", desc)
         self.assertTrue(desc.rstrip().endswith("#oozstudioink"))
-        self.assertTrue(desc.startswith("LongDraw EP. 03\n\n"))          # the episode is the first line
-        long_desc = youtube_text("P", 3, "0:00 Intro", {}, 1, 60, [f"Track {i:03d} " + "x" * 60 for i in range(200)])[1]
+        self.assertTrue(desc.startswith("Welcome to LongDraw EP. 03!"))
+        long_desc = youtube_text("P", 3, "0:00 Intro", _load_config(), 1, 60,
+                                 [f"Track {i:03d} " + "x" * 60 for i in range(200)])[1]
         self.assertLessEqual(len(long_desc), 4900)
 
     @unittest.skipUnless(shutil.which("ffmpeg"), "needs ffmpeg")

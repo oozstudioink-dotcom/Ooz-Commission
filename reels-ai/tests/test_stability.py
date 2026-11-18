@@ -109,25 +109,66 @@ if __name__ == "__main__":
 
 
 class LongDrawDescriptionTest(unittest.TestCase):
-    def test_every_song_is_listed_with_when_it_starts(self):
-        from reels_ai.longform import youtube_text
-        _, desc, _ = youtube_text("Gojo", 6, "0:00 Intro\n0:05 Gojo\n9:00 Ink", {}, 4.0, 3600,
-                                  [("Night Walk", 0.0), ("Late Ink", 192.0), ("Night Walk", 3725.0)])
-        self.assertIn("Music (YouTube Audio Library):\n• 0:00 Night Walk\n• 3:12 Late Ink\n"
-                      "• 1:02:05 Night Walk", desc)
-
-    def test_about_this_drawing_only_for_a_known_character(self):
+    def test_about_this_drawing_known_names_and_your_own_words(self):
         from reels_ai import about
-        from reels_ai.longform import youtube_text
-        known = lambda s, sc, t: {"known": True, "note": "Afro is the lead of Afro Samurai, a manga by Takashi Okazaki."}
-        unsure = lambda s, sc, t: {"known": False, "note": "Maybe someone?"}
-        self.assertIn("Takashi Okazaki", about.about("Afro Samurai", ask=known))
-        self.assertEqual(about.about("my own guy", ask=unsure), "")
-        self.assertEqual(about.about("Afro Samurai", ask=lambda *a: 1 / 0), "")          # a failure: no note
-        _, desc, _ = youtube_text("Afro Samurai", 5, "0:00 Intro\n0:05 Afro\n9:00 Ink", {}, 4.0, 3600,
-                                  note="Afro is the lead of Afro Samurai.")
-        self.assertLess(desc.index("About this drawing\nAfro is the lead"), desc.index("Chapters"))
-        old = "LongDraw EP. 01\n\nShinobi: 2 hours\n\nI'm a comic artist."
-        got = about.with_about(old, "Note.")
-        self.assertEqual(got, "LongDraw EP. 01\n\nShinobi: 2 hours\n\nAbout this drawing\nNote.\n\nI'm a comic artist.")
-        self.assertEqual(about.with_about(got, "Other."), got)                            # once only
+        known = lambda s, sc, t: {"known": True, "subject": "Afro", "series": "Afro Samurai",
+                                  "note": "Afro is the lead of Afro Samurai, a manga by Takashi Okazaki."}
+        unsure = lambda s, sc, t: {"known": False, "subject": "", "series": "", "note": ""}
+        self.assertEqual(about.lookup("Afro Samurai", ask=known)["series"], "Afro Samurai")
+        self.assertIsNone(about.lookup("ink study", ask=unsure))
+        self.assertIsNone(about.lookup("Afro Samurai", ask=lambda *a: 1 / 0))              # a failure: asked later
+        polished = about.polish("ink study", "hands from a berserk panel",
+                                ask=lambda s, sc, t: {"subject": "an ink study of hands", "series": "Berserk",
+                                                      "note": "I studied the hands from a Berserk panel."})
+        self.assertEqual(polished["subject"], "an ink study of hands")
+        with mock.patch.dict(os.environ, {"GEMINI_API_KEY": "", "ANTHROPIC_API_KEY": ""}):
+            self.assertEqual(about.polish("ink study", "just practice")["note"], "just practice")
+
+
+class AskWhatItIsTest(unittest.TestCase):
+    def runner(self):
+        b = FakeBot()
+        state = fresh_state()
+        state["owner_chat_id"] = OWNER
+        state["report_week"] = state["audit_week"] = "2026-W47"
+        state["radar_day"] = "2026-11-18"
+        return b, Runner(b, state, load_config(), clock=Clock(NOW))
+
+    def test_an_unknown_name_is_asked_about_and_the_build_starts_after_the_answer(self):
+        from reels_ai import about
+        b, r = self.runner()
+        started = []
+        r.start_longform = started.append
+        with mock.patch.object(Runner, "route", return_value={"first": "gemini", "gemini_key": "k", "claude": False}), \
+                mock.patch.object(about, "lookup", return_value=None), \
+                mock.patch.object(about, "polish", return_value={"subject": "an ink study of hands", "series": "",
+                                                                 "note": "I studied hands in ink."}):
+            self.assertIsNone(r.about_or_ask("ink study", {"longform": "ink study"}))
+            self.assertEqual(started, [])
+            ask = [t for k, _, t in b.sent if k == "text"][-1]
+            self.assertIn("What are you drawing in “ink study”", ask)
+            asked_id = b.next_msg
+            b.push(**msg(OWNER, text="hands, just practice", reply_to_message={"message_id": asked_id}))
+            r.poll()
+        self.assertEqual(started, ["ink study"])
+        self.assertEqual(r.state["about_notes"]["inkstudy"]["note"], "I studied hands in ink.")
+        self.assertEqual(r.about_or_ask("Ink Study", {"longform": "x"})["subject"], "an ink study of hands")  # remembered
+
+    def test_a_known_name_starts_right_away(self):
+        from reels_ai import about
+        b, r = self.runner()
+        with mock.patch.object(Runner, "route", return_value={"first": "gemini", "gemini_key": "k", "claude": False}), \
+                mock.patch.object(about, "lookup", return_value={"subject": "Sasuke Uchiha", "series": "Naruto",
+                                                                 "note": "Sasuke is from Naruto."}):
+            self.assertEqual(r.about_or_ask("Sasuke", {"longform": "Sasuke"})["series"], "Naruto")
+        self.assertFalse([t for k, _, t in b.sent if "What are you drawing" in t])
+
+
+class StatusSpendTest(unittest.TestCase):
+    def test_status_shows_this_months_claude_spend(self):
+        import time
+        b = FakeBot()
+        state = fresh_state()
+        state["claude_spend"] = {time.strftime("%Y-%m"): 3.4, "2020-01": 99}
+        r = Runner(b, state, load_config(), clock=Clock(NOW))
+        self.assertIn("Claude this month: $3.40 of $15 ($11.60 left", r.status_text())

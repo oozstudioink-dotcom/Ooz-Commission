@@ -75,47 +75,29 @@ class MeasureTest(unittest.TestCase):
         self.assertEqual(audit.upcoming(m), [6, 7])                         # scheduled soonest first
         self.assertIn("Not out yet: 2", audit.report(m))
 
-    def test_fixed_description_keeps_hashtags_and_longdraw_chapters(self):
+    def test_fixed_description_keeps_hashtags_and_leaves_longdraws_to_their_layout(self):
         tpl = "I draw comics.\n\nInstagram: https://www.instagram.com/oozstudioink1/"
         short = {"description": "old caption linktr.ee/x\n\n#gojo #jjk #shorts", "seconds": 30}
         self.assertEqual(audit.fixed_description(short, tpl), tpl + "\n\n#gojo #jjk #shorts")
-        long = {"seconds": 3600, "description": "Afro: 2 hours\n\nChapters\n0:00 Start\n\nInstagram: @old\n\n"
-                                                 "Music (YouTube Audio Library):\n\u2022 Song\n\n#manga #inking"}
-        got = audit.fixed_description(long, tpl)
-        self.assertIn("Chapters\n0:00 Start", got)
-        self.assertIn("\u2022 Song", got)
-        self.assertNotIn("@old", got)
-        self.assertTrue(got.endswith("#manga #inking"))
-        self.assertEqual(audit.fixed_description({"description": got, "seconds": 3600}, tpl), got)
-
-    def test_every_longdraw_description_starts_with_its_episode(self):
-        tpl = "I draw comics."
-        long = {"seconds": 3600, "title": "Sasuke Manga Inking Timelapse",
-                "description": "Sasuke: 2 hours\n\nChapters\n0:00 Start\n\nInstagram: @old\n\n#manga"}
-        got = audit.fixed_description(long, tpl, episode=audit.episode_line(2))
-        self.assertTrue(got.startswith("LongDraw EP. 02\n\nSasuke: 2 hours"))
-        self.assertEqual(audit.fixed_description({**long, "description": got}, tpl, episode="LongDraw EP. 02"), got)
-        renumbered = audit.fixed_description({**long, "description": got}, tpl, episode="LongDraw EP. 03")
-        self.assertTrue(renumbered.startswith("LongDraw EP. 03\n\nSasuke"))          # the old line is replaced
-        self.assertEqual(renumbered.count("LongDraw EP."), 1)
-        # no number given: the video's own title, or an old "LongDraw #01" in its description
-        self.assertEqual(audit.guess_episode_line({"title": "LongDraw EP. 5 | Afro Samurai"}), "LongDraw EP. 05")
+        long = {"seconds": 3600, "description": "Welcome to LongDraw EP. 05!\n\nChapters\n0:00 Start\n\n#manga"}
+        self.assertEqual(audit.fixed_description(long, tpl), long["description"])
+        self.assertEqual(audit.fixed_description(long, tpl, ["#afro"]), long["description"].replace("#manga", "#afro"))
+        self.assertEqual(audit.guess_episode_line(long), "LongDraw EP. 05")
         self.assertEqual(audit.guess_episode_line({"title": "Shinobigoto", "description": "LongDraw #01\nhi"}),
                          "LongDraw EP. 01")
         self.assertEqual(audit.guess_episode_line({"title": "Anatomy | Lesson 2 | Hands"}), "Anatomy \u00b7 Lesson 02")
         self.assertEqual(audit.guess_episode_line({"title": "Bruce Lee"}), "")
-        short = {"seconds": 30, "title": "LongDraw EP. 5 teaser", "description": "x\n\n#a"}
-        self.assertFalse(audit.fixed_description(short, tpl).startswith("LongDraw"))   # Shorts: never
 
     def test_longdraws_are_matched_to_their_drive_folder(self):
         from reels_ai.botkit.auditing import AuditMixin
-        numbers = [("", "sasuke", "LongDraw EP. 02"), ("brucelee", "brucelee", "LongDraw EP. 04"),
-                   ("", "sasukeuchiha", "LongDraw EP. 09"), ("afrosamuraimanga", "afro", "LongDraw EP. 05")]
+        numbers = [("", "sasuke", "LongDraw EP. 02", "Sasuke"), ("brucelee", "brucelee", "LongDraw EP. 04", "Bruce Lee"),
+                   ("", "sasukeuchiha", "LongDraw EP. 09", "Sasuke Uchiha"),
+                   ("afrosamuraimanga", "afro", "LongDraw EP. 05", "Afro")]
         pick = AuditMixin._episode_for
-        self.assertEqual(pick({"title": "Sasuke Manga Inking Timelapse"}, numbers), "LongDraw EP. 02")
-        self.assertEqual(pick({"title": "Sasuke Uchiha ink"}, numbers), "LongDraw EP. 09")        # longest name
-        self.assertEqual(pick({"title": "Afro Samurai Manga"}, numbers), "LongDraw EP. 05")      # saved title
-        self.assertEqual(pick({"title": "Shinobigoto"}, numbers), "")
+        self.assertEqual(pick({"title": "Sasuke Manga Inking Timelapse"}, numbers), ("LongDraw EP. 02", "Sasuke"))
+        self.assertEqual(pick({"title": "Sasuke Uchiha ink"}, numbers)[0], "LongDraw EP. 09")       # longest name
+        self.assertEqual(pick({"title": "Afro Samurai Manga"}, numbers), ("LongDraw EP. 05", "Afro"))  # saved title
+        self.assertEqual(pick({"title": "Shinobigoto"}, numbers), ("", ""))
 
     def test_a_longdraw_rewrite_keeps_its_episode_number(self):
         v = {**VIDEOS[1], "title": "LongDraw EP. 05 | Afro Samurai | Manga Inking Timelapse", "seconds": 3600}

@@ -353,34 +353,24 @@ def build(sessions: list[Session], out_dir: Path, project: str, episode: int, cf
         shutil.rmtree(work, ignore_errors=True)
 
 
-def youtube_text(project: str, episode: int, chapters: str, panel_cfg: dict, speed: float,
-                 raw_s: float, tracks: list[str] | None = None,
+def youtube_text(project: str, episode: int, chapters: str, cfg: dict, speed: float,
+                 raw_s: float, tracks: list | None = None,
                  music_source: str = "YouTube Audio Library", series: dict | None = None,
-                 template: str = "", note: str = "") -> tuple[str, str, list[str]]:
+                 info: dict | None = None) -> tuple[str, str, list[str]]:
+    """Title, description and tags for a LongDraw. `cfg` is the whole config ([youtube] lays out the
+    description); `info` is "About this drawing" ({subject, series, note}); `tracks` the songs heard,
+    names (or (name, start) pairs) from Drive › Beats."""
+    from . import descriptions
+    from .audit import episode_line
     title = f"LongDraw EP. {episode:02d} | {project} | Manga Inking Timelapse"[:100]
     if series:
         title = f"{series['name']} | {series.get('badge', 'Lesson').title()} {episode:02d} | {project}"[:100]
-    socials = "\n".join(f"{p}: {h}" for p, h in panel_cfg.get("socials", []))
-    link = panel_cfg.get("link", "")
-    music = ""
-    if tracks:
-        src = f" ({music_source})" if music_source else ""
-        # "• 12:40 Song" (a bullet first, so YouTube never mistakes the list for chapters)
-        music = f"\n\nMusic{src}:\n" + "\n".join(
-            f"\u2022 {fmt_ts(t[1])} {t[0]}" if isinstance(t, (list, tuple)) else f"\u2022 {t}" for t in tracks)
-    tags_line = "#manga #mangaart #inking #timelapse #drawing #traditionalart #oozstudioink"
-    from .audit import episode_line
-    head = (f"{episode_line(episode, series)}\n\n"
-            f"{project}: {raw_s / 3600:.1f} hours of pencils and ink, sped up {speed:.1f}x. "
-            f"Hand-drawn manga page by Ooz Studio Ink \u270d\U0001f3fe\n\n"
-            + ("" if link and link in template else f"Commissions are open: {link}\n\n")
-            + (f"About this drawing\n{note}\n\n" if note else "")
-            + f"Chapters\n{chapters}\n\n"
-            + (template.strip() if template.strip() else socials))
-    room = 4900 - len(head) - len(tags_line) - 4               # YouTube limit: 5000 characters
-    if len(music) > room:
-        music = music[:max(0, room - 2)].rsplit("\n", 1)[0] + "\n\u2026"
-    desc = f"{head}{music}\n\n{tags_line}"
+    info = info or {}
+    songs = [t[0] if isinstance(t, (list, tuple)) else t for t in tracks or []]
+    topic = descriptions.topic_line(info.get("subject") or project, info.get("series", ""),
+                                    f"({raw_s / 3600:.1f} hours of drawing, sped up {round(speed, 1):g}x)")
+    desc = descriptions.longdraw(cfg, episode_line(episode, series), topic, info.get("note", ""), chapters,
+                                 songs, music_source)
     tags = ["manga", "manga art", "inking", "timelapse", "drawing", "traditional art", "longdraw",
             "ooz studio ink", project]
     return title, desc, tags

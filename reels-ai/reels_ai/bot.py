@@ -32,13 +32,14 @@ from .botkit.common import (  # noqa: F401 - re-exported: other modules and test
     dispatch_workflow, shrink_for_telegram,
 )
 from .botkit.auditing import AuditMixin
+from .botkit.about_asks import AboutMixin
 from .botkit.sponsoring import SponsorMixin
 from .botkit.library import LibraryMixin
 from .botkit.inbox_tools import InboxToolsMixin
 from .botkit.connect import check, tiktok_connect  # noqa: F401
 
 
-class Runner(AuditMixin, SponsorMixin, LibraryMixin, InboxToolsMixin, CommandsMixin, DriveMixin, InventoryMixin, NamingMixin, DropsMixin, PostingMixin, LearningMixin, RenderMixin):
+class Runner(AboutMixin, AuditMixin, SponsorMixin, LibraryMixin, InboxToolsMixin, CommandsMixin, DriveMixin, InventoryMixin, NamingMixin, DropsMixin, PostingMixin, LearningMixin, RenderMixin):
     def __init__(self, bot: Bot, state: dict, config: dict, clock=now, clients: dict | None = None,
                  drive=None, checkpoint=None):
         self.bot, self.state, self.cfg, self.clock = bot, state, config, clock
@@ -136,6 +137,8 @@ class Runner(AuditMixin, SponsorMixin, LibraryMixin, InboxToolsMixin, CommandsMi
         asked = str((m.get("reply_to_message") or {}).get("message_id") or "")
         if text and not cmd and asked in self.state.get("name_asks", {}):
             return self.name_drawing(self.state["name_asks"][asked], text)
+        if text and not cmd and asked and (token := self.about_ask_for(asked)):
+            return self.on_about_reply(token, text)
         if cmd in ("/start", "/help"):
             self.say(HELP)
         elif cmd == "/pause":
@@ -232,6 +235,8 @@ class Runner(AuditMixin, SponsorMixin, LibraryMixin, InboxToolsMixin, CommandsMi
             return self.on_rewrite(action, vid, q)
         if action in ("fd", "fs"):
             return self.on_desc_fix(action, q)
+        if action == "abs":
+            return self.on_about_skip(vid, q)
         if action == "noname":
             d = self.state["drawings"].get(vid)
             if d and d.get("status") == "naming":
