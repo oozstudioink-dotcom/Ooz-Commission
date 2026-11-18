@@ -131,6 +131,16 @@ class DriveMemory:
         marker.write_text("bot memory lives in Google Drive\n")
 
 
+def peek(drive) -> dict:
+    """The bot's memory, read only (for the LongDraw job: notes you gave about a drawing)."""
+    try:
+        f = drive.find_file(NAME, drive.folder(FOLDER))
+        return json.loads(drive.read_text(f["id"])) if f else {}
+    except Exception as e:  # noqa: BLE001
+        print(f"warn: memory: {e}")
+        return {}
+
+
 def owner_chat_id(drive=None) -> int | None:
     """For one-off messages (alerts, LongDraw job): the owner's chat id from Drive or the repo copy."""
     import os

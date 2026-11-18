@@ -198,6 +198,8 @@ def guess_episode_line(video: dict) -> str:
     first = desc.split("\n", 1)[0]
     if EP_LINE.match(first):
         return first.strip()
+    if m := re.search(r"\bLongDraw\s+EP\.?\s*(\d+)", first, re.I):    # "Welcome to LongDraw EP. 05! ..."
+        return episode_line(int(m.group(1)))
     if m := re.search(r"LongDraw\s*(?:EP\.?|#)\s*(\d+)", desc[:400], re.I):
         return episode_line(int(m.group(1)))
     return ""
@@ -213,17 +215,16 @@ def with_episode_line(desc: str, line: str) -> str:
 
 
 def fixed_description(video: dict, template: str, hashtags: list[str] | None = None, episode: str = "") -> str:
-    """The description a video should have. A Short: your template word for word, then its hashtag
-    line (kept from the video unless new hashtags are given). A long video starts with its episode
-    line ("LongDraw EP. 05": `episode`, or worked out from the video) and keeps its chapters and music
-    credits; only its old links list (or an older template) becomes the current template."""
+    """A Short's description: your Shorts layout (descriptions.shorts_body) word for word, then its
+    hashtag line (kept from the video unless new hashtags are given). A long video keeps its own
+    description with only the hashtag line changed (descriptions.rebuild_longdraw lays a LongDraw
+    out again)."""
     desc = video.get("description", "") or ""
     if hashtags is None:
         last = desc.rstrip().split("\n")[-1] if desc.strip() else ""
         hashtags = last.split() if last.strip() and all(w.startswith("#") for w in last.split()) else []
     if video.get("seconds", 0) > 90:
-        base = with_episode_line(refresh_description(desc, template), episode or guess_episode_line(video))
-        return (with_hashtags(base, hashtags) if hashtags else base)[:4900]
+        return (with_hashtags(desc, hashtags) if hashtags else desc)[:4900]
     return with_hashtags(template.strip() or desc, hashtags)[:4900]
 
 

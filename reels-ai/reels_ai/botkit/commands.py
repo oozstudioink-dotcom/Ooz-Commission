@@ -141,6 +141,15 @@ class CommandsMixin:
             hint = f"No project called \u201c{project}\u201d. " if project else ""
             self.say(f"{hint}Projects ready in Drive \u203a Longform:\n{listing}\n\nSend /longform <name> to build one.")
             return
+        from ..drive import parse_name
+        seg = match.split("/")[-1]
+        subj, hints = parse_name(seg)
+        title_name = " - ".join([subj, *hints.get("unknown", [])]) if subj else seg
+        if self.about_or_ask(title_name, {"longform": match}, also=[subj or "", seg]) is None:
+            return                               # asked what it is: the build starts after your answer
+        self.start_longform(match)
+
+    def start_longform(self, match: str) -> None:
         try:
             dispatch_workflow("longform.yml", {"project": match})
             self.say(f"\U0001f680 Started LongDraw for \u201c{match}\u201d. I'll message you when it's ready "

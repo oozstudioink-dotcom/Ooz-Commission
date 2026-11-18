@@ -13,7 +13,8 @@ from pathlib import Path
 
 from .drive import Drive
 from .drive import parse_name, session_order
-from .audit import episode_line, fixed_description, refresh_description  # noqa: F401  (also used by the tests)
+from .audit import episode_line, refresh_description  # noqa: F401  (also used by the tests)
+from .descriptions import rebuild_longdraw
 from .longform import Session, build, episode_from_names, subject_title, youtube_text
 from .state import load_config, load_state
 from .telegram import Bot
@@ -135,12 +136,10 @@ def run(project: str) -> None:
         res = build(sessions, work / "out", title_name, episode, lcfg, beats, advert, pcfg, art,
                     log=print)
         mins = res["seconds"] / 60
-        from .about import about
-        from .eyes import MODEL
-        note = about(title_name, cfg.get("watch", {}).get("model", MODEL))
-        title, desc, tags = youtube_text(title_name, episode, res["chapters"], pcfg, res["speed"],
-                                         res["raw"], res.get("tracks"), lcfg.get("music_source", "YouTube Audio Library"), series=series,
-                                         template=cfg.get("youtube", {}).get("description_template", ""), note=note)
+        info = about_for(drive, cfg, title_name)
+        title, desc, tags = youtube_text(title_name, episode, res["chapters"], cfg, res["speed"],
+                                         res["raw"], res.get("tracks"), lcfg.get("music_source", "YouTube Audio Library"),
+                                         series=series, info=info)
 
         ep_folder = drive.folder(f"{done_path}/{tag} - {folder['name']}")
         up = drive.upload(res["video"], ep_folder)
@@ -220,9 +219,12 @@ def reupload(query: str) -> None:
         if num:                                      # the folder's number wins (after a /rethumb)
             title = re.sub(r"(EP\.?|Lesson)\s*\d+", lambda m: f"{m.group(1)} {int(num.group(1)):02d}", title,
                            count=1, flags=re.I)
-        desc = fixed_description({"title": title, "description": desc, "seconds": 3600},
-                                 cfg.get("youtube", {}).get("description_template", ""),
-                                 episode=episode_line(int(num.group(1)), series) if num else "")
+        name = re.sub(r"^\s*(?:EP|LESSON|PART)\.?\s*\d+\s*-\s*", "", folder["name"], flags=re.I)
+        label = episode_line(int(num.group(1)), series) if num else ""
+        if label:
+            subject = parse_name(name)[0] or name
+            desc = rebuild_longdraw(cfg, desc, label, subject, about_for(drive, cfg, subject),
+                                    beat_names(drive), cfg.get("longform", {}).get("music_source", "YouTube Audio Library"))
         _notify(f"\U0001f4e4 Re-uploading \u201c{title}\u201d ({int(video.get('size') or 0) / 1e9:.1f} GB). "
                 "This takes a while for 4K.")
         local = drive.download(video["id"], work / "video.mp4")
@@ -262,6 +264,25 @@ def art_from_thumbnail(png) -> "Image.Image":
     if len(xs) < 100:
         return Image.fromarray(panel)
     return Image.fromarray(panel[ys.min():ys.max() + 1, xs.min():xs.max() + 1])
+
+
+def beat_names(drive) -> list[str]:
+    """The songs in Drive › Beats, by the names used in descriptions."""
+    from .longform import track_name
+    try:
+        return [track_name(b["name"]) for b in drive.list(drive.folder("Beats"), "audio")]
+    except Exception as e:  # noqa: BLE001
+        print(f"warn: beats: {str(e)[:120]}")
+        return []
+
+
+def about_for(drive, cfg: dict, name: str) -> dict | None:
+    """'About this drawing' for a name: what you told the bot (kept in its memory), else a lookup."""
+    from .about import key, lookup
+    from .eyes import MODEL
+    from .memory import peek
+    noted = (peek(drive).get("about_notes") or {}).get(key(name))
+    return noted or lookup(name, cfg.get("watch", {}).get("model", MODEL))
 
 
 def rethumb(query: str, episode: int) -> None:
@@ -311,8 +332,9 @@ def rethumb(query: str, episode: int) -> None:
         else:
             v = match[0]
             title = re.sub(r"(EP\.?|Lesson)\s*\d+", lambda m: f"{m.group(1)} {episode:02d}", v["title"], count=1, flags=re.I)
-            desc = fixed_description(v, cfg.get("youtube", {}).get("description_template", ""),
-                                     episode=episode_line(episode, series))
+            desc = rebuild_longdraw(cfg, v["description"], episode_line(episode, series), subject,
+                                    about_for(drive, cfg, subject), beat_names(drive),
+                                    cfg.get("longform", {}).get("music_source", "YouTube Audio Library"))
             if title != v["title"] or desc != v["description"]:
                 yt.update_video(v["id"], title, desc, v["tags"], v["category"])
             if desc != v["description"]:
