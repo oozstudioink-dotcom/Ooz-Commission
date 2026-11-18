@@ -2,6 +2,7 @@
 
 /inbox              every video still in Drive > Inbox and what happened to it; anything that
                     never became Shorts (failed, waiting for a name, never seen) is queued again
+/inbox A, B         only those Inbox videos (file names), made again even if they were made before
 /combine <name>     the recordings named <name> 1, <name> 2 … become ONE recording: Shorts are made
                     from all of them in order (found in Inbox, or wherever the bot already filed them).
                     /combine Vegeta01 and Vegeta02 joins exactly those, in that order
@@ -37,13 +38,26 @@ class InboxToolsMixin:
     def inbox_files(self) -> list[dict]:
         return self.drive.list(self.drive.folder("Inbox"), "video")
 
-    def inbox_command(self) -> None:
+    def inbox_command(self, arg: str = "") -> None:
+        """/inbox: every Inbox video that never became Shorts is queued again. /inbox Vegeta03, Gojo 2:
+        only those (by file name, .MOV optional), and they are made again even if they were made before."""
+        import re
         if not self.drive:
             return self.say("The Inbox needs Google Drive connected.")
         try:
             files = self.inbox_files()
         except Exception as e:  # noqa: BLE001
             return self.drive_problem(e)
+        picked = [p.strip() for p in re.split(r"\s*(?:,|\+|&|\band\b)\s*", arg or "", flags=re.I) if p.strip()]
+        if picked:
+            key = lambda n: _norm_name(Path(n).stem if Path(n).suffix.lower() in VIDEO_EXT else n)  # noqa: E731
+            by_name = {key(f["name"]): f for f in files}
+            missing = [p for p in picked if key(p) not in by_name]
+            if missing:
+                have = ", ".join(f["name"] for f in files[:15]) or "nothing"
+                return self.say(f"\U0001f50e Not in Drive › Inbox: {', '.join(missing)}. In Inbox now: {have}. "
+                                "Already made and moved out? Use /redo <name>.")
+            files = [by_name[key(p)] for p in picked]
         if not files:
             return self.say("\U0001f4e5 Drive › Inbox is empty: everything there has been made into Shorts.")
         seen = self.state.setdefault("drive_seen", [])
@@ -59,7 +73,12 @@ class InboxToolsMixin:
                 continue
             did, d = mine[-1]
             st = d["status"]
-            if st in DONE:
+            if st in DONE and picked:                       # you named it: made again
+                replaced, styles = self.requeue(did, d)
+                lines.append(f"• {f['name']}: making it again" + (f" ({replaced} unsent old Short(s) replaced)"
+                                                                  if replaced else ""))
+                queued += 1 if styles else 0
+            elif st in DONE:
                 lines.append(f"• {f['name']}: Shorts made (the file just wasn't moved out)")
             elif st in ("queued",):
                 lines.append(f"• {f['name']}: waiting its turn")

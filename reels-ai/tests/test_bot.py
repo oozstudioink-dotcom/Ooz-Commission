@@ -936,6 +936,20 @@ class InboxToolsTest(unittest.TestCase):
         self.assertNotIn("n", state["drive_seen"])                   # never made: picked up on the next look
         self.assertTrue(any("3 queued" in t for t in bot.texts()))
 
+    def test_inbox_with_names_makes_just_those(self):
+        files = [{"id": "a", "name": "Vegeta03.MOV"}, {"id": "b", "name": "Gojo 2.MOV"}, {"id": "c", "name": "Other.MOV"}]
+        bot, state, r = self.setup(files)
+        state["drive_seen"] = ["a", "b", "c"]
+        state["drawings"] = {
+            "d1": {"source": "drive", "drive_id": "a", "drive_name": "Vegeta03.MOV", "status": "rendered"},
+            "d2": {"source": "drive", "drive_id": "c", "drive_name": "Other.MOV", "status": "failed"}}
+        r.inbox_command("vegeta03.mov, Gojo 2")
+        self.assertEqual(state["drawings"]["d1"]["status"], "queued")          # named: made again
+        self.assertNotIn("b", state["drive_seen"])                             # never made: picked up next look
+        self.assertEqual(state["drawings"]["d2"]["status"], "failed")          # not named: left alone
+        r.inbox_command("Vegeta09")
+        self.assertTrue(any("Not in Drive › Inbox: Vegeta09" in t for t in bot.texts()))
+
     def test_combine_finds_parts_the_bot_already_filed_away(self):
         bot, state, r = self.setup([])                                  # nothing left in Inbox
         recent = iso(datetime.now(timezone.utc))
