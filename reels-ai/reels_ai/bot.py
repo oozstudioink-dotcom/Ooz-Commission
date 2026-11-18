@@ -52,6 +52,9 @@ class Runner(AboutMixin, AuditMixin, SponsorMixin, LibraryMixin, InboxToolsMixin
         self.serving = False                  # always-on mode (see serve): answers between drawings
         self.yield_now = lambda: False        # always-on mode: is it time to hand over to a new run?
         self._full_at = 0.0
+        import threading
+        self._tg_lock = threading.Lock()      # one Telegram read at a time (see busy_replies)
+        self.rendering: dict | None = None    # the drawing being made right now: {label, since}
         owner = os.environ.get("TELEGRAM_OWNER_ID")
         if owner:
             state["owner_chat_id"] = int(owner)
@@ -75,7 +78,8 @@ class Runner(AboutMixin, AuditMixin, SponsorMixin, LibraryMixin, InboxToolsMixin
     # ================================================================== POLL
     def poll(self) -> bool:
         """Handle everything that doesn't need video tools. Returns True if rendering is needed."""
-        updates = self.bot.get_updates(self.state["update_offset"])
+        with self._tg_lock:
+            updates = self.bot.get_updates(self.state["update_offset"])
         for u in updates:
             self.state["update_offset"] = u["update_id"] + 1
             try:

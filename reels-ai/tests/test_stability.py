@@ -172,3 +172,30 @@ class StatusSpendTest(unittest.TestCase):
         state["claude_spend"] = {time.strftime("%Y-%m"): 3.4, "2020-01": 99}
         r = Runner(b, state, load_config(), clock=Clock(NOW))
         self.assertIn("Claude this month: $3.40 of $15 ($11.60 left", r.status_text())
+
+
+class BusyRepliesTest(unittest.TestCase):
+    def test_messages_during_a_long_render_get_a_busy_reply_and_stay_waiting(self):
+        import threading
+        import time as _t
+        b = FakeBot()
+        b.peek_updates = lambda offset: [u for u in b.updates if u["update_id"] >= offset]
+        answered = []
+        b.answer_callback = lambda cid, text="": answered.append(text)
+        state = fresh_state()
+        state["owner_chat_id"] = OWNER
+        r = Runner(b, state, load_config(), clock=Clock(NOW))
+        r.rendering = {"label": "Vegeta", "since": _t.time() - 600}
+        b.push(**msg(OWNER, text="/fixdescriptions"))
+        b.push(callback_query={"id": "cb", "from": {"id": OWNER}, "data": "fd:all", "message": {"message_id": 1}})
+        stop = threading.Event()
+        t = threading.Thread(target=r.busy_replies, args=(stop, 0.01))
+        t.start()
+        _t.sleep(0.2)
+        stop.set()
+        t.join()
+        busy = [x for k, _, x in b.sent if k == "text" and "making the Shorts for Vegeta" in x]
+        self.assertEqual(len(busy), 1)                                   # once per message, not every look
+        self.assertIn("started 10 min ago", busy[0])
+        self.assertEqual(answered, ["Busy making Vegeta; I'll do this right after"])
+        self.assertEqual(state["update_offset"], 0)                      # still waiting to be handled
