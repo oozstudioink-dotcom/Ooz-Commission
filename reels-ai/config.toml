@@ -112,6 +112,7 @@ max_render_minutes = 40          # only for one-off runs; the always-on bot has 
 drop_guard_minutes = 20          # no new drawing is started this close to a drop time, so drops are never late
 
 [drive]
+part_wait_minutes = 10           # "Gojo 1", "Gojo 2" in Inbox: wait this long after the last upload, then join them
 # Google Drive inbox for raw recordings (any length, 4K, portrait or landscape).
 # Folders are created inside this root on the first `check` run:
 #   Inbox/ (drop single-drawing recordings) · Inbox/Processed/ · Longform/ · Beats/

@@ -21,6 +21,49 @@ from .common import (  # noqa: F401
 
 class DriveMixin:
     # ------------------------------------------------------------------ Google Drive inbox
+    def group_parts(self, new: list[tuple]) -> list[tuple]:
+        """Numbered parts of one drawing uploaded to Inbox together ("Gojo 1", "Gojo 2" …) become one
+        recording by themselves. A numbered part waits [drive] part_wait_minutes after the newest
+        upload of its name, so the other parts can finish uploading. Returns what is left to take in."""
+        import re
+        from ..drive import parse_name, part_number
+        from ..state import parse
+        wait = float(self.cfg.get("drive", {}).get("part_wait_minutes", 10)) * 60
+        groups: dict[tuple, list[tuple]] = {}
+        for src in new:
+            f, where = src[0], src[1]
+            if where != "Inbox" or part_number(f["name"]) is None:
+                continue
+            subject, hints = parse_name(f["name"])
+            if not subject:
+                continue
+            key = (_norm_name(subject), tuple(sorted((k, str(v)) for k, v in hints.items() if k != "unknown")))
+            groups.setdefault(key, []).append(src)
+        rest = list(new)
+        for srcs in groups.values():
+            times = []
+            for src in srcs:
+                try:
+                    times.append(parse(src[0]["createdTime"].replace("Z", "+00:00")))
+                except (KeyError, ValueError, AttributeError):
+                    pass
+            if times and (self.clock() - max(times)).total_seconds() < wait:
+                rest = [x for x in rest if x not in srcs]           # the next look takes them in
+                continue
+            if len(srcs) < 2:
+                continue
+            rest = [x for x in rest if x not in srcs]
+            first = srcs[0][0]["name"]
+            tags = re.split(r"\s+[-\u2013\u2014]\s+", Path(first).stem)[1:]
+            label = " - ".join([parse_name(first)[0]] + tags)
+            files = [{**src[0], "in_inbox": True} for src in srcs]
+            did, _ = self.combined_drawing(files, label)
+            names = [f["name"] for f in sorted(files, key=lambda f: self.state["drawings"][did]["drive_ids"].index(f["id"]))]
+            self.say(f"\U0001f517 Found {len(files)} parts of {label} in Inbox, joined into one recording in this "
+                     "order:\n" + "\n".join(f"{k}. {n}" for k, n in enumerate(names, 1))
+                     + "\nShorts arrive in /videos when it's done.")
+        return rest
+
     def drive_problem(self, e: Exception) -> None:
         """Tell the owner about a Drive problem once per distinct message, not every run."""
         msg = str(e)[:200]
@@ -59,7 +102,7 @@ class DriveMixin:
                 except Exception as e:  # noqa: BLE001
                     print(f"warn: series folder: {str(e)[:120]}")
         self.follow_known(sources, seen, parse_name)
-        new = [src for src in sources if src[0]["id"] not in seen]
+        new = self.group_parts([src for src in sources if src[0]["id"] not in seen])
         labels: dict[str, str] = {}
         for f, where, keep, project in new:
             meta = f.get("videoMediaMetadata") or {}
@@ -236,7 +279,8 @@ class DriveMixin:
         Done/Shorts. Returns {style: Drive link}."""
         links: dict[str, str] = {}
         try:
-            for extra in (d.get("drive_ids") or [])[1:]:   # the other pieces of a joined recording
+            for extra in [i for i in (d.get("drive_ids") or [])[1:]       # the other pieces of a joined
+                          if i in d.get("drive_from_inbox", d.get("drive_ids") or [])]:   # recording, from Inbox
                 try:
                     self.drive.move_to(extra, self.drive.folder("Inbox/Processed"))
                 except Exception as e:  # noqa: BLE001
@@ -247,8 +291,7 @@ class DriveMixin:
                 ser = series_match(self.cfg, d.get("drive_name") or "")
                 if ser:                             # part of a series: its own lesson folder there
                     lesson = Path(d.get("drive_name") or named or did).stem
-                    self.drive.move(d["drive_id"], self.drive.folder(f"Longform/{ser['folder']}/{lesson}"),
-                                    self.drive.folder("Inbox"))
+                    self.drive.move_to(d["drive_id"], self.drive.folder(f"Longform/{ser['folder']}/{lesson}"))
                     for x in self.state["drawings"].values():
                         if x.get("drive_id") == d["drive_id"]:
                             x.update(keep_in_place=True, drive_where=f"Longform \u203a {ser['name']} \u203a {lesson}")
@@ -257,14 +300,14 @@ class DriveMixin:
                              f"Send /longform {lesson} to build that lesson's video.")
                 elif named and self.cfg.get("drive", {}).get("processed_to_longform", True):
                     # a named recording goes to its own LongDraw folder, ready for /longform <name>
-                    self.drive.move(d["drive_id"], self.drive.folder(f"Longform/{named}"), self.drive.folder("Inbox"))
+                    self.drive.move_to(d["drive_id"], self.drive.folder(f"Longform/{named}"))
                     for x in self.state["drawings"].values():
                         if x.get("drive_id") == d["drive_id"]:
                             x.update(keep_in_place=True, drive_where=f"Longform \u203a {named}")
                     self.say(f"\U0001f4c1 Moved {d.get('drive_name')} to Drive \u203a Longform \u203a {named}. "
                              f"Send /longform {named} when you want its LongDraw.")
                 else:
-                    self.drive.move(d["drive_id"], self.drive.folder("Inbox/Processed"), self.drive.folder("Inbox"))
+                    self.drive.move_to(d["drive_id"], self.drive.folder("Inbox/Processed"))
         except Exception as e:  # noqa: BLE001
             print(f"warn: couldn't move {d.get('drive_name')}: {e}")
         if not (self.cfg.get("drive", {}).get("backup_shorts", True) or self.shorts_4k):
