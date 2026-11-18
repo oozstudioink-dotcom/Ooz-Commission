@@ -956,27 +956,44 @@ class InboxToolsTest(unittest.TestCase):
         self.assertTrue(new["keep_in_place"])                            # already filed: left where they are
         self.assertEqual(new["drive_from_inbox"], [])
 
-    def test_parts_uploaded_together_are_joined_by_themselves(self):
+    def test_numbered_uploads_wait_for_each_other_and_suggest_combine(self):
         from datetime import timedelta
         now_ = datetime(2026, 11, 18, 17, tzinfo=timezone.utc)
-        files = [{"id": "g2", "name": "Gojo 2.MOV", "createdTime": "2026-11-18T16:40:00.000Z",
-                  "videoMediaMetadata": {"durationMillis": "600000"}},
-                 {"id": "g1", "name": "Gojo 1.MOV", "createdTime": "2026-11-18T16:30:00.000Z",
-                  "videoMediaMetadata": {"durationMillis": "900000"}},
+        files = [{"id": "g2", "name": "Vegeta02.MOV", "createdTime": "2026-11-18T16:40:00.000Z"},
+                 {"id": "g1", "name": "Vegeta01.MOV", "createdTime": "2026-11-18T16:30:00.000Z"},
                  {"id": "n", "name": "Naruto.MOV", "createdTime": "2026-11-18T16:59:00.000Z"}]
         bot, state, r = self.setup(files)
         clock = Clock(now_ - timedelta(minutes=15))                      # part 2 landed 5 min ago: wait
         r.clock = clock
         r.check_drive_inbox()
         self.assertEqual([d["drive_id"] for d in state["drawings"].values()], ["n"])
-        self.assertNotIn("g1", state["drive_seen"])
-        clock.t = now_                                                   # 20 min later: joined
+        clock.t = now_                                                   # later: each made on its own
         r.check_drive_inbox()
-        joined = [d for d in state["drawings"].values() if d.get("drive_ids")]
-        self.assertEqual(len(joined), 1)
-        self.assertEqual((joined[0]["drive_ids"], joined[0]["subject"]), (["g1", "g2"], "Gojo"))
-        self.assertEqual(len(state["drawings"]), 2)                       # no separate Gojo 1 / Gojo 2
-        self.assertTrue(any("Found 2 parts of Gojo" in t for t in bot.texts()))
+        self.assertEqual(sorted(d["drive_id"] for d in state["drawings"].values()), ["g1", "g2", "n"])
+        self.assertFalse([d for d in state["drawings"].values() if d.get("drive_ids")])
+        self.assertTrue(any("/combine Vegeta01 and Vegeta02" in t for t in bot.texts()))
+
+    def test_combine_exact_names_in_the_order_given(self):
+        files = [{"id": "v1", "name": "Vegeta01.MOV", "videoMediaMetadata": {"durationMillis": "600000"}}]
+        bot, state, r = self.setup(files)
+        state["drawings"] = {
+            "d1": {"source": "drive", "drive_id": "v2", "drive_name": "Vegeta02.MOV", "status": "rendered",
+                   "duration": 300, "received": "2026-01-01T00:00:00+00:00"},     # filed away, months old: fine
+            "d2": {"source": "drive", "drive_id": "v3", "drive_name": "Vegeta03.MOV", "status": "rendered"}}
+        state["variants"] = {"x": {"drawing": "d2", "style": "one_take", "status": "approved"}}
+        state["next_id"] = 7
+        r.combine_command("Vegeta01 and Vegeta02")
+        new = [d for d in state["drawings"].values() if d.get("drive_ids")][0]
+        self.assertEqual((new["drive_ids"], new["subject"], new["duration"]), (["v1", "v2"], "Vegeta", 900.0))
+        self.assertEqual(state["drawings"]["d2"]["status"], "rendered")             # Vegeta03 untouched
+        self.assertEqual(state["variants"]["x"]["status"], "approved")
+        r.combine_command("Vegeta01, Vegeta09")
+        self.assertTrue(any("couldn't find Vegeta09" in t for t in bot.texts()))
+        bot2, state2, r2 = self.setup(files)
+        state2["drawings"] = {"d1": {"source": "drive", "drive_id": "v2", "drive_name": "Vegeta02.MOV",
+                                     "status": "rendered", "received": iso(datetime.now(timezone.utc))}}
+        r2.combine_command("Vegeta")                                          # one name: every numbered part
+        self.assertEqual([d for d in state2["drawings"].values() if d.get("drive_ids")][0]["drive_ids"], ["v1", "v2"])
 
     def test_combine_joins_split_recordings_in_order(self):
         files = [{"id": "g2", "name": "Gojo 2.MOV", "videoMediaMetadata": {"durationMillis": "600000"}},
