@@ -201,6 +201,17 @@ class PostingMixin:
             self.state["stats_at"] = iso(t)
 
     # ------------------------------------------------------------------ status
+    def spend_line(self) -> str:
+        """What Claude has cost the bot this month against [watch] monthly_budget_usd. Only what this
+        bot spends: your balance with Anthropic is at console.anthropic.com > Billing."""
+        import time
+        limit = float(self.cfg.get("watch", {}).get("monthly_budget_usd", 0) or 0)
+        spent = float(self.state.get("claude_spend", {}).get(time.strftime("%Y-%m"), 0.0))
+        if not limit:
+            return f"Claude this month: ${spent:.2f} (no monthly limit set)"
+        return (f"Claude this month: ${spent:.2f} of ${limit:.0f} (${max(0.0, limit - spent):.2f} left before "
+                "I stop using it until next month)")
+
     def status_text(self) -> str:
         vs = self.state["variants"].values()
         count = lambda s: sum(1 for v in vs if v["status"] == s)
@@ -212,6 +223,7 @@ class PostingMixin:
             f"Approved, not yet posted: {sum(1 for v in vs if v['status'] == 'approved')}",
             f"Posted: {count('posted')}   Skipped: {count('skipped')}",
             f"Approval: {self.cfg['approval']['mode']} ({self.cfg['approval'].get('fallback_hours', 0)}h)",
+            self.spend_line(),
         ]
         if self.drops_mode:
             lines.append(f"Drops: {len(self.drop_times)}/day at {', '.join(self.drop_times)} "

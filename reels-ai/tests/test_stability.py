@@ -162,3 +162,13 @@ class AskWhatItIsTest(unittest.TestCase):
                                                                  "note": "Sasuke is from Naruto."}):
             self.assertEqual(r.about_or_ask("Sasuke", {"longform": "Sasuke"})["series"], "Naruto")
         self.assertFalse([t for k, _, t in b.sent if "What are you drawing" in t])
+
+
+class StatusSpendTest(unittest.TestCase):
+    def test_status_shows_this_months_claude_spend(self):
+        import time
+        b = FakeBot()
+        state = fresh_state()
+        state["claude_spend"] = {time.strftime("%Y-%m"): 3.4, "2020-01": 99}
+        r = Runner(b, state, load_config(), clock=Clock(NOW))
+        self.assertIn("Claude this month: $3.40 of $15 ($11.60 left", r.status_text())
