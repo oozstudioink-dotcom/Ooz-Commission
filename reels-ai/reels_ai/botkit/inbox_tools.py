@@ -2,8 +2,9 @@
 
 /inbox              every video still in Drive > Inbox and what happened to it; anything that
                     never became Shorts (failed, waiting for a name, never seen) is queued again
-/combine <name>     the Inbox recordings whose names contain <name> (e.g. "Gojo 1", "Gojo 2")
-                    become ONE recording: Shorts are made from all of them in order
+/combine <name>     the recordings named <name> 1, <name> 2 … become ONE recording: Shorts are made
+                    from all of them in order (found in Inbox, or wherever the bot already filed them).
+                    Parts uploaded together are joined by themselves (see group_parts)
 /reupload <name>    a finished long video in Drive > Done > Longform is uploaded to YouTube again
                     (privately, with its saved title, description and thumbnail)
 """
@@ -62,26 +63,43 @@ class InboxToolsMixin:
         self.say(f"\U0001f4e5 Drive › Inbox: {len(files)} video(s)\n" + "\n".join(lines)
                  + (f"\n\n{queued} queued: Shorts arrive in /videos as each one finishes." if queued else ""))
 
-    def combine_command(self, arg: str) -> None:
-        if not self.drive:
-            return self.say("Combining needs Google Drive connected.")
-        want = _norm_name(arg)
-        if not want:
-            return self.say("Tell me the shared part of the names: /combine Gojo joins “Gojo 1”, "
-                            "“Gojo 2” … from your Inbox into one recording.")
+    def combine_candidates(self, want: str) -> list[dict]:
+        """Recordings whose names hold every word of `want` (part numbers aside): the ones in Inbox,
+        and numbered parts the bot already took in over the last two weeks, wherever they are now
+        (the bot starts on each new recording within minutes and then moves it out of Inbox)."""
+        from datetime import timedelta
+        from ..drive import part_number
+        from ..state import parse
+        words = [w for w in want.split() if not w.isdigit()]
+        hit = lambda name: bool(words) and all(w in _norm_name(Path(name).stem).split() for w in words)  # noqa: E731
+        out: dict[str, dict] = {}
+        for f in self.inbox_files():
+            if hit(f["name"]):
+                out[f["id"]] = {**f, "in_inbox": True}
+        since = self.clock() - timedelta(days=14)
+        for d in self.state["drawings"].values():
+            fid, name = d.get("drive_id"), d.get("drive_name") or ""
+            if (d.get("source") != "drive" or d.get("drive_ids") or not fid or fid in out
+                    or part_number(name) is None or not hit(name)):
+                continue
+            try:
+                if d.get("received") and parse(d["received"]) < since:
+                    continue
+            except ValueError:
+                pass
+            out[fid] = {"id": fid, "name": name, "in_inbox": False,
+                        "videoMediaMetadata": {"durationMillis": str(int((d.get("duration") or 0) * 1000))}}
+        return list(out.values())
+
+    def combined_drawing(self, files: list[dict], label: str) -> tuple[str, int]:
+        """One drawing made from several recordings, in part order. The separate pieces' Shorts
+        leave the library. Returns (drawing id, Shorts replaced)."""
         from ..drive import parse_name, session_order
-        try:
-            files = [f for f in self.inbox_files() if want in _norm_name(Path(f["name"]).stem)]
-        except Exception as e:  # noqa: BLE001
-            return self.drive_problem(e)
-        if len(files) < 2:
-            return self.say(f"I need at least two Inbox recordings with “{arg}” in their names "
-                            f"(found {len(files)}). Name them like {arg} 1.mov, {arg} 2.mov.")
-        files.sort(key=session_order)
+        files = sorted(files, key=session_order)
         ids = [f["id"] for f in files]
         replaced = 0
         for did, d in self.state["drawings"].items():       # the separate pieces stop on their own
-            if d.get("drive_id") in ids and d["status"] not in ("replaced", "combined"):
+            if d.get("drive_id") in ids and not d.get("drive_ids") and d["status"] not in ("replaced", "combined"):
                 for v in self.state["variants"].values():
                     if v["drawing"] == did and v["status"] in ("approved", "pending") and not v.get("dropped_at"):
                         v["status"] = "replaced"
@@ -89,14 +107,38 @@ class InboxToolsMixin:
                 d["status"] = "combined"
         seen = self.state.setdefault("drive_seen", [])
         seen.extend(i for i in ids if i not in seen)
-        subject, hints = parse_name(arg)
-        durs = [int((f.get("videoMediaMetadata") or {}).get("durationMillis", 0)) / 1000 for f in files]
+        subject, hints = parse_name(label)
+        durs = [int((f.get("videoMediaMetadata") or {}).get("durationMillis", 0) or 0) / 1000 for f in files]
+        in_inbox = [f["id"] for f in files if f.get("in_inbox", True)]
         did = new_id(self.state, "d")
         self.state["drawings"][did] = {
             "source": "drive", "drive_id": ids[0], "drive_ids": ids, "drive_durations": durs,
-            "drive_name": f"{arg.strip()} (combined)", "drive_where": "Inbox", "subject": subject or arg.strip(),
-            "received": iso(self.clock()), "duration": sum(durs) or None, "status": "queued",
+            "drive_from_inbox": in_inbox, "drive_name": f"{label.strip()} (combined)", "drive_where": "Inbox",
+            "subject": subject or label.strip(), "received": iso(self.clock()), "duration": sum(durs) or None,
+            "status": "queued",
+            **({"keep_in_place": True} if len(in_inbox) < len(ids) else {}),   # parts already filed stay put
             **({"hints": {k: v for k, v in hints.items() if k != "unknown"}} if hints else {})}
+        return did, replaced
+
+    def combine_command(self, arg: str) -> None:
+        if not self.drive:
+            return self.say("Combining needs Google Drive connected.")
+        want = _norm_name(arg)
+        if not [w for w in want.split() if not w.isdigit()]:
+            return self.say("Tell me the shared part of the names: /combine Gojo joins “Gojo 1”, "
+                            "“Gojo 2” … into one recording.")
+        from ..drive import session_order
+        try:
+            files = self.combine_candidates(want)
+        except Exception as e:  # noqa: BLE001
+            return self.drive_problem(e)
+        if len(files) < 2:
+            return self.say(f"I need at least two recordings with “{arg}” in their names, numbered like "
+                            f"{arg} 1.mov, {arg} 2.mov (found {len(files)}: "
+                            f"{', '.join(f['name'] for f in files) or 'none'}). I look in Drive › Inbox and at "
+                            "the numbered recordings I took in over the last two weeks.")
+        files.sort(key=session_order)
+        did, replaced = self.combined_drawing(files, arg.strip())
         self.say(f"\U0001f517 Joining {len(files)} recordings into one, in this order:\n"
                  + "\n".join(f"{k}. {f['name']}" for k, f in enumerate(files, 1))
                  + (f"\n{replaced} Short(s) made from the separate pieces left your library." if replaced else "")

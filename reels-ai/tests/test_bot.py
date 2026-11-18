@@ -18,7 +18,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from reels_ai.bot import Runner
-from reels_ai.state import EMPTY, load_config
+from reels_ai.state import EMPTY, iso, load_config
 
 
 _load_config = load_config
@@ -935,6 +935,48 @@ class InboxToolsTest(unittest.TestCase):
         self.assertNotIn("keep_in_place", D["d1"])                  # still moved out of Inbox when done
         self.assertNotIn("n", state["drive_seen"])                   # never made: picked up on the next look
         self.assertTrue(any("3 queued" in t for t in bot.texts()))
+
+    def test_combine_finds_parts_the_bot_already_filed_away(self):
+        bot, state, r = self.setup([])                                  # nothing left in Inbox
+        recent = iso(datetime.now(timezone.utc))
+        state["drawings"] = {
+            "d1": {"source": "drive", "drive_id": "g1", "drive_name": "Gojo 1 - ink only.MOV", "status": "rendered",
+                   "received": recent, "duration": 600},
+            "d2": {"source": "drive", "drive_id": "g2", "drive_name": "Gojo 2 - ink only.MOV", "status": "rendered",
+                   "received": recent, "duration": 300},
+            "d3": {"source": "drive", "drive_id": "old", "drive_name": "Gojo.MOV", "status": "rendered",
+                   "received": recent},                                       # not a numbered part
+            "d4": {"source": "drive", "drive_id": "g9", "drive_name": "Gojo 3.MOV", "status": "rendered",
+                   "received": "2026-01-01T00:00:00+00:00"}}                  # months old
+        state["next_id"] = 9
+        r.combine_command("Gojo - ink only")
+        new = [d for d in state["drawings"].values() if d.get("drive_ids")][0]
+        self.assertEqual(new["drive_ids"], ["g1", "g2"])
+        self.assertEqual((new["duration"], new["hints"]), (900.0, {"pencil": False}))
+        self.assertTrue(new["keep_in_place"])                            # already filed: left where they are
+        self.assertEqual(new["drive_from_inbox"], [])
+
+    def test_parts_uploaded_together_are_joined_by_themselves(self):
+        from datetime import timedelta
+        now_ = datetime(2026, 11, 18, 17, tzinfo=timezone.utc)
+        files = [{"id": "g2", "name": "Gojo 2.MOV", "createdTime": "2026-11-18T16:40:00.000Z",
+                  "videoMediaMetadata": {"durationMillis": "600000"}},
+                 {"id": "g1", "name": "Gojo 1.MOV", "createdTime": "2026-11-18T16:30:00.000Z",
+                  "videoMediaMetadata": {"durationMillis": "900000"}},
+                 {"id": "n", "name": "Naruto.MOV", "createdTime": "2026-11-18T16:59:00.000Z"}]
+        bot, state, r = self.setup(files)
+        clock = Clock(now_ - timedelta(minutes=15))                      # part 2 landed 5 min ago: wait
+        r.clock = clock
+        r.check_drive_inbox()
+        self.assertEqual([d["drive_id"] for d in state["drawings"].values()], ["n"])
+        self.assertNotIn("g1", state["drive_seen"])
+        clock.t = now_                                                   # 20 min later: joined
+        r.check_drive_inbox()
+        joined = [d for d in state["drawings"].values() if d.get("drive_ids")]
+        self.assertEqual(len(joined), 1)
+        self.assertEqual((joined[0]["drive_ids"], joined[0]["subject"]), (["g1", "g2"], "Gojo"))
+        self.assertEqual(len(state["drawings"]), 2)                       # no separate Gojo 1 / Gojo 2
+        self.assertTrue(any("Found 2 parts of Gojo" in t for t in bot.texts()))
 
     def test_combine_joins_split_recordings_in_order(self):
         files = [{"id": "g2", "name": "Gojo 2.MOV", "videoMediaMetadata": {"durationMillis": "600000"}},
@@ -2160,6 +2202,9 @@ class UploadOnceAndStorageTest(FakeVariantsMixin, unittest.TestCase):
             return {"storageQuota": {"usage": "1200000000000", "limit": "5000000000000"}}
 
         def move(self, fid, to, frm):
+            self.moves.append(fid)
+
+        def move_to(self, fid, to):
             self.moves.append(fid)
 
         def upload(self, path, folder, name=None, mime="video/mp4"):
