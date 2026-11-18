@@ -187,7 +187,7 @@ class Runner(AboutMixin, AuditMixin, SponsorMixin, LibraryMixin, InboxToolsMixin
         elif cmd in ("/videos", "/library"):
             self.send_library(text.split(maxsplit=1)[1] if len(text.split(maxsplit=1)) > 1 else "")
         elif cmd == "/inbox":
-            self.inbox_command()
+            self.inbox_command(text.split(maxsplit=1)[1] if len(text.split(maxsplit=1)) > 1 else "")
         elif cmd == "/combine":
             self.combine_command(text.split(maxsplit=1)[1] if len(text.split(maxsplit=1)) > 1 else "")
         elif cmd == "/rethumb":
