@@ -266,7 +266,7 @@ class RenderMixin:
     # is being made. Anything that changes recordings or Shorts waits for the drawing to finish.
     QUICK_COMMANDS = {"/status", "/queue", "/help", "/start", "/fixdescriptions", "/undo_descriptions",
                       "/audit", "/undo_rewrite", "/calendar", "/trends", "/sponsors", "/report",
-                      "/rethumb", "/reupload", "/longform"}
+                      "/rethumb", "/reupload", "/longform", "/notion"}
     QUICK_TAPS = {"fd", "fs", "abs", "ta", "ts"}
 
     def quick(self, u: dict) -> bool:

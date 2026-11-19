@@ -271,3 +271,12 @@ lines = [
   "New LongDraws: Wednesday and Friday at 12 PM EST",
 ]
 
+[notion]
+# The Content Pipeline in Notion, kept up to date by the bot (reels_ai/notion.py): a Short you tap
+# Uploaded on is marked Published; a LongDraw that's built fills the next empty LongDraw slot; LongDraws
+# you schedule or publish on YouTube follow by themselves. Needs the NOTION_TOKEN secret (an internal
+# integration) and the Content Pipeline shared with that integration. /notion checks the connection.
+enabled = true
+database_id = "32c0104a-3b9f-8382-92a4-01353b635e74"
+data_source_id = "e4a0104a-3b9f-83e0-8a88-07da64220d3a"
+sync_hours = 6

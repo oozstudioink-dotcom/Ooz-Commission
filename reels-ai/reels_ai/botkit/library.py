@@ -182,6 +182,7 @@ class LibraryMixin:
             if sibs:
                 self.say(f"\U0001f9ea {self.folder_name(v)}: {len(sibs)} checked version(s) are now Facebook trial "
                          "variants. /videos trials shows them.")
+            self.notion_short(v)
             return None
         if action == "lx":
             if not (v["status"] == "discarded" or (v["status"] == "posted" and v.get("used_at"))):
