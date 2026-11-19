@@ -157,6 +157,7 @@ def run(project: str) -> None:
             try:
                 y = yt.upload_file(res["video"], title, desc, tags, lcfg.get("privacy", "private"))
                 lines.append(f"YouTube: {y['permalink']}")
+                lines += pipeline_note(cfg, title_name, episode, y["permalink"])
                 if lcfg.get("privacy", "private") == "private":
                     lines.append("\U0001f512 Uploaded privately. When you're ready: YouTube Studio \u203a this video "
                                  "\u203a Visibility \u203a Schedule (pick your LongDraw slot).")
@@ -230,7 +231,11 @@ def reupload(query: str) -> None:
         local = drive.download(video["id"], work / "video.mp4")
         yt = YouTube(*env)
         y = yt.upload_file(local, title, desc, [], cfg.get("longform", {}).get("privacy", "private"))
-        lines = [f"\u2705 Re-uploaded: {y['permalink']}",
+        if num:
+            lines_nt = pipeline_note(cfg, parse_name(name)[0] or name, int(num.group(1)), y["permalink"])
+        else:
+            lines_nt = []
+        lines = [f"\u2705 Re-uploaded: {y['permalink']}", *lines_nt,
                  "It's private. Check it finishes processing in YouTube Studio, schedule it, then delete the "
                  "stuck copy there (Studio \u203a Content \u203a \u22ee \u203a Delete forever)."]
         pngs = [f for f in files if f["name"].lower().endswith(".png")]
@@ -264,6 +269,22 @@ def art_from_thumbnail(png) -> "Image.Image":
     if len(xs) < 100:
         return Image.fromarray(panel)
     return Image.fromarray(panel[ys.min():ys.max() + 1, xs.min():xs.max() + 1])
+
+
+def pipeline_note(cfg: dict, character: str, episode: int, url: str) -> list[str]:
+    """The finished LongDraw in the Notion Content Pipeline (when NOTION_TOKEN is set)."""
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+    from .notion import from_env, record_longdraw
+    try:
+        nt = from_env(cfg)
+        if not nt:
+            return []
+        today = datetime.now(ZoneInfo(cfg.get("timezone", "America/New_York"))).date()
+        return [f"\U0001f4d2 Notion: {record_longdraw(nt, character, episode, url, today)}."]
+    except Exception as e:  # noqa: BLE001 - the LongDraw is done either way
+        print(f"warn: notion: {str(e)[:200]}")
+        return [f"\U0001f4d2 Couldn't update Notion ({str(e)[:120]})."]
 
 
 def beat_names(drive) -> list[str]:

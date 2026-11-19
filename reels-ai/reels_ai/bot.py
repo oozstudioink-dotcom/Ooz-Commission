@@ -33,13 +33,14 @@ from .botkit.common import (  # noqa: F401 - re-exported: other modules and test
 )
 from .botkit.auditing import AuditMixin
 from .botkit.about_asks import AboutMixin
+from .botkit.pipeline_sync import NotionMixin
 from .botkit.sponsoring import SponsorMixin
 from .botkit.library import LibraryMixin
 from .botkit.inbox_tools import InboxToolsMixin
 from .botkit.connect import check, tiktok_connect  # noqa: F401
 
 
-class Runner(AboutMixin, AuditMixin, SponsorMixin, LibraryMixin, InboxToolsMixin, CommandsMixin, DriveMixin, InventoryMixin, NamingMixin, DropsMixin, PostingMixin, LearningMixin, RenderMixin):
+class Runner(NotionMixin, AboutMixin, AuditMixin, SponsorMixin, LibraryMixin, InboxToolsMixin, CommandsMixin, DriveMixin, InventoryMixin, NamingMixin, DropsMixin, PostingMixin, LearningMixin, RenderMixin):
     def __init__(self, bot: Bot, state: dict, config: dict, clock=now, clients: dict | None = None,
                  drive=None, checkpoint=None):
         self.bot, self.state, self.cfg, self.clock = bot, state, config, clock
@@ -55,6 +56,7 @@ class Runner(AboutMixin, AuditMixin, SponsorMixin, LibraryMixin, InboxToolsMixin
         self.checkpoint = locked_checkpoint
         self.clients = clients or {}          # platform -> API client (e.g. Instagram)
         self.drive = drive                    # Google Drive inbox / backups (optional)
+        self.notion = None                    # the Content Pipeline in Notion (optional, see make_notion)
         self.tz = ZoneInfo(config.get("timezone", "UTC"))
         self.serving = False                  # always-on mode (see serve): answers between drawings
         self.yield_now = lambda: False        # always-on mode: is it time to hand over to a new run?
@@ -126,6 +128,7 @@ class Runner(AboutMixin, AuditMixin, SponsorMixin, LibraryMixin, InboxToolsMixin
             self.weekly_report()
             self.trend_radar()
             self.weekly_audit()
+            self.notion_sync()
         return (any(d["status"] == "queued" for d in self.state["drawings"].values())
                 or bool(self.state.get("compile_request")))
 
@@ -222,6 +225,8 @@ class Runner(AboutMixin, AuditMixin, SponsorMixin, LibraryMixin, InboxToolsMixin
             self.send_calendar()
         elif cmd == "/undo_rewrite":
             self.undo_rewrite()
+        elif cmd == "/notion":
+            self.notion_status()
         elif cmd == "/fixdescriptions":
             self.fix_descriptions()
         elif cmd == "/undo_descriptions":
@@ -334,6 +339,7 @@ def run(phase: str) -> None:
         state = load_state()
     runner = Runner(Bot(token), state, config, clients=make_clients(config), drive=drive,
                     checkpoint=lambda: save(state))
+    runner.notion = make_notion(config)
     restored = state.pop("memory_restored", None)
     if restored:
         runner.say(f"\u26a0\ufe0f My memory file in Drive was damaged, so I restored it from the backup "
@@ -465,6 +471,15 @@ def make_drive(config: dict):
         return None
     from .drive import Drive
     return Drive(*env, root=dc.get("root", "Ooz Reels"))
+
+
+def make_notion(config: dict):
+    try:
+        from .notion import from_env
+        return from_env(config)
+    except Exception as e:  # noqa: BLE001 - the bot runs without it
+        print(f"warn: notion: {str(e)[:150]}")
+        return None
 
 
 def make_clients(config: dict) -> dict:

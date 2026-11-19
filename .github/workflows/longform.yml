@@ -41,6 +41,7 @@ jobs:
       YT_CLIENT_SECRET: ${{ secrets.YT_CLIENT_SECRET }}
       YT_REFRESH_TOKEN: ${{ secrets.YT_REFRESH_TOKEN }}
       GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}         # "About this drawing" (free tier first)
+      NOTION_TOKEN: ${{ secrets.NOTION_TOKEN }}           # the Content Pipeline in Notion (optional)
       ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}   # ...or Claude when Gemini is busy
       PROJECT: ${{ inputs.project }}
       REUPLOAD: ${{ inputs.reupload }}

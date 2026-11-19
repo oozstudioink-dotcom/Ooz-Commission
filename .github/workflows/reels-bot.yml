@@ -56,6 +56,7 @@ jobs:
       TIKTOK_CLIENT_SECRET: ${{ secrets.TIKTOK_CLIENT_SECRET }}
       TIKTOK_REFRESH_TOKEN: ${{ secrets.TIKTOK_REFRESH_TOKEN }}
       GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+      NOTION_TOKEN: ${{ secrets.NOTION_TOKEN }}           # the Content Pipeline in Notion (optional)
       GITHUB_TOKEN: ${{ github.token }}
     steps:
       # Always start from the latest main, so "Re-run" never works from an outdated bot memory.
