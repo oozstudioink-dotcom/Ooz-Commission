@@ -268,7 +268,15 @@ class AvoidWordsTest(unittest.TestCase):
         self.assertTrue(hooks.honest("Wait for the last line", True))
         self.assertFalse(any("stroke" in h.lower() for hs in hooks.HOOKS.values() for h in hs))
         self.assertFalse(any("stroke" in b.lower() for b in STYLE_BRIEFS.values()))
-        self.assertIn('never these words: "stroke"', _prompt("Gojo", ["last_lines"], True))
+        prompt = _prompt("Gojo", ["last_lines"], True)
+        self.assertIn('"stroke"', prompt)
+        self.assertIn("double meaning", prompt)
+        for line in ("Stay for the finish", "Watch every line go down", "Watch Gojo come alive",
+                     "The most satisfying part"):
+            self.assertFalse(hooks.honest(line, True), line)
+        built_in = [h for hs in hooks.HOOKS.values() for h in hs] + hooks.CAPTIONS + hooks.END_CARDS \
+            + hooks.NO_PENCIL_HOOKS
+        self.assertEqual([h for h in built_in if hooks.avoided(h)], [])      # none of ours trip the list
 
     def test_banked_shorts_with_the_word_are_listed_once(self):
         b = FakeBot()
