@@ -52,7 +52,11 @@ def load_config(path: Path = CONFIG_PATH) -> dict:
         return tomllib.load(f)
 
 
+_ID_LOCK = __import__("threading").Lock()
+
+
 def new_id(state: dict, prefix: str) -> str:
-    n = state["next_id"]
-    state["next_id"] = n + 1
+    with _ID_LOCK:                       # the busy-time reader can hand out ids while a render does too
+        n = state["next_id"]
+        state["next_id"] = n + 1
     return f"{prefix}{n}"

@@ -262,10 +262,29 @@ class RenderMixin:
             shutil.rmtree(self._proxy["dir"], ignore_errors=True)
             self._proxy = None
 
-    def busy_replies(self, stop, every: float = 15.0) -> None:
-        """While a drawing is being made (it can take most of an hour), messages and taps are answered
-        with what the bot is doing; they stay waiting and are handled as soon as it's done. Nothing in
-        the memory is touched here."""
+    # Commands that only read the memory or work on YouTube/GitHub: safe to answer while a drawing
+    # is being made. Anything that changes recordings or Shorts waits for the drawing to finish.
+    QUICK_COMMANDS = {"/status", "/queue", "/help", "/start", "/fixdescriptions", "/undo_descriptions",
+                      "/audit", "/undo_rewrite", "/calendar", "/trends", "/sponsors", "/report",
+                      "/rethumb", "/reupload", "/longform"}
+    QUICK_TAPS = {"fd", "fs", "abs", "ta", "ts"}
+
+    def quick(self, u: dict) -> bool:
+        if "callback_query" in u:
+            return (u["callback_query"].get("data") or "").partition(":")[0] in self.QUICK_TAPS
+        m = u.get("message") or {}
+        if m.get("chat", {}).get("id") != self.owner or m.get("video") or m.get("document"):
+            return False
+        text = (m.get("text") or "").strip()
+        if text.startswith("/"):
+            return text.split()[0].split("@")[0].lower() in self.QUICK_COMMANDS
+        asked = str((m.get("reply_to_message") or {}).get("message_id") or "")
+        return bool(text and asked and self.about_ask_for(asked))      # "what are you drawing?" answers
+
+    def busy_replies(self, stop, every: float = 10.0) -> None:
+        """While a drawing is being made (it can take most of an hour), quick commands are answered
+        right away (see QUICK_COMMANDS); anything else gets one note saying what is being made, and
+        is handled as soon as that drawing is done."""
         import time as _t
         told: set[int] = set()
         while not stop.wait(every):
@@ -275,19 +294,43 @@ class RenderMixin:
             try:
                 with self._tg_lock:
                     waiting = self.bot.peek_updates(self.state["update_offset"])
-                mins = max(1, round((_t.time() - now["since"]) / 60))
-                for u in waiting:
-                    if u["update_id"] in told:
+            except Exception as e:  # noqa: BLE001 - only a courtesy
+                print(f"warn: busy reply: {str(e)[:120]}")
+                continue
+            for u in waiting:
+                uid = u["update_id"]
+                if uid in told:
+                    continue
+                told.add(uid)
+                try:
+                    if self.quick(u):
+                        with self._state_lock:
+                            if uid < self.state["update_offset"] or uid in (self.state.get("handled_early") or []):
+                                continue                       # the main loop got there first
+                            self.state.setdefault("handled_early", []).append(uid)
+                            if "callback_query" in u:
+                                self.on_callback(u["callback_query"])
+                            else:
+                                self.on_message(u["message"])
                         continue
-                    told.add(u["update_id"])
+                except Exception as e:  # noqa: BLE001 - left for the main loop instead
+                    print(f"warn: quick command while busy: {str(e)[:150]}")
+                    with self._state_lock:
+                        early = self.state.get("handled_early") or []
+                        if uid in early:
+                            early.remove(uid)
+                try:
+                    mins = max(1, round((_t.time() - now["since"]) / 60))
                     if "callback_query" in u:
                         self.bot.answer_callback(u["callback_query"]["id"],
                                                  f"Busy making {now['label'][:40]}; I'll do this right after")
                     elif (u.get("message") or {}).get("chat", {}).get("id") == self.owner:
                         self.say(f"\u23f3 I'm making the Shorts for {now['label']} right now (started {mins} min "
-                                 "ago). Your message is saved and I'll answer it as soon as that's done.")
-            except Exception as e:  # noqa: BLE001 - only a courtesy
-                print(f"warn: busy reply: {str(e)[:120]}")
+                                 "ago). Your message is saved and I'll handle it as soon as that's done. "
+                                 "(/status, /queue, /fixdescriptions, /audit, /longform and the other YouTube "
+                                 "commands work even while I'm busy.)")
+                except Exception as e:  # noqa: BLE001
+                    print(f"warn: busy reply: {str(e)[:120]}")
 
     def _render_queue(self, make_variants, mode, hours, budget, started, done_now, guard, work_root, _time) -> None:
         for did, d in self._queued_drawings():         # also picks up drawings a split page adds

@@ -29,10 +29,28 @@ def _yt(cfg: dict) -> dict:
     return cfg.get("youtube", {}) if "youtube" in cfg or "panels" in cfg else cfg
 
 
-def schedule_block(cfg: dict) -> str:
+def scheduled(section: dict, today=None, key: str = "schedule") -> list[str]:
+    """The schedule lines in effect `today`: `key`, replaced by the newest [[<key>_from]] entry whose
+    date has come (e.g. two LongDraws a week from 2027-01-01)."""
+    from datetime import date
+    today = str(today or date.today())
+    lines = list(section.get(key) or [])
+    for change in sorted(section.get(f"{key}_from") or [], key=lambda c: str(c.get("date", ""))):
+        if str(change.get("date", "9999")) <= today and change.get("lines"):
+            lines = list(change["lines"])
+    return lines
+
+
+def _today(cfg: dict):
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+    return datetime.now(ZoneInfo(cfg.get("timezone", "America/New_York"))).date()
+
+
+def schedule_block(cfg: dict, today=None) -> str:
     y = _yt(cfg)
-    lines = y.get("schedule") or ["New Shorts: Monday, Wednesday and Friday at 12 PM EST",
-                                  "New LongDraw: every Friday at 12 PM EST"]
+    lines = scheduled(y, today or _today(cfg)) or ["New Shorts: Monday, Wednesday and Friday at 12 PM EST",
+                                                   "New LongDraw: every Friday at 12 PM EST"]
     return "\n".join([y.get("schedule_title", "Upload schedule (Eastern Time)")] + list(lines))
 
 

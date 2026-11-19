@@ -225,6 +225,9 @@ class PostingMixin:
             f"Approval: {self.cfg['approval']['mode']} ({self.cfg['approval'].get('fallback_hours', 0)}h)",
             self.spend_line(),
         ]
+        if not os.environ.get("TELEGRAM_OWNER_ID") and self.owner:
+            lines.append(f"\U0001f510 Lock the bot to you: add a GitHub secret TELEGRAM_OWNER_ID = {self.owner} "
+                         "(repo Settings \u203a Secrets and variables \u203a Actions).")
         if self.drops_mode:
             lines.append(f"Drops: {len(self.drop_times)}/day at {', '.join(self.drop_times)} "
                          f"(you post them; nothing is auto-posted)")

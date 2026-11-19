@@ -186,8 +186,8 @@ class BusyRepliesTest(unittest.TestCase):
         state["owner_chat_id"] = OWNER
         r = Runner(b, state, load_config(), clock=Clock(NOW))
         r.rendering = {"label": "Vegeta", "since": _t.time() - 600}
-        b.push(**msg(OWNER, text="/fixdescriptions"))
-        b.push(callback_query={"id": "cb", "from": {"id": OWNER}, "data": "fd:all", "message": {"message_id": 1}})
+        b.push(**msg(OWNER, text="/redo Vegeta"))                         # changes Shorts: waits
+        b.push(callback_query={"id": "cb", "from": {"id": OWNER}, "data": "lu:v1", "message": {"message_id": 1}})
         stop = threading.Event()
         t = threading.Thread(target=r.busy_replies, args=(stop, 0.01))
         t.start()
@@ -199,3 +199,61 @@ class BusyRepliesTest(unittest.TestCase):
         self.assertIn("started 10 min ago", busy[0])
         self.assertEqual(answered, ["Busy making Vegeta; I'll do this right after"])
         self.assertEqual(state["update_offset"], 0)                      # still waiting to be handled
+
+
+    def test_quick_commands_are_answered_while_busy_and_only_once(self):
+        import threading
+        import time as _t
+        b = FakeBot()
+        b.peek_updates = lambda offset: [u for u in b.updates if u["update_id"] >= offset]
+        state = fresh_state()
+        state["owner_chat_id"] = OWNER
+        state["report_week"] = state["audit_week"] = "2026-W47"
+        state["radar_day"] = "2026-11-18"
+        r = Runner(b, state, load_config(), clock=Clock(NOW))
+        r.rendering = {"label": "Vegeta", "since": _t.time() - 60}
+        b.push(**msg(OWNER, text="/status"))
+        b.push(**msg(OWNER, text="/redo Vegeta"))
+        stop = threading.Event()
+        t = threading.Thread(target=r.busy_replies, args=(stop, 0.01))
+        t.start()
+        _t.sleep(0.2)
+        stop.set()
+        t.join()
+        texts = lambda: [x for k, _, x in b.sent if k == "text"]
+        self.assertEqual(sum("Running" in x for x in texts()), 1)            # /status answered now
+        self.assertEqual(sum("making the Shorts for Vegeta" in x for x in texts()), 1)   # /redo waits
+        self.assertEqual(state["handled_early"], [1])
+        r.rendering = None
+        with mock.patch.object(Runner, "redo") as redo:
+            r.poll()                                                         # the drawing is done
+        self.assertEqual(sum("Running" in x for x in texts()), 1)            # /status not answered twice
+        redo.assert_called_once()
+        self.assertEqual(state["handled_early"], [])
+        self.assertEqual(state["update_offset"], 3)
+
+
+class SmallFixesTest(unittest.TestCase):
+    def test_renders_only_pause_for_a_drop_on_posting_days(self):
+        cfg = load_config()
+        cfg["delivery"].update(mode="drops", drop_days=["Mon", "Wed", "Fri"], drop_times=["12:00"])
+        tue = datetime(2026, 11, 17, 16, 50, tzinfo=timezone.utc)       # 11:50 AM in New York, a Tuesday
+        wed = datetime(2026, 11, 18, 16, 50, tzinfo=timezone.utc)
+        self.assertIsNone(Runner(FakeBot(), fresh_state(), cfg, clock=Clock(tue)).minutes_to_drop())
+        self.assertAlmostEqual(Runner(FakeBot(), fresh_state(), cfg, clock=Clock(wed)).minutes_to_drop(), 10, 0)
+
+    def test_status_tells_you_to_lock_the_bot_when_the_owner_secret_is_missing(self):
+        state = fresh_state()
+        state["owner_chat_id"] = OWNER
+        with mock.patch.dict(os.environ, {"TELEGRAM_OWNER_ID": ""}):
+            r = Runner(FakeBot(), state, load_config(), clock=Clock(NOW))
+            self.assertIn(f"TELEGRAM_OWNER_ID = {OWNER}", r.status_text())
+
+    def test_the_schedule_switches_by_itself_on_january_first(self):
+        from datetime import date
+        from reels_ai import descriptions
+        cfg = load_config()
+        self.assertIn("every Friday", descriptions.schedule_block(cfg, date(2026, 12, 31)))
+        self.assertIn("Wednesday and Friday", descriptions.schedule_block(cfg, date(2027, 1, 1)))
+        self.assertIn("Wed · Fri", descriptions.scheduled(cfg["panels"], date(2026, 12, 26))[1])
+        self.assertIn("every Friday", descriptions.scheduled(cfg["panels"], date(2026, 12, 20))[1])

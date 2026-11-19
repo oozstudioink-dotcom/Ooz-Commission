@@ -25,6 +25,9 @@ class DropsMixin:
         if not self.drops_mode:
             return None
         lt = self.local(self.clock())
+        days = self.cfg.get("delivery", {}).get("drop_days")
+        if days and lt.strftime("%a") not in {d[:3].title() for d in days}:
+            return None                               # not a posting day: nothing to keep free for
         waits = []
         for hhmm in self.drop_times:
             at = datetime.strptime(hhmm, "%H:%M").time()

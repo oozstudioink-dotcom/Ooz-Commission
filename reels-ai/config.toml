@@ -152,6 +152,14 @@ schedule = [                     # "MAIN TEXT | small line under it"
   "New Shorts | Mon \u00b7 Wed \u00b7 Fri \u00b7 12 PM EST",
   "LongDraw | every Friday \u00b7 12 PM EST",
 ]
+# From this date LongDraws show the new rhythm in their side panel (it's part of the video, so the
+# switch comes a few days early: LongDraws built from Dec 26 go out in January).
+[[panels.schedule_from]]
+date = "2026-12-26"
+lines = [
+  "New Shorts | Mon \u00b7 Wed \u00b7 Fri \u00b7 12 PM EST",
+  "LongDraw | Wed \u00b7 Fri \u00b7 12 PM EST",
+]
 
 [panels.advert]
 # "generated": the bot's own sharp recreation of your commissions animation (text below)
@@ -254,3 +262,12 @@ socials = [
   ["Facebook", "https://www.facebook.com/profile.php?id=61596390966478"],
   ["X", "https://x.com/OozStudioInk"],
 ]
+
+# On this date every new description (and /fixdescriptions) switches to these lines by itself.
+[[youtube.schedule_from]]
+date = "2027-01-01"
+lines = [
+  "New Shorts: Monday, Wednesday and Friday at 12 PM EST",
+  "New LongDraws: Wednesday and Friday at 12 PM EST",
+]
+

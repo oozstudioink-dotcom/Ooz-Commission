@@ -45,7 +45,14 @@ class Runner(AboutMixin, AuditMixin, SponsorMixin, LibraryMixin, InboxToolsMixin
         self.bot, self.state, self.cfg, self.clock = bot, state, config, clock
         # Saves the bot's memory mid-run (after each drawing), so a run cut off by GitHub's time
         # limit keeps what it finished instead of re-rendering and re-sending it.
-        self.checkpoint = checkpoint or (lambda: None)
+        import threading
+        self._state_lock = threading.RLock()  # the memory is saved, and busy-time commands run, one at a time
+        cp = checkpoint or (lambda: None)
+
+        def locked_checkpoint() -> None:
+            with self._state_lock:
+                cp()
+        self.checkpoint = locked_checkpoint
         self.clients = clients or {}          # platform -> API client (e.g. Instagram)
         self.drive = drive                    # Google Drive inbox / backups (optional)
         self.tz = ZoneInfo(config.get("timezone", "UTC"))
@@ -81,12 +88,17 @@ class Runner(AboutMixin, AuditMixin, SponsorMixin, LibraryMixin, InboxToolsMixin
         with self._tg_lock:
             updates = self.bot.get_updates(self.state["update_offset"])
         for u in updates:
-            self.state["update_offset"] = u["update_id"] + 1
             try:
-                if "callback_query" in u:
-                    self.on_callback(u["callback_query"])
-                elif "message" in u:
-                    self.on_message(u["message"])
+                with self._state_lock:
+                    self.state["update_offset"] = u["update_id"] + 1
+                    early = self.state.get("handled_early") or []
+                    if u["update_id"] in early:            # answered while a drawing was being made
+                        early.remove(u["update_id"])
+                        continue
+                    if "callback_query" in u:
+                        self.on_callback(u["callback_query"])
+                    elif "message" in u:
+                        self.on_message(u["message"])
             except TelegramError as e:
                 print(f"warn: update {u['update_id']}: {e}")
             except Exception as e:  # noqa: BLE001 - one bad command must not stop the others or the bot
@@ -411,10 +423,11 @@ def serve(runner: "Runner", save, minutes: float | None = None, waiting=runs_wai
     saved = [_json.dumps(runner.state, sort_keys=True, default=str)]
 
     def keep() -> None:
-        now_ = _json.dumps(runner.state, sort_keys=True, default=str)
-        if now_ != saved[0]:
-            save()
-            saved[0] = now_
+        with runner._state_lock:
+            now_ = _json.dumps(runner.state, sort_keys=True, default=str)
+            if now_ != saved[0]:
+                save()
+                saved[0] = now_
 
     failures = 0
     print(f"serving for up to {minutes:.0f} min")
@@ -434,7 +447,8 @@ def serve(runner: "Runner", save, minutes: float | None = None, waiting=runs_wai
                 _time.sleep(min(60, 5 * failures))
             keep()
     finally:
-        save()
+        with runner._state_lock:
+            save()
     if waiting() == 0:                         # nobody is taking over: start the next run ourselves
         try:
             (restart or (lambda: dispatch_workflow(os.environ.get("SERVE_WORKFLOW", "reels-bot.yml"),
