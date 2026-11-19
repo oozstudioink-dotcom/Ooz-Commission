@@ -11,7 +11,8 @@ import re
 PENCIL = re.compile(r"sketch|pencil", re.I)    # hooks/captions that only fit sessions with pencils
 NO_PENCIL_CLAIM = re.compile(r"\bno (pencil|sketch)|without (a )?(pencil|sketch)|pencil[- ]free|straight to ink"
                              r"|no under ?drawing", re.I)
-DEFAULT_AVOID = ["stroke"]
+DEFAULT_AVOID = ["stroke", "come", "coming", "came", "finish", "satisfying", "go down", "goes down",
+                 "wet", "thick", "hard", "blow", "climax", "tease"]
 _AVOID: list[str] | None = None
 FALSE_ALWAYS = re.compile(r"real[- ]?time|no speed|not sped|unedited|uncut", re.I)   # videos are sped up
 
@@ -44,6 +45,8 @@ def honest(text: str, pencil: bool) -> bool:
         return False
     return True
 
+# Every line is about the drawing itself: the character, the page, the pencil and the ink. Nothing
+# that could read two ways ([ai] avoid_words keeps the AI's lines to the same rule).
 HOOKS = {
     "reveal_first": [
         "Wait for the ink",
@@ -51,7 +54,7 @@ HOOKS = {
         "This started as a circle",
         "Inking {subject} by hand",
         "No tablet. Just ink.",
-        "Watch this come to life",
+        "Watch this page take shape",
     ],
     "speedrun": [
         "Sketch → ink in {secs} seconds",
@@ -73,45 +76,45 @@ HOOKS = {
     ],
     "ink_only": [
         "Just the ink.",
-        "The most satisfying part",
+        "My favorite part: the ink",
         "Inking {subject}, no talking",
         "Skip the sketch. Here's the ink.",
     ],
     "rewind": [
-        "Watch it un-draw, then draw",
+        "Played back, then drawn",
         "From this, back to a blank page",
-        "{subject}, start to finish",
+        "{subject}, blank page to ink",
         "How this page was made",
     ],
     "chapters": [
-        "{subject}, start to finish",
+        "{subject}, sketch to ink",
         "The whole process",
         "Every stage of this page",
-        "Blank page to finished ink",
+        "Blank page to final ink",
     ],
     "slow_open": [
         "It starts with a stick figure",
         "From a few lines to {subject}",
-        "Watch what this turns into",
-        "Wait for what it becomes",
+        "Guess who this turns into",
+        "A few circles first",
     ],
     "last_lines": [
         "Wait for the last line",
         "Watch till the last line",
-        "Stay for the finish",
+        "The details at the end",
         "Inking {subject}",
     ],
     "one_take": [
         "Inking {subject}",
-        "{subject}, start to finish",
+        "{subject} in one take",
         "Wait for the last line",
         "Watch till the last line",
     ],
     "process_cuts": [
-        "Watch every line go down",
+        "Line by line",
         "How I ink {subject}",
         "Inking {subject} by hand",
-        "Watch the pen work",
+        "Pen on paper",
         "Every line by hand",
     ],
 }
@@ -131,7 +134,7 @@ END_CARDS = [
 
 CAPTIONS = [
     "Inking {subject_or_this} by hand ✍\U0001f3fe Who should I draw next? \U0001f447\U0001f3fe",
-    "Pencil to ink, start to finish. Which stage do you like more?",
+    "Pencil to ink, every step. Which stage do you like more?",
     "Brush pen on paper, no tablet. Drop a character for the next one \U0001f447\U0001f3fe",
     "The ink stage never gets old. Save this for inking reference.",
 ]

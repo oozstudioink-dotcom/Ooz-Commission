@@ -38,7 +38,9 @@ The image is the finished drawing from a timelapse video{subject_line}.
 Write:
 1. "subject": {subject_rule}
 2. "hooks": one on-screen hook per video style below. 2-6 words each, punchy, curiosity-driven,
-   no hashtags, no emojis, never clickbait lies, never these words: {avoid}. Facts to respect: every video is a sped-up
+   no hashtags, no emojis, never clickbait lies. Keep every line clean and about the art (the
+   character, the page, the pencil, the ink): nothing that could read as a double meaning, and never
+   these words: {avoid}. Facts to respect: every video is a sped-up
    timelapse (never say "real time" or "no speed-up"); {pencil_fact}; if a hook names a
    character it must be the same one as "subject". Styles:
 {styles}

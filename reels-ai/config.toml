@@ -171,7 +171,10 @@ offer = ["FIRST 10 CLIENTS", "50% OFF"]
 
 
 [ai]
-avoid_words = ["stroke"]         # never on screen or in captions ("stroke" also covers "strokes"); add any you dislike
+# Never on screen or in captions: words that can read two ways ("stroke" also covers "strokes").
+# Add any you dislike; "finished" (the finished piece) is still fine, "the finish" isn't.
+avoid_words = ["stroke", "come", "coming", "came", "finish", "satisfying", "go down", "goes down",
+               "wet", "thick", "hard", "blow", "climax", "tease"]
 # Hooks, captions and hashtags. writer = "claude": Claude writes them from the finished drawing
 # (about a cent a drawing, counted in [watch] monthly_budget_usd). If Claude can't (no key, the
 # monthly limit, a failure) Gemini is tried when its key is set, and the built-in hooks after that.

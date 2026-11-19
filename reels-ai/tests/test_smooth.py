@@ -240,7 +240,7 @@ class HonestCopyTest(unittest.TestCase):
         self.assertTrue(honest("Pure ink, no pencil sketches", False))
         self.assertFalse(honest("From pencil sketch to clean ink", False))
         self.assertTrue(honest("From pencil sketch to clean ink", True))
-        self.assertTrue(honest("Watch every line go down", True))
+        self.assertTrue(honest("Watch every line of ink", True))
 
 
 class ContinuedPageTest(unittest.TestCase):
