@@ -269,7 +269,8 @@ def build_cards(w: int, h: int, cfg: dict, advert: Path | None, work: Path | Non
                     offer=tuple(acfg.get("offer", ("FIRST 10 CLIENTS", "50% OFF"))))
         cards.append(("video", ad.render(work / "advert_panel.mp4", crf=12)))
     cards.append(("still", socials_card(w, h, cfg.get("socials", []), cfg.get("link", ""))))
-    sched = cfg.get("schedule", [])
+    from .descriptions import scheduled
+    sched = scheduled(cfg)                       # [[panels.schedule_from]] switches it on its date
     if sched:
         cards.append(("still", schedule_card(w, h, cfg.get("schedule_title", "Upload schedule"), sched)))
     return cards
