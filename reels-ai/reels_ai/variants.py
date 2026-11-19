@@ -147,9 +147,9 @@ def speedrun(a: Analysis, rng, subject) -> Plan:
 
 def one_take(a: Analysis, rng, subject) -> Plan:
     """Modelled on the most-watched drawing Shorts (references/library.json): the pen is already
-    drawing in the first frame, one locked view with no zooms or cuts, steady pacing so the strokes
+    drawing in the first frame, one locked view with no zooms or cuts, steady pacing so the lines
     read, the finished piece stays unseen until the last second, at most one short title."""
-    p = Plan("one_take", "One continuous locked shot from the first stroke to the last; the finished "
+    p = Plan("one_take", "One continuous locked shot from the first line to the last; the finished "
              "piece is only seen at the very end. Minimal text.", "natural")
     start = a.draw_start if a.has_pencil else max(a.draw_start, a.ink_start - FPS // 2)
     # skip a blank-page lead-in: start where marks are about to appear and the hand is in frame
@@ -312,9 +312,9 @@ def chapters(a: Analysis, rng, subject) -> Plan:
 
 
 def last_lines(a: Analysis, rng, subject) -> Plan:
-    """The whole process quickly, easing down so the final strokes are savoured, then a long look."""
+    """The whole process quickly, easing down so the final lines are savoured, then a long look."""
     p = Plan("last_lines", "The whole process in one locked shot that slows for the final "
-             "strokes and holds on the finished piece.", "natural")
+             "lines and holds on the finished piece.", "natural")
     span = max(2, a.ink_end - a.ink_start)
     late = a.ink_end - int(span * 0.22)                                # the last fifth of the inking
     start = a.draw_start if a.has_pencil else max(a.draw_start, a.ink_start - FPS // 2)

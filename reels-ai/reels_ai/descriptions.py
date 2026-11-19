@@ -22,7 +22,7 @@ import re
 
 TAGS_LINE = "#manga #mangaart #inking #timelapse #drawing #traditionalart #oozstudioink"
 WELCOME = ("Welcome to {label}! Thanks for hanging out while this one comes together, from the "
-           "first pencil lines to the last stroke of ink.")
+           "first pencil lines to the final ink.")
 
 
 def _yt(cfg: dict) -> dict:

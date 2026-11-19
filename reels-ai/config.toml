@@ -171,6 +171,7 @@ offer = ["FIRST 10 CLIENTS", "50% OFF"]
 
 
 [ai]
+avoid_words = ["stroke"]         # never on screen or in captions ("stroke" also covers "strokes"); add any you dislike
 # Hooks, captions and hashtags. writer = "claude": Claude writes them from the finished drawing
 # (about a cent a drawing, counted in [watch] monthly_budget_usd). If Claude can't (no key, the
 # monthly limit, a failure) Gemini is tried when its key is set, and the built-in hooks after that.
@@ -246,7 +247,7 @@ kicker = "Book study"
 # your socials, chapters, the songs, hashtags. Shorts: the intro, the schedule, the commission
 # link, your socials, hashtags. Full https:// links are clickable in long-video descriptions.
 intro = "I'm a comic artist and character designer, and everything I post is drawn and inked by hand."
-welcome = "Welcome to {label}! Thanks for hanging out while this one comes together, from the first pencil lines to the last stroke of ink."
+welcome = "Welcome to {label}! Thanks for hanging out while this one comes together, from the first pencil lines to the final ink."
 schedule_title = "Upload schedule (Eastern Time)"
 schedule = [
   "New Shorts: Monday, Wednesday and Friday at 12 PM EST",

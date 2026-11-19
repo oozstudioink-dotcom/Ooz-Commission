@@ -129,6 +129,7 @@ class Runner(NotionMixin, AboutMixin, AuditMixin, SponsorMixin, LibraryMixin, In
             self.trend_radar()
             self.weekly_audit()
             self.notion_sync()
+            self.avoid_notice()
         return (any(d["status"] == "queued" for d in self.state["drawings"].values())
                 or bool(self.state.get("compile_request")))
 
