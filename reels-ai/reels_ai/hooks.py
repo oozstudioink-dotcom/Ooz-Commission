@@ -11,12 +11,32 @@ import re
 PENCIL = re.compile(r"sketch|pencil", re.I)    # hooks/captions that only fit sessions with pencils
 NO_PENCIL_CLAIM = re.compile(r"\bno (pencil|sketch)|without (a )?(pencil|sketch)|pencil[- ]free|straight to ink"
                              r"|no under ?drawing", re.I)
+DEFAULT_AVOID = ["stroke"]
+_AVOID: list[str] | None = None
 FALSE_ALWAYS = re.compile(r"real[- ]?time|no speed|not sped|unedited|uncut", re.I)   # videos are sped up
 
 
+def avoid_words() -> list[str]:
+    """Words you never want on screen or in captions ([ai] avoid_words in config.toml)."""
+    global _AVOID
+    if _AVOID is None:
+        try:
+            from .state import load_config
+            _AVOID = [w.lower() for w in load_config().get("ai", {}).get("avoid_words", DEFAULT_AVOID)]
+        except Exception:  # noqa: BLE001
+            _AVOID = list(DEFAULT_AVOID)
+    return _AVOID
+
+
+def avoided(text: str) -> bool:
+    """True when the text uses a word on your avoid list ("stroke" also catches "strokes")."""
+    low = (text or "").lower()
+    return any(re.search(rf"\b{re.escape(w)}(e?s)?\b", low) for w in avoid_words())
+
+
 def honest(text: str, pencil: bool) -> bool:
-    """False for copy that would misstate how this drawing was made."""
-    if FALSE_ALWAYS.search(text):
+    """False for copy that would misstate how this drawing was made, or uses a word you avoid."""
+    if FALSE_ALWAYS.search(text) or avoided(text):
         return False
     if pencil and NO_PENCIL_CLAIM.search(text):
         return False
@@ -78,7 +98,7 @@ HOOKS = {
     "last_lines": [
         "Wait for the last line",
         "Watch till the last line",
-        "The last strokes are the best",
+        "Stay for the finish",
         "Inking {subject}",
     ],
     "one_take": [

@@ -257,3 +257,32 @@ class SmallFixesTest(unittest.TestCase):
         self.assertIn("Wednesday and Friday", descriptions.schedule_block(cfg, date(2027, 1, 1)))
         self.assertIn("Wed · Fri", descriptions.scheduled(cfg["panels"], date(2026, 12, 26))[1])
         self.assertIn("every Friday", descriptions.scheduled(cfg["panels"], date(2026, 12, 20))[1])
+
+
+class AvoidWordsTest(unittest.TestCase):
+    def test_stroke_never_makes_it_on_screen(self):
+        from reels_ai import hooks
+        from reels_ai.ai import STYLE_BRIEFS, _prompt
+        self.assertFalse(hooks.honest("Wait for the final strokes", True))
+        self.assertFalse(hooks.honest("Every stroke counts", True))
+        self.assertTrue(hooks.honest("Wait for the last line", True))
+        self.assertFalse(any("stroke" in h.lower() for hs in hooks.HOOKS.values() for h in hs))
+        self.assertFalse(any("stroke" in b.lower() for b in STYLE_BRIEFS.values()))
+        self.assertIn('never these words: "stroke"', _prompt("Gojo", ["last_lines"], True))
+
+    def test_banked_shorts_with_the_word_are_listed_once(self):
+        b = FakeBot()
+        state = fresh_state()
+        state["owner_chat_id"] = OWNER
+        state["drawings"] = {"d1": {"subject": "Gojo", "status": "rendered"}}
+        state["variants"] = {"v1": {"drawing": "d1", "style": "last_lines", "status": "approved",
+                                    "hook": "Wait for the final strokes"},
+                             "v2": {"drawing": "d1", "style": "rewind", "status": "posted",
+                                    "hook": "Every stroke"}}
+        r = Runner(b, state, load_config(), clock=Clock(NOW))
+        r.avoid_notice()
+        r.avoid_notice()
+        notes = [t for k, _, t in b.sent if "banned" in t]
+        self.assertEqual(len(notes), 1)
+        self.assertIn("1 Short(s)", notes[0])
+        self.assertIn("/redo Gojo", notes[0])

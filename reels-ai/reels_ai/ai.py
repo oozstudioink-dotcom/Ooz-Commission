@@ -27,8 +27,8 @@ STYLE_BRIEFS = {
     "rewind": "finished piece first, rewinds to the blank page in a second, then the whole process in one locked shot",
     "chapters": "the whole process in one locked shot with small stage labels (sketch, ink, done)",
     "slow_open": "the first simple marks shown slowly, then the whole drawing builds fast and holds; no text on screen",
-    "last_lines": "the whole process in one locked shot that slows down for the final strokes",
-    "one_take": "one continuous locked shot from first stroke to last, finished piece only at the end",
+    "last_lines": "the whole process in one locked shot that slows down for the final lines",
+    "one_take": "one continuous locked shot from the first line to the last, finished piece only at the end",
     "process_cuts": "short jump cuts of the pen inking at near real speed",
 }
 
@@ -38,11 +38,12 @@ The image is the finished drawing from a timelapse video{subject_line}.
 Write:
 1. "subject": {subject_rule}
 2. "hooks": one on-screen hook per video style below. 2-6 words each, punchy, curiosity-driven,
-   no hashtags, no emojis, never clickbait lies. Facts to respect: every video is a sped-up
+   no hashtags, no emojis, never clickbait lies, never these words: {avoid}. Facts to respect: every video is a sped-up
    timelapse (never say "real time" or "no speed-up"); {pencil_fact}; if a hook names a
    character it must be the same one as "subject". Styles:
 {styles}
-3. "caption": one caption (max 150 characters) in a warm, confident artist voice. Use the hand
+3. "caption": one caption (max 150 characters) in a warm, confident artist voice, without the words
+   {avoid}. Use the hand
    emoji ✍\U0001f3fe once and end with a question that invites comments plus \U0001f447\U0001f3fe.
 4. "hashtags": 8-10 hashtags (with #): the character/series first, then manga/anime art and
    inking/process tags. Lowercase, no spaces.
@@ -61,7 +62,9 @@ def final_frame(video: Path, dst: Path) -> Path | None:
 
 
 def _prompt(subject: str | None, styles: list[str], pencil: bool | None) -> str:
+    from .hooks import avoid_words
     return PROMPT.format(
+        avoid=", ".join(f'"{w}"' for w in avoid_words()) or "(none)",
         pencil_fact=("the artist sketched in pencil first, then inked" if pencil is True else
                      "the artist went straight to ink with no pencil sketch" if pencil is False else
                      "don't say whether a pencil sketch was used"),

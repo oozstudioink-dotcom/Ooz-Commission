@@ -55,7 +55,7 @@ stuttering. Holds, flashbacks and the final reveal stay razor sharp. Knobs: `BLE
 | `before_after` | Sketch to ink wipe, then the inking | warm cream paper |
 | `detail_zoom` | Punches in on the face while it's inked, pulls back to reveal | clean |
 | `ink_only` | Skips pencils, straight into the ink | high-contrast B&W |
-| `one_take` | One locked shot from the first stroke to the last, finished piece only in the final second, one short title or none, ~13 s; built from the patterns in `references/library.json` | natural |
+| `one_take` | One locked shot from the first line to the last, finished piece only in the final second, one short title or none, ~13 s; built from the patterns in `references/library.json` | natural |
 | `process_cuts` | ~8 jump cuts of the pen actually moving (cut straight from the original recording, 2x for long sessions), finished piece first and last; the jump-cut format common in popular manga-inking Shorts | clean |
 
 Edit breakdowns of popular drawing Shorts (in our own words) live in `references/library.json`.
