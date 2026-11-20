@@ -1,0 +1,39 @@
+OOZ STUDIO INK - OBS STREAM SCENES
+====================================
+
+Scenes
+  Starting Soon   countdown, today's topic, schedule, commission link
+  Drawing         page camera big, face camera, YouTube chat, commissions + rotating socials
+  Drawing Focus   page camera full screen with a small LIVE badge and rotating socials
+  Just Chatting   face camera big, chat big
+  Be Right Back   slideshow of your sketchbook pieces
+  Final Piece     the page camera framed for the reveal, with the commission link
+  Ending          thanks, next stream, every social, commission link, schedule
+
+SET UP (once, about 10 minutes)
+1. Unzip, then move the folder "Ooz Studio Ink OBS" to:
+     Windows:  C:\            (so it is C:\Ooz Studio Ink OBS)
+     Mac:      /Users/Shared    (Finder > Go > Go to Folder > /Users/Shared)
+2. OBS > Scene Collection > Import > pick "Ooz Studio Ink - OBS scenes (Windows).json" or
+   "(Mac).json" > Import. Then Scene Collection > Ooz Studio Ink.
+   If OBS says files are missing: Search Directory > pick the "Ooz Studio Ink OBS" folder.
+3. Settings > Video: Base and Output resolution 1920x1080.
+4. Cameras (each camera is added ONCE and shows up in every scene that uses it):
+   - Click the scene "Page Cam" (with the gear) > + > Video Capture Device > your overhead camera
+     (a webcam, or your iPhone: Continuity Camera on a Mac, or an app like Camo / Iriun on Windows).
+     Then right-click the camera > Transform > Fit to screen.
+   - Same in "Face Cam" for a face camera. No face camera? Open overlays/config.js and set
+     faceCam: false - that window then shows your studio mark.
+5. Chat: when your stream is created on YouTube, copy its video ID (the part after watch?v= in
+   the link). In OBS double-click "YouTube Chat" and replace PASTE_YOUR_VIDEO_ID with it.
+   The chat is already styled to match (youtube-chat.css has the same style if it's ever reset).
+6. Settings > Audio: pick your microphone. Settings > Stream: YouTube > Connect Account.
+7. Optional: Settings > Hotkeys, give each scene a key (F1-F7) to switch fast while drawing.
+
+BEFORE EACH STREAM
+- Open overlays/config.js in Notepad / TextEdit, change topic (e.g. "Inking Sasuke Uchiha"),
+  countdownMinutes and nextStream, save. In OBS right-click any overlay > Refresh.
+- Update the YouTube Chat video ID (step 5).
+
+Everything is plain HTML in overlays/, so colors and text can be changed any time.
+To rebuild this package: python obs/make_obs.py (in the Ooz-Commission repo).

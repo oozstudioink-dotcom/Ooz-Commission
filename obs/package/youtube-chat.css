@@ -1,0 +1,12 @@
+/* YouTube chat in the Ooz Studio Ink look (paste into the chat source's Custom CSS if it's ever reset) */
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@500;700&display=swap');
+body, yt-live-chat-app, yt-live-chat-renderer { background: rgba(13,13,13,0.92) !important; overflow: hidden !important; }
+yt-live-chat-header-renderer, #panel-pages, yt-live-chat-message-input-renderer, #input-panel,
+yt-live-chat-viewer-engagement-message-renderer, #ticker, yt-live-chat-banner-manager,
+#author-photo, #chat-badges, yt-live-chat-author-badge-renderer, #menu, #reaction-control-panel-overlay { display: none !important; }
+yt-live-chat-text-message-renderer { padding: 6px 16px !important; font-family: Inter, Arial, sans-serif !important; }
+yt-live-chat-text-message-renderer #author-name { color: #e2786c !important; font-weight: 700 !important; font-size: 19px !important; }
+yt-live-chat-text-message-renderer #author-name[type="owner"] { color: #f5f4f0 !important; background: #c0392b !important; padding: 2px 6px !important; }
+yt-live-chat-text-message-renderer #message { color: #f5f4f0 !important; font-weight: 500 !important; font-size: 21px !important; line-height: 1.35 !important; }
+yt-live-chat-paid-message-renderer #card { background: #c0392b !important; }
+#item-scroller { overflow: hidden !important; }

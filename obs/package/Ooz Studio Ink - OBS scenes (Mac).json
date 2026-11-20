@@ -1,0 +1,1131 @@
+{
+ "name": "Ooz Studio Ink",
+ "current_scene": "Starting Soon",
+ "current_program_scene": "Starting Soon",
+ "scene_order": [
+  {
+   "name": "Starting Soon"
+  },
+  {
+   "name": "Drawing"
+  },
+  {
+   "name": "Drawing Focus"
+  },
+  {
+   "name": "Just Chatting"
+  },
+  {
+   "name": "Be Right Back"
+  },
+  {
+   "name": "Final Piece"
+  },
+  {
+   "name": "Ending"
+  },
+  {
+   "name": "⚙ Page Cam"
+  },
+  {
+   "name": "⚙ Face Cam"
+  }
+ ],
+ "sources": [
+  {
+   "name": "Overlay · Starting Soon",
+   "uuid": "f6e9f05c-600b-5d8c-807e-edf4c01a8a2b",
+   "id": "browser_source",
+   "versioned_id": "browser_source",
+   "settings": {
+    "is_local_file": true,
+    "local_file": "/Users/Shared/Ooz Studio Ink OBS/overlays/starting.html",
+    "width": 1920,
+    "height": 1080,
+    "fps_custom": false,
+    "reroute_audio": false,
+    "restart_when_active": true,
+    "shutdown": false,
+    "css": "body { background-color: rgba(0, 0, 0, 0); margin: 0px auto; overflow: hidden; }"
+   },
+   "mixers": 0,
+   "sync": 0,
+   "flags": 0,
+   "volume": 1.0,
+   "balance": 0.5,
+   "enabled": true,
+   "muted": false,
+   "push-to-mute": false,
+   "push-to-mute-delay": 0,
+   "push-to-talk": false,
+   "push-to-talk-delay": 0,
+   "hotkeys": {},
+   "deinterlace_mode": 0,
+   "deinterlace_field_order": 0,
+   "monitoring_type": 0,
+   "private_settings": {}
+  },
+  {
+   "name": "Overlay · Drawing",
+   "uuid": "78d7b985-d171-5fd1-9487-526de98f86cc",
+   "id": "browser_source",
+   "versioned_id": "browser_source",
+   "settings": {
+    "is_local_file": true,
+    "local_file": "/Users/Shared/Ooz Studio Ink OBS/overlays/drawing.html",
+    "width": 1920,
+    "height": 1080,
+    "fps_custom": false,
+    "reroute_audio": false,
+    "restart_when_active": false,
+    "shutdown": false,
+    "css": "body { background-color: rgba(0, 0, 0, 0); margin: 0px auto; overflow: hidden; }"
+   },
+   "mixers": 0,
+   "sync": 0,
+   "flags": 0,
+   "volume": 1.0,
+   "balance": 0.5,
+   "enabled": true,
+   "muted": false,
+   "push-to-mute": false,
+   "push-to-mute-delay": 0,
+   "push-to-talk": false,
+   "push-to-talk-delay": 0,
+   "hotkeys": {},
+   "deinterlace_mode": 0,
+   "deinterlace_field_order": 0,
+   "monitoring_type": 0,
+   "private_settings": {}
+  },
+  {
+   "name": "Overlay · Drawing Focus",
+   "uuid": "cd18c124-f6db-5cc4-80b2-0b603bb130a3",
+   "id": "browser_source",
+   "versioned_id": "browser_source",
+   "settings": {
+    "is_local_file": true,
+    "local_file": "/Users/Shared/Ooz Studio Ink OBS/overlays/focus.html",
+    "width": 1920,
+    "height": 1080,
+    "fps_custom": false,
+    "reroute_audio": false,
+    "restart_when_active": false,
+    "shutdown": false,
+    "css": "body { background-color: rgba(0, 0, 0, 0); margin: 0px auto; overflow: hidden; }"
+   },
+   "mixers": 0,
+   "sync": 0,
+   "flags": 0,
+   "volume": 1.0,
+   "balance": 0.5,
+   "enabled": true,
+   "muted": false,
+   "push-to-mute": false,
+   "push-to-mute-delay": 0,
+   "push-to-talk": false,
+   "push-to-talk-delay": 0,
+   "hotkeys": {},
+   "deinterlace_mode": 0,
+   "deinterlace_field_order": 0,
+   "monitoring_type": 0,
+   "private_settings": {}
+  },
+  {
+   "name": "Overlay · Just Chatting",
+   "uuid": "05b9cf06-8f16-5baf-9873-f1c770b44f33",
+   "id": "browser_source",
+   "versioned_id": "browser_source",
+   "settings": {
+    "is_local_file": true,
+    "local_file": "/Users/Shared/Ooz Studio Ink OBS/overlays/chatting.html",
+    "width": 1920,
+    "height": 1080,
+    "fps_custom": false,
+    "reroute_audio": false,
+    "restart_when_active": false,
+    "shutdown": false,
+    "css": "body { background-color: rgba(0, 0, 0, 0); margin: 0px auto; overflow: hidden; }"
+   },
+   "mixers": 0,
+   "sync": 0,
+   "flags": 0,
+   "volume": 1.0,
+   "balance": 0.5,
+   "enabled": true,
+   "muted": false,
+   "push-to-mute": false,
+   "push-to-mute-delay": 0,
+   "push-to-talk": false,
+   "push-to-talk-delay": 0,
+   "hotkeys": {},
+   "deinterlace_mode": 0,
+   "deinterlace_field_order": 0,
+   "monitoring_type": 0,
+   "private_settings": {}
+  },
+  {
+   "name": "Overlay · Be Right Back",
+   "uuid": "9459b48b-65bd-51c4-937a-e5dafc472e5d",
+   "id": "browser_source",
+   "versioned_id": "browser_source",
+   "settings": {
+    "is_local_file": true,
+    "local_file": "/Users/Shared/Ooz Studio Ink OBS/overlays/brb.html",
+    "width": 1920,
+    "height": 1080,
+    "fps_custom": false,
+    "reroute_audio": false,
+    "restart_when_active": false,
+    "shutdown": false,
+    "css": "body { background-color: rgba(0, 0, 0, 0); margin: 0px auto; overflow: hidden; }"
+   },
+   "mixers": 0,
+   "sync": 0,
+   "flags": 0,
+   "volume": 1.0,
+   "balance": 0.5,
+   "enabled": true,
+   "muted": false,
+   "push-to-mute": false,
+   "push-to-mute-delay": 0,
+   "push-to-talk": false,
+   "push-to-talk-delay": 0,
+   "hotkeys": {},
+   "deinterlace_mode": 0,
+   "deinterlace_field_order": 0,
+   "monitoring_type": 0,
+   "private_settings": {}
+  },
+  {
+   "name": "Overlay · Final Piece",
+   "uuid": "ba69ba26-a10a-566f-9a11-6a4f4b9c7c09",
+   "id": "browser_source",
+   "versioned_id": "browser_source",
+   "settings": {
+    "is_local_file": true,
+    "local_file": "/Users/Shared/Ooz Studio Ink OBS/overlays/reveal.html",
+    "width": 1920,
+    "height": 1080,
+    "fps_custom": false,
+    "reroute_audio": false,
+    "restart_when_active": false,
+    "shutdown": false,
+    "css": "body { background-color: rgba(0, 0, 0, 0); margin: 0px auto; overflow: hidden; }"
+   },
+   "mixers": 0,
+   "sync": 0,
+   "flags": 0,
+   "volume": 1.0,
+   "balance": 0.5,
+   "enabled": true,
+   "muted": false,
+   "push-to-mute": false,
+   "push-to-mute-delay": 0,
+   "push-to-talk": false,
+   "push-to-talk-delay": 0,
+   "hotkeys": {},
+   "deinterlace_mode": 0,
+   "deinterlace_field_order": 0,
+   "monitoring_type": 0,
+   "private_settings": {}
+  },
+  {
+   "name": "Overlay · Ending",
+   "uuid": "bbf344a1-434a-5433-a3a3-f30009c421fa",
+   "id": "browser_source",
+   "versioned_id": "browser_source",
+   "settings": {
+    "is_local_file": true,
+    "local_file": "/Users/Shared/Ooz Studio Ink OBS/overlays/ending.html",
+    "width": 1920,
+    "height": 1080,
+    "fps_custom": false,
+    "reroute_audio": false,
+    "restart_when_active": false,
+    "shutdown": false,
+    "css": "body { background-color: rgba(0, 0, 0, 0); margin: 0px auto; overflow: hidden; }"
+   },
+   "mixers": 0,
+   "sync": 0,
+   "flags": 0,
+   "volume": 1.0,
+   "balance": 0.5,
+   "enabled": true,
+   "muted": false,
+   "push-to-mute": false,
+   "push-to-mute-delay": 0,
+   "push-to-talk": false,
+   "push-to-talk-delay": 0,
+   "hotkeys": {},
+   "deinterlace_mode": 0,
+   "deinterlace_field_order": 0,
+   "monitoring_type": 0,
+   "private_settings": {}
+  },
+  {
+   "name": "YouTube Chat",
+   "uuid": "aaca3448-5d4d-5b05-abe1-672f3306aef8",
+   "id": "browser_source",
+   "versioned_id": "browser_source",
+   "settings": {
+    "is_local_file": false,
+    "url": "https://www.youtube.com/live_chat?is_popout=1&v=PASTE_YOUR_VIDEO_ID",
+    "width": 544,
+    "height": 878,
+    "fps_custom": false,
+    "reroute_audio": false,
+    "restart_when_active": false,
+    "shutdown": false,
+    "css": "/* YouTube chat in the Ooz Studio Ink look (paste into the chat source's Custom CSS if it's ever reset) */\n@import url('https://fonts.googleapis.com/css2?family=Inter:wght@500;700&display=swap');\nbody, yt-live-chat-app, yt-live-chat-renderer { background: rgba(13,13,13,0.92) !important; overflow: hidden !important; }\nyt-live-chat-header-renderer, #panel-pages, yt-live-chat-message-input-renderer, #input-panel,\nyt-live-chat-viewer-engagement-message-renderer, #ticker, yt-live-chat-banner-manager,\n#author-photo, #chat-badges, yt-live-chat-author-badge-renderer, #menu, #reaction-control-panel-overlay { display: none !important; }\nyt-live-chat-text-message-renderer { padding: 6px 16px !important; font-family: Inter, Arial, sans-serif !important; }\nyt-live-chat-text-message-renderer #author-name { color: #e2786c !important; font-weight: 700 !important; font-size: 19px !important; }\nyt-live-chat-text-message-renderer #author-name[type=\"owner\"] { color: #f5f4f0 !important; background: #c0392b !important; padding: 2px 6px !important; }\nyt-live-chat-text-message-renderer #message { color: #f5f4f0 !important; font-weight: 500 !important; font-size: 21px !important; line-height: 1.35 !important; }\nyt-live-chat-paid-message-renderer #card { background: #c0392b !important; }\n#item-scroller { overflow: hidden !important; }\n"
+   },
+   "mixers": 0,
+   "sync": 0,
+   "flags": 0,
+   "volume": 1.0,
+   "balance": 0.5,
+   "enabled": true,
+   "muted": false,
+   "push-to-mute": false,
+   "push-to-mute-delay": 0,
+   "push-to-talk": false,
+   "push-to-talk-delay": 0,
+   "hotkeys": {},
+   "deinterlace_mode": 0,
+   "deinterlace_field_order": 0,
+   "monitoring_type": 0,
+   "private_settings": {}
+  },
+  {
+   "name": "⚙ Page Cam",
+   "uuid": "f3985d00-3f29-530b-b200-e5b1a1e960d2",
+   "id": "scene",
+   "versioned_id": "scene",
+   "settings": {
+    "custom_size": false,
+    "id_counter": 0,
+    "items": []
+   },
+   "mixers": 0,
+   "sync": 0,
+   "flags": 0,
+   "volume": 1.0,
+   "balance": 0.5,
+   "enabled": true,
+   "muted": false,
+   "push-to-mute": false,
+   "push-to-mute-delay": 0,
+   "push-to-talk": false,
+   "push-to-talk-delay": 0,
+   "hotkeys": {},
+   "deinterlace_mode": 0,
+   "deinterlace_field_order": 0,
+   "monitoring_type": 0,
+   "private_settings": {}
+  },
+  {
+   "name": "⚙ Face Cam",
+   "uuid": "b050555a-2a8d-5d89-a7a9-8a6813f956fb",
+   "id": "scene",
+   "versioned_id": "scene",
+   "settings": {
+    "custom_size": false,
+    "id_counter": 0,
+    "items": []
+   },
+   "mixers": 0,
+   "sync": 0,
+   "flags": 0,
+   "volume": 1.0,
+   "balance": 0.5,
+   "enabled": true,
+   "muted": false,
+   "push-to-mute": false,
+   "push-to-mute-delay": 0,
+   "push-to-talk": false,
+   "push-to-talk-delay": 0,
+   "hotkeys": {},
+   "deinterlace_mode": 0,
+   "deinterlace_field_order": 0,
+   "monitoring_type": 0,
+   "private_settings": {}
+  },
+  {
+   "name": "Starting Soon",
+   "uuid": "1ec50fb2-382c-5c80-b099-e85ae07c0a0f",
+   "id": "scene",
+   "versioned_id": "scene",
+   "settings": {
+    "custom_size": false,
+    "id_counter": 1,
+    "items": [
+     {
+      "name": "Overlay · Starting Soon",
+      "source_uuid": "f6e9f05c-600b-5d8c-807e-edf4c01a8a2b",
+      "visible": true,
+      "locked": true,
+      "rot": 0.0,
+      "pos": {
+       "x": 0.0,
+       "y": 0.0
+      },
+      "scale": {
+       "x": 1.0,
+       "y": 1.0
+      },
+      "align": 5,
+      "bounds_type": 0,
+      "bounds_align": 0,
+      "bounds_crop": false,
+      "bounds": {
+       "x": 0.0,
+       "y": 0.0
+      },
+      "crop_left": 0,
+      "crop_top": 0,
+      "crop_right": 0,
+      "crop_bottom": 0,
+      "id": 1,
+      "group_item_backup": false,
+      "scale_filter": "disable",
+      "blend_method": "default",
+      "blend_type": "normal",
+      "show_transition": {
+       "duration": 0
+      },
+      "hide_transition": {
+       "duration": 0
+      },
+      "private_settings": {}
+     }
+    ]
+   },
+   "mixers": 0,
+   "sync": 0,
+   "flags": 0,
+   "volume": 1.0,
+   "balance": 0.5,
+   "enabled": true,
+   "muted": false,
+   "push-to-mute": false,
+   "push-to-mute-delay": 0,
+   "push-to-talk": false,
+   "push-to-talk-delay": 0,
+   "hotkeys": {},
+   "deinterlace_mode": 0,
+   "deinterlace_field_order": 0,
+   "monitoring_type": 0,
+   "private_settings": {}
+  },
+  {
+   "name": "Drawing",
+   "uuid": "83a49f7c-25e4-52d6-b856-6d057ebcfb6f",
+   "id": "scene",
+   "versioned_id": "scene",
+   "settings": {
+    "custom_size": false,
+    "id_counter": 4,
+    "items": [
+     {
+      "name": "Overlay · Drawing",
+      "source_uuid": "78d7b985-d171-5fd1-9487-526de98f86cc",
+      "visible": true,
+      "locked": true,
+      "rot": 0.0,
+      "pos": {
+       "x": 0.0,
+       "y": 0.0
+      },
+      "scale": {
+       "x": 1.0,
+       "y": 1.0
+      },
+      "align": 5,
+      "bounds_type": 0,
+      "bounds_align": 0,
+      "bounds_crop": false,
+      "bounds": {
+       "x": 0.0,
+       "y": 0.0
+      },
+      "crop_left": 0,
+      "crop_top": 0,
+      "crop_right": 0,
+      "crop_bottom": 0,
+      "id": 1,
+      "group_item_backup": false,
+      "scale_filter": "disable",
+      "blend_method": "default",
+      "blend_type": "normal",
+      "show_transition": {
+       "duration": 0
+      },
+      "hide_transition": {
+       "duration": 0
+      },
+      "private_settings": {}
+     },
+     {
+      "name": "⚙ Page Cam",
+      "source_uuid": "f3985d00-3f29-530b-b200-e5b1a1e960d2",
+      "visible": true,
+      "locked": false,
+      "rot": 0.0,
+      "pos": {
+       "x": 32.0,
+       "y": 32.0
+      },
+      "scale": {
+       "x": 1.0,
+       "y": 1.0
+      },
+      "align": 5,
+      "bounds_type": 2,
+      "bounds_align": 0,
+      "bounds_crop": false,
+      "bounds": {
+       "x": 1376.0,
+       "y": 774.0
+      },
+      "crop_left": 0,
+      "crop_top": 0,
+      "crop_right": 0,
+      "crop_bottom": 0,
+      "id": 2,
+      "group_item_backup": false,
+      "scale_filter": "disable",
+      "blend_method": "default",
+      "blend_type": "normal",
+      "show_transition": {
+       "duration": 0
+      },
+      "hide_transition": {
+       "duration": 0
+      },
+      "private_settings": {}
+     },
+     {
+      "name": "⚙ Face Cam",
+      "source_uuid": "b050555a-2a8d-5d89-a7a9-8a6813f956fb",
+      "visible": true,
+      "locked": false,
+      "rot": 0.0,
+      "pos": {
+       "x": 1432.0,
+       "y": 32.0
+      },
+      "scale": {
+       "x": 1.0,
+       "y": 1.0
+      },
+      "align": 5,
+      "bounds_type": 2,
+      "bounds_align": 0,
+      "bounds_crop": false,
+      "bounds": {
+       "x": 456.0,
+       "y": 256.0
+      },
+      "crop_left": 0,
+      "crop_top": 0,
+      "crop_right": 0,
+      "crop_bottom": 0,
+      "id": 3,
+      "group_item_backup": false,
+      "scale_filter": "disable",
+      "blend_method": "default",
+      "blend_type": "normal",
+      "show_transition": {
+       "duration": 0
+      },
+      "hide_transition": {
+       "duration": 0
+      },
+      "private_settings": {}
+     },
+     {
+      "name": "YouTube Chat",
+      "source_uuid": "aaca3448-5d4d-5b05-abe1-672f3306aef8",
+      "visible": true,
+      "locked": false,
+      "rot": 0.0,
+      "pos": {
+       "x": 1432.0,
+       "y": 312.0
+      },
+      "scale": {
+       "x": 1.0,
+       "y": 1.0
+      },
+      "align": 5,
+      "bounds_type": 2,
+      "bounds_align": 0,
+      "bounds_crop": false,
+      "bounds": {
+       "x": 456.0,
+       "y": 736.0
+      },
+      "crop_left": 0,
+      "crop_top": 0,
+      "crop_right": 0,
+      "crop_bottom": 0,
+      "id": 4,
+      "group_item_backup": false,
+      "scale_filter": "disable",
+      "blend_method": "default",
+      "blend_type": "normal",
+      "show_transition": {
+       "duration": 0
+      },
+      "hide_transition": {
+       "duration": 0
+      },
+      "private_settings": {}
+     }
+    ]
+   },
+   "mixers": 0,
+   "sync": 0,
+   "flags": 0,
+   "volume": 1.0,
+   "balance": 0.5,
+   "enabled": true,
+   "muted": false,
+   "push-to-mute": false,
+   "push-to-mute-delay": 0,
+   "push-to-talk": false,
+   "push-to-talk-delay": 0,
+   "hotkeys": {},
+   "deinterlace_mode": 0,
+   "deinterlace_field_order": 0,
+   "monitoring_type": 0,
+   "private_settings": {}
+  },
+  {
+   "name": "Drawing Focus",
+   "uuid": "d84c4da9-646f-5805-a524-0105eb38ef2f",
+   "id": "scene",
+   "versioned_id": "scene",
+   "settings": {
+    "custom_size": false,
+    "id_counter": 2,
+    "items": [
+     {
+      "name": "⚙ Page Cam",
+      "source_uuid": "f3985d00-3f29-530b-b200-e5b1a1e960d2",
+      "visible": true,
+      "locked": false,
+      "rot": 0.0,
+      "pos": {
+       "x": 0.0,
+       "y": 0.0
+      },
+      "scale": {
+       "x": 1.0,
+       "y": 1.0
+      },
+      "align": 5,
+      "bounds_type": 2,
+      "bounds_align": 0,
+      "bounds_crop": false,
+      "bounds": {
+       "x": 1920.0,
+       "y": 1080.0
+      },
+      "crop_left": 0,
+      "crop_top": 0,
+      "crop_right": 0,
+      "crop_bottom": 0,
+      "id": 1,
+      "group_item_backup": false,
+      "scale_filter": "disable",
+      "blend_method": "default",
+      "blend_type": "normal",
+      "show_transition": {
+       "duration": 0
+      },
+      "hide_transition": {
+       "duration": 0
+      },
+      "private_settings": {}
+     },
+     {
+      "name": "Overlay · Drawing Focus",
+      "source_uuid": "cd18c124-f6db-5cc4-80b2-0b603bb130a3",
+      "visible": true,
+      "locked": true,
+      "rot": 0.0,
+      "pos": {
+       "x": 0.0,
+       "y": 0.0
+      },
+      "scale": {
+       "x": 1.0,
+       "y": 1.0
+      },
+      "align": 5,
+      "bounds_type": 0,
+      "bounds_align": 0,
+      "bounds_crop": false,
+      "bounds": {
+       "x": 0.0,
+       "y": 0.0
+      },
+      "crop_left": 0,
+      "crop_top": 0,
+      "crop_right": 0,
+      "crop_bottom": 0,
+      "id": 2,
+      "group_item_backup": false,
+      "scale_filter": "disable",
+      "blend_method": "default",
+      "blend_type": "normal",
+      "show_transition": {
+       "duration": 0
+      },
+      "hide_transition": {
+       "duration": 0
+      },
+      "private_settings": {}
+     }
+    ]
+   },
+   "mixers": 0,
+   "sync": 0,
+   "flags": 0,
+   "volume": 1.0,
+   "balance": 0.5,
+   "enabled": true,
+   "muted": false,
+   "push-to-mute": false,
+   "push-to-mute-delay": 0,
+   "push-to-talk": false,
+   "push-to-talk-delay": 0,
+   "hotkeys": {},
+   "deinterlace_mode": 0,
+   "deinterlace_field_order": 0,
+   "monitoring_type": 0,
+   "private_settings": {}
+  },
+  {
+   "name": "Just Chatting",
+   "uuid": "d1990369-beb5-52c9-b816-4c007e60b68c",
+   "id": "scene",
+   "versioned_id": "scene",
+   "settings": {
+    "custom_size": false,
+    "id_counter": 3,
+    "items": [
+     {
+      "name": "Overlay · Just Chatting",
+      "source_uuid": "05b9cf06-8f16-5baf-9873-f1c770b44f33",
+      "visible": true,
+      "locked": true,
+      "rot": 0.0,
+      "pos": {
+       "x": 0.0,
+       "y": 0.0
+      },
+      "scale": {
+       "x": 1.0,
+       "y": 1.0
+      },
+      "align": 5,
+      "bounds_type": 0,
+      "bounds_align": 0,
+      "bounds_crop": false,
+      "bounds": {
+       "x": 0.0,
+       "y": 0.0
+      },
+      "crop_left": 0,
+      "crop_top": 0,
+      "crop_right": 0,
+      "crop_bottom": 0,
+      "id": 1,
+      "group_item_backup": false,
+      "scale_filter": "disable",
+      "blend_method": "default",
+      "blend_type": "normal",
+      "show_transition": {
+       "duration": 0
+      },
+      "hide_transition": {
+       "duration": 0
+      },
+      "private_settings": {}
+     },
+     {
+      "name": "⚙ Face Cam",
+      "source_uuid": "b050555a-2a8d-5d89-a7a9-8a6813f956fb",
+      "visible": true,
+      "locked": false,
+      "rot": 0.0,
+      "pos": {
+       "x": 32.0,
+       "y": 32.0
+      },
+      "scale": {
+       "x": 1.0,
+       "y": 1.0
+      },
+      "align": 5,
+      "bounds_type": 2,
+      "bounds_align": 0,
+      "bounds_crop": false,
+      "bounds": {
+       "x": 1280.0,
+       "y": 720.0
+      },
+      "crop_left": 0,
+      "crop_top": 0,
+      "crop_right": 0,
+      "crop_bottom": 0,
+      "id": 2,
+      "group_item_backup": false,
+      "scale_filter": "disable",
+      "blend_method": "default",
+      "blend_type": "normal",
+      "show_transition": {
+       "duration": 0
+      },
+      "hide_transition": {
+       "duration": 0
+      },
+      "private_settings": {}
+     },
+     {
+      "name": "YouTube Chat",
+      "source_uuid": "aaca3448-5d4d-5b05-abe1-672f3306aef8",
+      "visible": true,
+      "locked": false,
+      "rot": 0.0,
+      "pos": {
+       "x": 1344.0,
+       "y": 32.0
+      },
+      "scale": {
+       "x": 1.0,
+       "y": 1.0
+      },
+      "align": 5,
+      "bounds_type": 2,
+      "bounds_align": 0,
+      "bounds_crop": false,
+      "bounds": {
+       "x": 544.0,
+       "y": 878.0
+      },
+      "crop_left": 0,
+      "crop_top": 0,
+      "crop_right": 0,
+      "crop_bottom": 0,
+      "id": 3,
+      "group_item_backup": false,
+      "scale_filter": "disable",
+      "blend_method": "default",
+      "blend_type": "normal",
+      "show_transition": {
+       "duration": 0
+      },
+      "hide_transition": {
+       "duration": 0
+      },
+      "private_settings": {}
+     }
+    ]
+   },
+   "mixers": 0,
+   "sync": 0,
+   "flags": 0,
+   "volume": 1.0,
+   "balance": 0.5,
+   "enabled": true,
+   "muted": false,
+   "push-to-mute": false,
+   "push-to-mute-delay": 0,
+   "push-to-talk": false,
+   "push-to-talk-delay": 0,
+   "hotkeys": {},
+   "deinterlace_mode": 0,
+   "deinterlace_field_order": 0,
+   "monitoring_type": 0,
+   "private_settings": {}
+  },
+  {
+   "name": "Be Right Back",
+   "uuid": "684ea6ae-d8f8-52a1-91c3-08b0e351ade9",
+   "id": "scene",
+   "versioned_id": "scene",
+   "settings": {
+    "custom_size": false,
+    "id_counter": 1,
+    "items": [
+     {
+      "name": "Overlay · Be Right Back",
+      "source_uuid": "9459b48b-65bd-51c4-937a-e5dafc472e5d",
+      "visible": true,
+      "locked": true,
+      "rot": 0.0,
+      "pos": {
+       "x": 0.0,
+       "y": 0.0
+      },
+      "scale": {
+       "x": 1.0,
+       "y": 1.0
+      },
+      "align": 5,
+      "bounds_type": 0,
+      "bounds_align": 0,
+      "bounds_crop": false,
+      "bounds": {
+       "x": 0.0,
+       "y": 0.0
+      },
+      "crop_left": 0,
+      "crop_top": 0,
+      "crop_right": 0,
+      "crop_bottom": 0,
+      "id": 1,
+      "group_item_backup": false,
+      "scale_filter": "disable",
+      "blend_method": "default",
+      "blend_type": "normal",
+      "show_transition": {
+       "duration": 0
+      },
+      "hide_transition": {
+       "duration": 0
+      },
+      "private_settings": {}
+     }
+    ]
+   },
+   "mixers": 0,
+   "sync": 0,
+   "flags": 0,
+   "volume": 1.0,
+   "balance": 0.5,
+   "enabled": true,
+   "muted": false,
+   "push-to-mute": false,
+   "push-to-mute-delay": 0,
+   "push-to-talk": false,
+   "push-to-talk-delay": 0,
+   "hotkeys": {},
+   "deinterlace_mode": 0,
+   "deinterlace_field_order": 0,
+   "monitoring_type": 0,
+   "private_settings": {}
+  },
+  {
+   "name": "Final Piece",
+   "uuid": "d080960a-3eb7-5b78-a835-472feb09204a",
+   "id": "scene",
+   "versioned_id": "scene",
+   "settings": {
+    "custom_size": false,
+    "id_counter": 2,
+    "items": [
+     {
+      "name": "Overlay · Final Piece",
+      "source_uuid": "ba69ba26-a10a-566f-9a11-6a4f4b9c7c09",
+      "visible": true,
+      "locked": true,
+      "rot": 0.0,
+      "pos": {
+       "x": 0.0,
+       "y": 0.0
+      },
+      "scale": {
+       "x": 1.0,
+       "y": 1.0
+      },
+      "align": 5,
+      "bounds_type": 0,
+      "bounds_align": 0,
+      "bounds_crop": false,
+      "bounds": {
+       "x": 0.0,
+       "y": 0.0
+      },
+      "crop_left": 0,
+      "crop_top": 0,
+      "crop_right": 0,
+      "crop_bottom": 0,
+      "id": 1,
+      "group_item_backup": false,
+      "scale_filter": "disable",
+      "blend_method": "default",
+      "blend_type": "normal",
+      "show_transition": {
+       "duration": 0
+      },
+      "hide_transition": {
+       "duration": 0
+      },
+      "private_settings": {}
+     },
+     {
+      "name": "⚙ Page Cam",
+      "source_uuid": "f3985d00-3f29-530b-b200-e5b1a1e960d2",
+      "visible": true,
+      "locked": false,
+      "rot": 0.0,
+      "pos": {
+       "x": 240.0,
+       "y": 120.0
+      },
+      "scale": {
+       "x": 1.0,
+       "y": 1.0
+      },
+      "align": 5,
+      "bounds_type": 2,
+      "bounds_align": 0,
+      "bounds_crop": false,
+      "bounds": {
+       "x": 1440.0,
+       "y": 810.0
+      },
+      "crop_left": 0,
+      "crop_top": 0,
+      "crop_right": 0,
+      "crop_bottom": 0,
+      "id": 2,
+      "group_item_backup": false,
+      "scale_filter": "disable",
+      "blend_method": "default",
+      "blend_type": "normal",
+      "show_transition": {
+       "duration": 0
+      },
+      "hide_transition": {
+       "duration": 0
+      },
+      "private_settings": {}
+     }
+    ]
+   },
+   "mixers": 0,
+   "sync": 0,
+   "flags": 0,
+   "volume": 1.0,
+   "balance": 0.5,
+   "enabled": true,
+   "muted": false,
+   "push-to-mute": false,
+   "push-to-mute-delay": 0,
+   "push-to-talk": false,
+   "push-to-talk-delay": 0,
+   "hotkeys": {},
+   "deinterlace_mode": 0,
+   "deinterlace_field_order": 0,
+   "monitoring_type": 0,
+   "private_settings": {}
+  },
+  {
+   "name": "Ending",
+   "uuid": "005947f2-d1f7-5d7f-806d-af52b2536cae",
+   "id": "scene",
+   "versioned_id": "scene",
+   "settings": {
+    "custom_size": false,
+    "id_counter": 1,
+    "items": [
+     {
+      "name": "Overlay · Ending",
+      "source_uuid": "bbf344a1-434a-5433-a3a3-f30009c421fa",
+      "visible": true,
+      "locked": true,
+      "rot": 0.0,
+      "pos": {
+       "x": 0.0,
+       "y": 0.0
+      },
+      "scale": {
+       "x": 1.0,
+       "y": 1.0
+      },
+      "align": 5,
+      "bounds_type": 0,
+      "bounds_align": 0,
+      "bounds_crop": false,
+      "bounds": {
+       "x": 0.0,
+       "y": 0.0
+      },
+      "crop_left": 0,
+      "crop_top": 0,
+      "crop_right": 0,
+      "crop_bottom": 0,
+      "id": 1,
+      "group_item_backup": false,
+      "scale_filter": "disable",
+      "blend_method": "default",
+      "blend_type": "normal",
+      "show_transition": {
+       "duration": 0
+      },
+      "hide_transition": {
+       "duration": 0
+      },
+      "private_settings": {}
+     }
+    ]
+   },
+   "mixers": 0,
+   "sync": 0,
+   "flags": 0,
+   "volume": 1.0,
+   "balance": 0.5,
+   "enabled": true,
+   "muted": false,
+   "push-to-mute": false,
+   "push-to-mute-delay": 0,
+   "push-to-talk": false,
+   "push-to-talk-delay": 0,
+   "hotkeys": {},
+   "deinterlace_mode": 0,
+   "deinterlace_field_order": 0,
+   "monitoring_type": 0,
+   "private_settings": {}
+  }
+ ],
+ "groups": [],
+ "quick_transitions": [
+  {
+   "name": "Cut",
+   "duration": 300,
+   "hotkeys": [],
+   "id": 1,
+   "fade_to_black": false
+  },
+  {
+   "name": "Fade",
+   "duration": 300,
+   "hotkeys": [],
+   "id": 2,
+   "fade_to_black": false
+  },
+  {
+   "name": "Fade",
+   "duration": 300,
+   "hotkeys": [],
+   "id": 3,
+   "fade_to_black": true
+  }
+ ],
+ "transitions": [],
+ "saved_projectors": [],
+ "current_transition": "Fade",
+ "transition_duration": 400,
+ "preview_locked": false,
+ "scaling_enabled": false,
+ "scaling_level": 0,
+ "scaling_off_x": 0.0,
+ "scaling_off_y": 0.0,
+ "modules": {},
+ "version": 2
+}
