@@ -5,6 +5,8 @@
 :root{--ink:#151515;--ink2:#1c1c1c;--paper:#f5f4f0;--red:#c0392b;--grey:#a9a9a4}
 *{box-sizing:border-box}
 html,body{margin:0;width:1920px;height:1080px;overflow:hidden;font-family:Inter,Arial,sans-serif;color:var(--paper)}
+body.v{width:1080px;height:1920px}
+.panel{background:rgba(21,21,21,.88);padding:18px 22px}
 body.bg{background:var(--ink)}
 body.clear{background:transparent}
 .abs{position:absolute}

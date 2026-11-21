@@ -35,5 +35,20 @@ BEFORE EACH STREAM
   countdownMinutes and nextStream, save. In OBS right-click any overlay > Refresh.
 - Update the YouTube Chat video ID (step 5).
 
+VERTICAL (FACEBOOK / INSTAGRAM LIVE, 1080x1920)
+- Import "Ooz Studio Ink - Vertical for Facebook + Instagram Live (...).json" the same way. It's
+  its own scene collection: Starting Soon, Drawing, Just Chatting, Be Right Back, Final Piece, Ending.
+- Make an OBS profile for it so the resolution switches by itself: Profile > New > "Vertical",
+  then Settings > Video: Base and Output 1080x1920. Switch profile + scene collection together.
+- Add your cameras once in its own Page Cam / Face Cam scenes (Fit to screen). Turn your phone or
+  camera upright for the page if you can: it fills the whole vertical screen.
+- No chat window: Facebook and Instagram show the comments over the stream themselves, so the
+  bottom third of the screen is kept clear for them, and the top bar sits under their header.
+- Facebook: Live Producer (facebook.com/live/producer) > Streaming software > copy the stream key
+  into OBS Settings > Stream (Service: Facebook Live, or Custom).
+- Instagram: Instagram Live Producer (needs a professional account): on instagram.com on a computer
+  > Create > Live video > copy the URL and stream key into Settings > Stream > Custom.
+- Both at once needs a multistream plugin (e.g. "Multiple RTMP outputs") or a service like Restream.
+
 Everything is plain HTML in overlays/, so colors and text can be changed any time.
 To rebuild this package: python obs/make_obs.py (in the Ooz-Commission repo).

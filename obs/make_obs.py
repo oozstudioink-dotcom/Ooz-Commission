@@ -65,6 +65,8 @@ STYLE = """@font-face{font-family:Anton;src:url(assets/fonts/Anton-Regular.ttf)}
 :root{--ink:#151515;--ink2:#1c1c1c;--paper:#f5f4f0;--red:#c0392b;--grey:#a9a9a4}
 *{box-sizing:border-box}
 html,body{margin:0;width:1920px;height:1080px;overflow:hidden;font-family:Inter,Arial,sans-serif;color:var(--paper)}
+body.v{width:1080px;height:1920px}
+.panel{background:rgba(21,21,21,.88);padding:18px 22px}
 body.bg{background:var(--ink)}
 body.clear{background:transparent}
 .abs{position:absolute}
@@ -206,6 +208,21 @@ BEFORE EACH STREAM
 - Open overlays/config.js in Notepad / TextEdit, change topic (e.g. "Inking Sasuke Uchiha"),
   countdownMinutes and nextStream, save. In OBS right-click any overlay > Refresh.
 - Update the YouTube Chat video ID (step 5).
+
+VERTICAL (FACEBOOK / INSTAGRAM LIVE, 1080x1920)
+- Import "Ooz Studio Ink - Vertical for Facebook + Instagram Live (...).json" the same way. It's
+  its own scene collection: Starting Soon, Drawing, Just Chatting, Be Right Back, Final Piece, Ending.
+- Make an OBS profile for it so the resolution switches by itself: Profile > New > "Vertical",
+  then Settings > Video: Base and Output 1080x1920. Switch profile + scene collection together.
+- Add your cameras once in its own Page Cam / Face Cam scenes (Fit to screen). Turn your phone or
+  camera upright for the page if you can: it fills the whole vertical screen.
+- No chat window: Facebook and Instagram show the comments over the stream themselves, so the
+  bottom third of the screen is kept clear for them, and the top bar sits under their header.
+- Facebook: Live Producer (facebook.com/live/producer) > Streaming software > copy the stream key
+  into OBS Settings > Stream (Service: Facebook Live, or Custom).
+- Instagram: Instagram Live Producer (needs a professional account): on instagram.com on a computer
+  > Create > Live video > copy the URL and stream key into Settings > Stream > Custom.
+- Both at once needs a multistream plugin (e.g. "Multiple RTMP outputs") or a service like Restream.
 
 Everything is plain HTML in overlays/, so colors and text can be changed any time.
 To rebuild this package: python obs/make_obs.py (in the Ooz-Commission repo).
@@ -402,13 +419,114 @@ def collection(root: str) -> dict:
             "scaling_off_y": 0.0, "modules": {}, "version": 2}
 
 
+# ------------------------------------------------------------------ vertical (Facebook / Instagram Live)
+# 1080x1920. On phones, Facebook and Instagram draw their own header over the top ~220 px and the
+# comments over the bottom third, so the overlays sit just under the header and keep the bottom clear.
+# Comments come from the platform itself, so there is no chat source here.
+VW, VH = 1080, 1920
+V_BRB_VIDEO = (0, 860, 1080, 1060)
+
+
+def vtop(kicker: str = "") -> str:
+    """The small bar under the phone header: mark, LIVE, topic, then the rotating socials line."""
+    k = f'<span class="kicker">{kicker}</span>' if kicker else '<span class="topic" style="font-size:24px" data-ooz="topic"></span>'
+    return f"""<div class="abs panel" style="left:30px;top:230px;width:1020px">
+  <div style="display:flex;align-items:center;gap:16px"><img src="assets/mark.svg" style="width:48px;height:48px">
+    <span class="live"><i></i>Live</span>{k}</div>
+  <div class="rot" style="margin-top:14px;width:976px"></div></div>"""
+
+
+def vpages() -> dict[str, str]:
+    out = {}
+    out["v-starting.html"] = page("bg v", f"""
+<div class="art-bg" style="background-image:url(assets/art/01-samurai.jpg)"></div>
+<div class="abs" style="inset:0;background:linear-gradient(180deg,var(--ink) 30%,rgba(21,21,21,.55) 75%,var(--ink))"></div>
+<div class="abs" style="left:80px;top:250px">{BRAND}</div>
+<div class="abs" style="left:80px;top:430px;width:920px">
+  <div class="kicker">The stream starts in</div>
+  <div class="big" style="font-size:200px;margin-top:14px">Starting<br>soon</div>
+  <div class="rule" style="width:180px;margin:36px 0 30px"></div>
+  <div class="big" data-countdown style="font-size:140px;color:var(--red)">5:00</div>
+  <div class="topic" style="margin-top:28px"><span class="kicker" style="margin-right:16px">Today</span><span data-ooz="topic"></span></div>
+  <div class="schedule" style="font:600 24px Inter;line-height:1.6;margin-top:44px;color:var(--grey)"></div>
+  <div style="margin-top:36px"><div class="pill">Commissions open</div>
+    <div class="link" style="margin-top:12px;font-size:22px" data-ooz="commissionLink"></div></div>
+</div>""", "Starting Soon (vertical)")
+    out["v-drawing.html"] = page("clear v", vtop(), "Drawing (vertical)")
+    out["v-chatting.html"] = page("clear v", vtop("Just chatting"), "Just Chatting (vertical)")
+    out["v-reveal.html"] = page("clear v", """<div class="abs panel" style="left:30px;top:230px;width:1020px;display:flex;
+  justify-content:space-between;align-items:center"><div class="big" style="font-size:54px">The final piece</div>
+  <div class="pill">Commissions open</div></div>
+<div class="abs panel" style="left:30px;top:350px;width:1020px;padding:12px 22px"><div class="link" style="font-size:22px"
+  data-ooz="commissionLink"></div></div>""", "Final Piece (vertical)")
+    arts = "".join(f'<img src="assets/art/{p.name}">' for p in sorted((ROOT / "portfolio").glob("*.jpg")))
+    x, y, w, h = V_BRB_VIDEO
+    out["v-brb.html"] = page("bg v", f"""
+<div class="slides" data-preview-only style="left:{x}px;top:{y}px;width:{w}px;height:{h}px">{arts}</div>
+<div class="abs" data-preview-only style="left:0;top:{y}px;width:{w}px;height:220px;background:linear-gradient(180deg,var(--ink),rgba(21,21,21,0))"></div>
+<div class="abs" style="left:80px;top:250px">{BRAND}</div>
+<div class="abs" style="left:80px;top:410px">
+  <div class="kicker">Short break</div>
+  <div class="big" style="font-size:170px;margin-top:14px">Be right back</div>
+  <div class="topic" style="color:var(--grey);margin-top:24px">From the sketchbook while you wait</div>
+</div>""", "Be Right Back (vertical)")
+    out["v-ending.html"] = page("bg v", f"""
+<div class="art-bg" style="background-image:url(assets/art/05-the-clash.jpg)"></div>
+<div class="abs" style="inset:0;background:linear-gradient(180deg,var(--ink) 35%,rgba(21,21,21,.6) 80%,var(--ink))"></div>
+<div class="abs" style="left:80px;top:250px">{BRAND}</div>
+<div class="abs" style="left:80px;top:420px;width:920px">
+  <div class="kicker">That's it for today</div>
+  <div class="big" style="font-size:180px;margin-top:14px">Thanks for<br>watching</div>
+  <div class="rule" style="width:180px;margin:34px 0 26px"></div>
+  <div class="topic" data-ooz="nextStream"></div>
+  <div style="margin-top:34px"><div class="pill">Commissions open</div>
+    <div class="link" style="margin-top:12px;font-size:22px" data-ooz="commissionLink"></div></div>
+  <div class="socials" style="margin-top:40px"></div>
+</div>""", "Ending (vertical)")
+    return out
+
+
+def vcollection(root: str) -> dict:
+    ov = lambda f: f"{root}/overlays/{f}"  # noqa: E731
+    browser = lambda name, f, restart=False: source(name, "browser_source", {  # noqa: E731
+        "is_local_file": True, "local_file": ov(f), "width": VW, "height": VH, "fps_custom": False,
+        "reroute_audio": False, "restart_when_active": restart, "shutdown": False,
+        "css": "body { background-color: rgba(0, 0, 0, 0); margin: 0px auto; overflow: hidden; }"})
+    sources = [
+        browser("Overlay · Starting Soon", "v-starting.html", restart=True),
+        browser("Overlay · Drawing", "v-drawing.html"),
+        browser("Overlay · Just Chatting", "v-chatting.html"),
+        browser("Overlay · Be Right Back", "v-brb.html"),
+        browser("Overlay · Final Piece", "v-reveal.html"),
+        browser("Overlay · Ending", "v-ending.html"),
+        source("Sketchbook Slideshow", "ffmpeg_source", {
+            "local_file": ov("assets/sketchbook-slideshow-vertical.mp4"), "is_local_file": True, "looping": True,
+            "restart_on_activate": False, "hw_decode": True, "close_when_inactive": True, "clear_on_media_end": False}),
+        scene("⚙ Page Cam", []),
+        scene("⚙ Face Cam", []),
+    ]
+    scenes = [
+        ("Starting Soon", [("Overlay · Starting Soon", None)]),
+        ("Drawing", [("⚙ Page Cam", None), ("Overlay · Drawing", None)]),
+        ("Just Chatting", [("⚙ Face Cam", None), ("Overlay · Just Chatting", None)]),
+        ("Be Right Back", [("Overlay · Be Right Back", None), ("Sketchbook Slideshow", V_BRB_VIDEO)]),
+        ("Final Piece", [("⚙ Page Cam", None), ("Overlay · Final Piece", None)]),
+        ("Ending", [("Overlay · Ending", None)]),
+    ]
+    out = collection(root)                       # same transitions and settings as the landscape one
+    sources += [scene(n, its) for n, its in scenes]
+    out.update(name="Ooz Studio Ink (Vertical)", sources=sources,
+               scene_order=[{"name": n} for n, _ in scenes] + [{"name": "⚙ Page Cam"}, {"name": "⚙ Face Cam"}])
+    return out
+
+
 def build() -> None:
     if OUT.exists():
         shutil.rmtree(OUT)
     ovl = OUT / "overlays"
     (ovl / "assets" / "fonts").mkdir(parents=True)
     (ovl / "assets" / "art").mkdir(parents=True)
-    for name, html in pages().items():
+    for name, html in {**pages(), **vpages()}.items():
         (ovl / name).write_text(html)
     (ovl / "style.css").write_text(STYLE)
     (ovl / "app.js").write_text(APP_JS)
@@ -427,13 +545,18 @@ def build() -> None:
         img.thumbnail((1600, 1600))
         img.save(ovl / "assets" / "art" / p.name, quality=88)
     slideshow(sorted((ovl / "assets" / "art").glob("*.jpg")), ovl / "assets" / "sketchbook-slideshow.mp4")
+    slideshow(sorted((ovl / "assets" / "art").glob("*.jpg")), ovl / "assets" / "sketchbook-slideshow-vertical.mp4",
+              size=V_BRB_VIDEO[2:], edge_side="top")
     (OUT / "READ ME FIRST.txt").write_text(README)
     for os_name, root in INSTALL.items():
         (OUT / f"Ooz Studio Ink - OBS scenes ({os_name}).json").write_text(
             json.dumps(collection(root), indent=1, ensure_ascii=False))
+        (OUT / f"Ooz Studio Ink - Vertical for Facebook + Instagram Live ({os_name}).json").write_text(
+            json.dumps(vcollection(root), indent=1, ensure_ascii=False))
 
 
-def slideshow(arts: list[Path], out: Path, hold: float = 7.0, fade: float = 1.0, size=(1000, 1080)) -> Path:
+def slideshow(arts: list[Path], out: Path, hold: float = 7.0, fade: float = 1.0, size=(1000, 1080),
+              edge_side: str = "left") -> Path:
     """The Be Right Back loop: each drawing for `hold` seconds, crossfading into the next, the last
     back into the first (a seamless loop). Light to play: 24 fps H.264, no sound, hardware-decoded,
     and OBS closes it while the scene isn't showing."""
@@ -452,7 +575,8 @@ def slideshow(arts: list[Path], out: Path, hold: float = 7.0, fade: float = 1.0,
         last = f"x{i}"
     # cut from 1 s in to the moment the last drawing has faded back into the first: a seamless loop
     loop = f"[{last}]trim=start={fade}:end={fade + len(arts) * hold},setpts=PTS-STARTPTS[loop];"
-    edge = (f"color=c=0x151515:s=220x{h}:r=24,format=rgba,geq=r=21:g=21:b=21:a='255*(1-X/W)'[edge];"
+    strip, ramp = (f"220x{h}", "1-X/W") if edge_side == "left" else (f"{w}x220", "1-Y/H")
+    edge = (f"color=c=0x151515:s={strip}:r=24,format=rgba,geq=r=21:g=21:b=21:a='255*({ramp})'[edge];"
             f"[loop][edge]overlay=0:0:shortest=1[v]")
     subprocess.run(cmd + ["-filter_complex", prep + chain + loop + edge, "-map", "[v]", "-t", f"{len(arts) * hold}",
                           "-r", "24", "-c:v", "libx264", "-preset", "slow", "-crf", "24", "-tune", "stillimage",
