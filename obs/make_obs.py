@@ -135,6 +135,7 @@ $('[data-countdown]').forEach(function(e){
   tick(); setInterval(tick,1000);
 });
 // slideshow (Be Right Back)
+if(!Q) $('[data-preview-only]').forEach(function(e){e.remove();});   // in OBS the video plays here
 $('.slides').forEach(function(e){var imgs=e.querySelectorAll('img'), i=0; if(!imgs.length) return;
   imgs[0].className='on'; setInterval(function(){imgs[i].className=''; i=(i+1)%imgs.length; imgs[i].className='on';},7000);});
 // no face camera: the studio mark fills its window
@@ -177,7 +178,7 @@ Scenes
   Drawing         page camera big, face camera, YouTube chat, commissions + rotating socials
   Drawing Focus   page camera full screen with a small LIVE badge and rotating socials
   Just Chatting   face camera big, chat big
-  Be Right Back   slideshow of your sketchbook pieces
+  Be Right Back   a looping video of your sketchbook pieces (7 s each, crossfading)
   Final Piece     the page camera framed for the reveal, with the commission link
   Ending          thanks, next stream, every social, commission link, schedule
 
@@ -282,8 +283,8 @@ def pages() -> dict[str, str]:
 
     arts = "".join(f'<img src="assets/art/{p.name}">' for p in sorted((ROOT / "portfolio").glob("*.jpg")))
     out["brb.html"] = page("bg", f"""
-<div class="slides" style="left:920px;top:0;width:1000px;height:1080px">{arts}</div>
-<div class="abs" style="left:880px;top:0;width:260px;height:1080px;background:linear-gradient(90deg,var(--ink),rgba(21,21,21,0))"></div>
+<div class="slides" data-preview-only style="left:920px;top:0;width:1000px;height:1080px">{arts}</div>
+<div class="abs" data-preview-only style="left:920px;top:0;width:220px;height:1080px;background:linear-gradient(90deg,var(--ink),rgba(21,21,21,0))"></div>
 <div class="abs" style="left:120px;top:120px">{BRAND}</div>
 <div class="abs" style="left:120px;top:360px">
   <div class="kicker">Short break</div>
@@ -365,6 +366,10 @@ def collection(root: str) -> dict:
         browser("Overlay · Just Chatting", "chatting.html"),
         browser("Overlay · Be Right Back", "brb.html"),
         browser("Overlay · Final Piece", "reveal.html"),
+        source("Sketchbook Slideshow", "ffmpeg_source", {
+            "local_file": f"{root}/overlays/assets/sketchbook-slideshow.mp4", "is_local_file": True,
+            "looping": True, "restart_on_activate": False, "hw_decode": True, "close_when_inactive": True,
+            "clear_on_media_end": False}),
         browser("Overlay · Ending", "ending.html"),
         source("YouTube Chat", "browser_source", {
             "is_local_file": False, "url": "https://www.youtube.com/live_chat?is_popout=1&v=PASTE_YOUR_VIDEO_ID",
@@ -381,7 +386,7 @@ def collection(root: str) -> dict:
         ("Drawing Focus", [("\u2699 Page Cam", LAYOUT["focus"]["page"]), ("Overlay · Drawing Focus", None)]),
         ("Just Chatting", [("Overlay · Just Chatting", None), ("\u2699 Face Cam", c["face"]),
                            ("YouTube Chat", c["chat"])]),
-        ("Be Right Back", [("Overlay · Be Right Back", None)]),
+        ("Be Right Back", [("Overlay · Be Right Back", None), ("Sketchbook Slideshow", (920, 0, 1000, 1080))]),
         ("Final Piece", [("Overlay · Final Piece", None), ("\u2699 Page Cam", r["page"])]),
         ("Ending", [("Overlay · Ending", None)]),
     ]
@@ -421,10 +426,38 @@ def build() -> None:
         img = Image.open(p).convert("RGB")
         img.thumbnail((1600, 1600))
         img.save(ovl / "assets" / "art" / p.name, quality=88)
+    slideshow(sorted((ovl / "assets" / "art").glob("*.jpg")), ovl / "assets" / "sketchbook-slideshow.mp4")
     (OUT / "READ ME FIRST.txt").write_text(README)
     for os_name, root in INSTALL.items():
         (OUT / f"Ooz Studio Ink - OBS scenes ({os_name}).json").write_text(
             json.dumps(collection(root), indent=1, ensure_ascii=False))
+
+
+def slideshow(arts: list[Path], out: Path, hold: float = 7.0, fade: float = 1.0, size=(1000, 1080)) -> Path:
+    """The Be Right Back loop: each drawing for `hold` seconds, crossfading into the next, the last
+    back into the first (a seamless loop). Light to play: 24 fps H.264, no sound, hardware-decoded,
+    and OBS closes it while the scene isn't showing."""
+    import subprocess
+    w, h = size
+    seq = arts + arts[:1]
+    cmd = ["ffmpeg", "-v", "error", "-y"]
+    for a in seq:
+        cmd += ["-loop", "1", "-t", f"{hold + fade}", "-framerate", "24", "-i", str(a)]
+    # each picture covers the window; the left edge fades into the page colour like the old slideshow
+    prep = "".join(f"[{i}:v]scale={w}:{h}:force_original_aspect_ratio=increase,crop={w}:{h},setsar=1,format=yuv420p[p{i}];"
+                   for i in range(len(seq)))
+    chain, last = "", "p0"
+    for i in range(1, len(seq)):
+        chain += f"[{last}][p{i}]xfade=transition=fade:duration={fade}:offset={i * hold}[x{i}];"
+        last = f"x{i}"
+    # cut from 1 s in to the moment the last drawing has faded back into the first: a seamless loop
+    loop = f"[{last}]trim=start={fade}:end={fade + len(arts) * hold},setpts=PTS-STARTPTS[loop];"
+    edge = (f"color=c=0x151515:s=220x{h}:r=24,format=rgba,geq=r=21:g=21:b=21:a='255*(1-X/W)'[edge];"
+            f"[loop][edge]overlay=0:0:shortest=1[v]")
+    subprocess.run(cmd + ["-filter_complex", prep + chain + loop + edge, "-map", "[v]", "-t", f"{len(arts) * hold}",
+                          "-r", "24", "-c:v", "libx264", "-preset", "slow", "-crf", "24", "-tune", "stillimage",
+                          "-pix_fmt", "yuv420p", "-movflags", "+faststart", "-an", str(out)], check=True)
+    return out
 
 
 def zip_it() -> Path:

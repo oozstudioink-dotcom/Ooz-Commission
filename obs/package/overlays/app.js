@@ -25,6 +25,7 @@ $('[data-countdown]').forEach(function(e){
   tick(); setInterval(tick,1000);
 });
 // slideshow (Be Right Back)
+if(!Q) $('[data-preview-only]').forEach(function(e){e.remove();});   // in OBS the video plays here
 $('.slides').forEach(function(e){var imgs=e.querySelectorAll('img'), i=0; if(!imgs.length) return;
   imgs[0].className='on'; setInterval(function(){imgs[i].className=''; i=(i+1)%imgs.length; imgs[i].className='on';},7000);});
 // no face camera: the studio mark fills its window

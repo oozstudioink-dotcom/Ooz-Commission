@@ -6,7 +6,7 @@ Scenes
   Drawing         page camera big, face camera, YouTube chat, commissions + rotating socials
   Drawing Focus   page camera full screen with a small LIVE badge and rotating socials
   Just Chatting   face camera big, chat big
-  Be Right Back   slideshow of your sketchbook pieces
+  Be Right Back   a looping video of your sketchbook pieces (7 s each, crossfading)
   Final Piece     the page camera framed for the reveal, with the commission link
   Ending          thanks, next stream, every social, commission link, schedule
 
