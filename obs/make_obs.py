@@ -69,6 +69,7 @@ html,body{margin:0;width:1920px;height:1080px;overflow:hidden;font-family:Inter,
 body.v{width:1080px;height:1920px}
 .panel{background:rgba(21,21,21,.88);padding:18px 22px}
 body.bg{background:var(--ink)}
+body.bg::after{content:"";position:fixed;inset:0;pointer-events:none;opacity:.045;background-image:url(\"data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='300' height='300'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 1  0 0 0 0 1  0 0 0 0 1  0 0 0 .55 0'/></filter><rect width='300' height='300' filter='url(%23n)'/></svg>\")}
 body.clear{background:transparent}
 .abs{position:absolute}
 .win{position:absolute;background:#0d0d0d;outline:3px solid var(--paper);display:flex;align-items:center;
@@ -88,7 +89,7 @@ body.clear{background:transparent}
 .kicker{font:600 16px Inter;letter-spacing:.32em;color:var(--grey);text-transform:uppercase}
 .topic{font:600 28px Inter}
 .big{font-family:Anton;line-height:.95;letter-spacing:.01em;text-transform:uppercase}
-.rule{height:6px;background:var(--red)}
+.rule{height:16px;background:url(\"data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 200 16' preserveAspectRatio='none'><path d='M2 9 C 30 3, 80 4, 120 5 S 185 6, 198 3 L 197 7 C 170 11, 120 12, 70 13 S 15 14, 4 13 Z' fill='%23c0392b'/><path d='M40 12 C 80 11, 140 10, 175 9' stroke='%23c0392b' stroke-width='.8' fill='none' opacity='.7'/></svg>\") no-repeat center/100% 100%}
 .pill{display:inline-block;background:var(--red);font:700 18px Inter;letter-spacing:.2em;padding:9px 16px 8px;
   text-transform:uppercase;line-height:1}
 .link{font:600 24px Inter;color:var(--paper);white-space:nowrap}
@@ -110,7 +111,6 @@ body.clear{background:transparent}
 .slides img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;opacity:0;transition:opacity 1.6s}
 .slides img.on{opacity:1}
 /* manga touches: screentone corners, faint speed lines, inked panel frames, sound effects */
-@font-face{font-family:SFX;src:url(assets/fonts/ooz-sfx.ttf)}
 .tone{position:absolute;pointer-events:none;background-image:radial-gradient(circle,var(--paper) 1.7px,transparent 2.2px);
   background-size:12px 12px;opacity:.13}
 .tone.red{background-image:radial-gradient(circle,var(--red) 2.2px,transparent 2.7px);opacity:.5}
@@ -125,18 +125,8 @@ body.clear{background:transparent}
 .tag,.live,.pill{transform:skewX(-7deg)}
 .narr{display:inline-block;background:var(--ink);border:2px solid var(--paper);padding:9px 16px 8px;transform:skewX(-7deg);
   font:700 16px Inter;letter-spacing:.3em;color:var(--paper);text-transform:uppercase;line-height:1}
-.sfx{position:absolute;font-family:SFX;color:var(--red);line-height:1;white-space:nowrap;pointer-events:none;
-  -webkit-text-stroke:12px var(--ink);paint-order:stroke fill;filter:drop-shadow(0 0 0 var(--paper))
-  drop-shadow(3px 0 0 var(--paper)) drop-shadow(-3px 0 0 var(--paper)) drop-shadow(0 3px 0 var(--paper)) drop-shadow(0 -3px 0 var(--paper))}
 """
 
-# The sound effects, one per scene (katakana, the way they're lettered in manga)
-SFX_CHARS = "ドキカリワイシーンジャ！"
-
-
-def sfx(text: str, x: int, y: int, size: int, rot: float = -8, title: str = "") -> str:
-    return (f'<div class="sfx" title="{title}" style="left:{x}px;top:{y}px;font-size:{size}px;'
-            f'transform:rotate({rot}deg)">{text}</div>')
 
 APP_JS = """(function(){
 var C=window.OOZ||{}, Q=location.search.indexOf('preview')>=0;
@@ -281,7 +271,6 @@ def pages() -> dict[str, str]:
 <div class="art-bg" style="background-image:url(assets/art/01-samurai.jpg);left:700px"></div><div class="fade-left"></div>
 <div class="speed" style="--cx:380px;--cy:640px"></div><div class="tone bl"></div><div class="tone red tr"></div>
 <div class="abs" style="left:140px;top:120px">{BRAND}</div>
-{sfx("ドキドキ", 1290, 190, 112, -10, "doki doki: heart pounding")}
 <div class="abs" style="left:140px;top:300px">
   <div class="narr">The stream starts in…</div>
   <div class="big" style="font-size:190px;margin-top:14px">Starting soon</div>
@@ -299,7 +288,6 @@ def pages() -> dict[str, str]:
 {win(d["face"], "Face camera", "face")}
 {win(d["chat"], "YouTube chat", "chat")}
 <div class="tone br" style="opacity:.09"></div>
-{sfx("カリカリ", 1250, 2, 66, -9, "kari kari: the scratch of the pen")}
 <div class="abs" style="left:32px;top:832px;width:1376px;height:216px;display:flex;justify-content:space-between;align-items:center">
   <div>{BRAND}
     <div style="display:flex;align-items:center;gap:18px;margin-top:20px"><span class="live"><i></i>Live</span>
@@ -316,7 +304,6 @@ def pages() -> dict[str, str]:
 {win(n["page"], "Page camera<br>(add it in the scene &ldquo;&#9881; Page Cam&rdquo;)", "page")}
 {win(n["chat"], "YouTube chat", "chat")}
 <div class="tone br" style="opacity:.09"></div>
-{sfx("カリカリ", 1250, 2, 66, -9, "kari kari: the scratch of the pen")}
 <div class="abs" style="left:{cx}px;top:{cy}px;width:{cw}px;height:{ch}px;background:var(--ink2);outline:3px solid var(--paper);
   display:flex;flex-direction:column;justify-content:center;padding:0 30px">
   <div class="brand" style="gap:16px"><img src="assets/mark.svg" style="width:64px;height:64px"><div class="name" style="font-size:40px">OOZ STUDIO INK</div></div>
@@ -342,7 +329,6 @@ def pages() -> dict[str, str]:
 {win(c["face"], "Face camera<br>(add it in the scene &ldquo;&#9881; Face Cam&rdquo;)", "face")}
 {win(c["chat"], "YouTube chat", "chat")}
 <div class="tone bl" style="opacity:.09"></div>
-{sfx("ワイワイ", 1110, 4, 70, -8, "wai wai: lively chatter")}
 <div class="abs" style="left:32px;top:790px;width:1280px;height:258px;display:flex;justify-content:space-between;align-items:center">
   <div>{BRAND}
     <div style="display:flex;align-items:center;gap:18px;margin-top:20px"><span class="live"><i></i>Live</span>
@@ -358,9 +344,8 @@ def pages() -> dict[str, str]:
     out["brb.html"] = page("bg", f"""
 <div class="slides" data-preview-only style="left:920px;top:0;width:1000px;height:1080px">{arts}</div>
 <div class="abs" data-preview-only style="left:920px;top:0;width:220px;height:1080px;background:linear-gradient(90deg,var(--ink),rgba(21,21,21,0))"></div>
-<div class="tone bl"></div>
+<div class="speed" style="--cx:420px;--cy:560px;opacity:.45"></div><div class="tone bl"></div>
 <div class="abs" style="left:120px;top:120px">{BRAND}</div>
-{sfx("シーン", 560, 250, 104, -7, "shiin: the silence")}
 <div class="abs" style="left:120px;top:360px">
   <div class="narr">Short break…</div>
   <div class="big" style="font-size:170px;margin-top:14px">Be right<br>back</div>
@@ -375,7 +360,6 @@ def pages() -> dict[str, str]:
   <div class="topic" data-ooz="topic"></div></div>
 <div class="speed" style="--cx:960px;--cy:525px;opacity:.8"></div><div class="tone tr" style="opacity:.1"></div><div class="tone bl" style="opacity:.1"></div>
 {win(r["page"], "Page camera", "page")}
-{sfx("ジャーン！", 1470, 122, 80, -8, "jaan: ta-da")}
 <div class="abs" style="left:240px;top:960px;width:1440px;display:flex;justify-content:space-between;align-items:center">
   <div class="brand" style="gap:14px"><img src="assets/mark.svg" style="width:52px;height:52px"><div class="name" style="font-size:34px">OOZ STUDIO INK</div></div>
   <div style="display:flex;align-items:center;gap:20px"><div class="pill">Commissions open</div>
@@ -386,7 +370,6 @@ def pages() -> dict[str, str]:
 <div class="art-bg" style="background-image:url(assets/art/05-the-clash.jpg);left:760px"></div><div class="fade-left"></div>
 <div class="speed" style="--cx:420px;--cy:560px"></div><div class="tone bl"></div><div class="tone red tr"></div>
 <div class="abs" style="left:140px;top:120px">{BRAND}</div>
-{sfx("ドン！", 1130, 330, 130, -9, "don: the closing beat")}
 <div class="abs" style="left:140px;top:300px">
   <div class="narr">That's it for today…</div>
   <div class="big" style="font-size:170px;margin-top:14px">Thanks for<br>watching</div>
@@ -508,7 +491,6 @@ def vpages() -> dict[str, str]:
 <div class="abs" style="inset:0;background:linear-gradient(180deg,var(--ink) 30%,rgba(21,21,21,.55) 75%,var(--ink))"></div>
 <div class="abs" style="left:80px;top:250px">{BRAND}</div>
 <div class="tone bl"></div><div class="tone red tr" style="top:200px"></div>
-{sfx("ドキドキ", 640, 560, 96, -10, "doki doki")}
 <div class="abs" style="left:80px;top:430px;width:920px">
   <div class="narr">The stream starts in…</div>
   <div class="big" style="font-size:200px;margin-top:14px">Starting<br>soon</div>
@@ -533,7 +515,6 @@ def vpages() -> dict[str, str]:
 <div class="abs" data-preview-only style="left:0;top:{y}px;width:{w}px;height:220px;background:linear-gradient(180deg,var(--ink),rgba(21,21,21,0))"></div>
 <div class="abs" style="left:80px;top:250px">{BRAND}</div>
 <div class="tone tr" style="top:200px"></div>
-{sfx("シーン", 700, 330, 90, -7, "shiin")}
 <div class="abs" style="left:80px;top:410px">
   <div class="narr">Short break…</div>
   <div class="big" style="font-size:170px;margin-top:14px">Be right back</div>
@@ -544,7 +525,6 @@ def vpages() -> dict[str, str]:
 <div class="abs" style="inset:0;background:linear-gradient(180deg,var(--ink) 35%,rgba(21,21,21,.6) 80%,var(--ink))"></div>
 <div class="abs" style="left:80px;top:250px">{BRAND}</div>
 <div class="tone bl"></div><div class="tone red tr" style="top:200px"></div>
-{sfx("ドン！", 760, 560, 110, -9, "don")}
 <div class="abs" style="left:80px;top:420px;width:920px">
   <div class="narr">That's it for today…</div>
   <div class="big" style="font-size:180px;margin-top:14px">Thanks for<br>watching</div>
@@ -610,10 +590,6 @@ def build() -> None:
     for f in ("Inter-Medium.otf", "Inter-SemiBold.otf", "Inter-Bold.otf"):
         shutil.copy(Path("/usr/share/fonts/opentype/inter") / f, fonts)
     shutil.copy("/usr/share/doc/fonts-inter/copyright", fonts / "LICENSE-Inter.txt")
-    import subprocess
-    subprocess.run(["pyftsubset", "/usr/share/fonts/opentype/ipafont-gothic/ipag.ttf", f"--text={SFX_CHARS}",
-                    f"--output-file={fonts / 'ooz-sfx.ttf'}"], check=True)
-    shutil.copy("/usr/share/doc/fonts-ipafont-gothic/copyright", fonts / "LICENSE-IPA-Gothic.txt")
     from PIL import Image
     for p in sorted((ROOT / "portfolio").glob("*.jpg")):    # your sketchbook pieces, for Be Right Back
         img = Image.open(p).convert("RGB")
