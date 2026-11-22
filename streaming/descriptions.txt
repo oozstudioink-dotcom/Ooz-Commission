@@ -1,0 +1,43 @@
+TWITCH AND KICK: DESCRIPTIONS
+=============================
+
+BIO (both: Twitch Settings > Profile > Bio, Kick Settings > Profile > Bio)  [179 of 300 characters]
+Comic artist and character designer. I draw and ink everything by hand, live: anime and manga characters, my own designs, and lessons on the way. Commissions are open, link below.
+
+TWITCH PANELS (Channel > About > Edit Panels: one image + its text under each)
+
+[twitch-panel-about.png]
+I'm a comic artist and character designer, and Ooz Studio Ink is my one-person studio. Everything I make starts on paper: pencils first, then ink, all by hand.
+
+On stream you'll watch a whole piece come together, from the first rough lines to the final ink. Ask questions anytime: about pens, paper, anatomy, or how a panel gets built.
+
+[twitch-panel-commissions.png]  (panel link: https://oozstudioink-dotcom.github.io/Ooz-Commission/)
+Commissions are open: character designs and comic art, drawn and inked by hand.
+
+Details and the request form: https://oozstudioink-dotcom.github.io/Ooz-Commission/
+Portfolio: https://oozstudioink-dotcom.github.io/Ooz-Commission/portfolio.html
+
+[twitch-panel-schedule.png]
+New Shorts: Monday, Wednesday and Friday
+New long video: every Friday at 12 PM EST on YouTube
+Follow to get a ping when I go live.
+
+[twitch-panel-socials.png]
+YouTube: Ooz Studio Ink (paste your channel link here: YouTube > Your channel > Share > Copy link)
+Instagram: https://www.instagram.com/oozstudioink1/
+TikTok: https://www.tiktok.com/@oozstudioink1
+Facebook: https://www.facebook.com/profile.php?id=61596390966478
+X: https://x.com/OozStudioInk
+
+KICK "ABOUT ME"
+Kick has no panels: paste the bio above, then add your links under Settings > Profile > Links
+(Instagram, TikTok, YouTube, X, Facebook) and your commissions page in the About text:
+Commissions are open: character designs and comic art, drawn and inked by hand.
+
+Details and the request form: https://oozstudioink-dotcom.github.io/Ooz-Commission/
+Portfolio: https://oozstudioink-dotcom.github.io/Ooz-Commission/portfolio.html
+
+STREAM TITLE IDEAS (clean, searchable)
+- Inking [Character] from [Series] by hand | Commissions open
+- Drawing lesson: [topic] | Ask me anything about inking
+- Sketchbook session: original character designs

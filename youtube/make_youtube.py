@@ -52,7 +52,7 @@ def banner():
     sub = font("Inter-SemiBold.otf", 32)
     d.text((left, top + 240), "C O M I C   A R T   ·   C H A R A C T E R   D E S I G N", font=sub, fill=GREY)
     tag = font("Inter-Bold.otf", 28)
-    label = "NEW SHORTS MON · WED · FRI   |   LONGDRAW FRIDAYS"
+    label = "NEW SHORTS MON · WED · FRI   |   LONG VIDEO FRIDAYS"
     tw = d.textlength(label, font=tag)
     d.rectangle([left, top + 298, left + tw + 40, top + 352], fill=RED)
     d.text((left + 20, top + 309), label, font=tag, fill=PAPER)
