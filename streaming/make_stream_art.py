@@ -8,6 +8,7 @@ Run from the repo root:  python streaming/make_stream_art.py
   kick-profile.png           512x512    profile picture (Kick asks for at least 128x128, under 4 MB)
   kick-banner.png            1280x700   older Kick banner size
   kick-banner-3000x335.png   3000x335   Kick channel banner (the size Kick's upload box asks for)
+  kick-offline-banner.png    1920x1080  Kick offline screen: everything centred, safe from Kick's zoom
 """
 import importlib.util
 from pathlib import Path
@@ -80,7 +81,7 @@ def kick_wide_banner():
     """Kick's channel banner, 3000x335. The brand sits left of centre so narrower screens, which crop
     the sides, still show all of it."""
     im = Image.new("RGB", (3000, 335), BG)
-    art_right(im, "01-samurai.jpg", 1750, 520, 3.4, -560)
+    art_right(im, "01-samurai.jpg", 1880, 300, 3.4, -219)   # his face, not the hand and sword
     d = ImageDraw.Draw(im)
     m = mark(150)
     im.paste(m, (560, 92), m)
@@ -89,6 +90,49 @@ def kick_wide_banner():
     d.text((756, 214), sub, font=sf, fill=GREY)
     tag(d, 756 + d.textlength(sub, font=sf) + 36, 207, "LIVE INKING \u00b7 COMMISSIONS OPEN", 22)
     im.save(OUT / "kick-banner-3000x335.png", optimize=True)
+
+
+def kick_offline_banner():
+    """Kick zooms the offline banner to fill its player, cutting the edges. Here everything sits
+    centred inside the middle ~70%, and the art is a full-bleed background, so a crop only trims art."""
+    W_, H_ = 1920, 1080
+    im = Image.new("RGB", (W_, H_), BG)
+    art = Image.open(ROOT / "portfolio" / "05-the-clash.jpg").convert("L")
+    k = max(W_ / art.width, H_ / art.height)
+    art = art.resize((int(art.width * k), int(art.height * k)), Image.LANCZOS)
+    art = art.crop(((art.width - W_) // 2, (art.height - H_) // 2, (art.width - W_) // 2 + W_, (art.height - H_) // 2 + H_))
+    im = Image.blend(im, Image.merge("RGB", [art] * 3), 0.22)
+    shade = Image.new("L", (W_, H_), 0)                  # darker in the middle, where the words are
+    sd = ImageDraw.Draw(shade)
+    for i in range(60):
+        f = i / 60
+        sd.ellipse([W_ * (0.5 - 0.62 + 0.4 * f), H_ * (0.5 - 0.7 + 0.45 * f),
+                    W_ * (0.5 + 0.62 - 0.4 * f), H_ * (0.5 + 0.7 - 0.45 * f)], fill=int(150 * f))
+    im.paste(Image.new("RGB", (W_, H_), BG), (0, 0), shade)
+    d = ImageDraw.Draw(im)
+
+    def centred(y, text, f, fill):
+        d.text(((W_ - d.textlength(text, font=f)) / 2, y), text, font=f, fill=fill)
+
+    m = mark(96)
+    name_f = font("InterDisplay-Bold.otf", 46)
+    nw = d.textlength("OOZ STUDIO INK", font=name_f)
+    x0 = (W_ - (96 + 22 + nw)) / 2
+    im.paste(m, (int(x0), 190), m)
+    d.text((x0 + 118, 214), "OOZ STUDIO INK", font=name_f, fill=PAPER)
+    centred(340, "O F F L I N E   R I G H T   N O W", font("Inter-SemiBold.otf", 26), GREY)
+    big = font("InterDisplay-Bold.otf", 112)
+    centred(390, "SEE YOU AT", big, PAPER)
+    centred(515, "THE NEXT STREAM", big, PAPER)
+    d.rectangle([W_ / 2 - 80, 672, W_ / 2 + 80, 678], fill=RED)
+    centred(706, "Follow to get a ping when I go live.", font("Inter-SemiBold.otf", 30), PAPER)
+    centred(756, "New Shorts Mon \u00b7 Wed \u00b7 Fri  |  Long video Fridays, 12 PM EST on YouTube",
+            font("Inter-SemiBold.otf", 26), GREY)
+    label, tf = "COMMISSIONS OPEN \u00b7 OOZSTUDIOINK-DOTCOM.GITHUB.IO/OOZ-COMMISSION", 22
+    tw = d.textlength(label, font=font("Inter-Bold.otf", tf))
+    tag(d, (W_ - tw) / 2 - tf * 0.7, 822, label, tf)
+    im.save(OUT / "kick-offline-banner.png", optimize=True)
+    return im
 
 
 def offline_banner():
@@ -133,6 +177,7 @@ if __name__ == "__main__":
     kick_banner()
     kick_wide_banner()
     offline_banner()
+    kick_offline_banner()
     panels()
     for p in sorted(OUT.glob("*.png")):
         print(p.name, Image.open(p).size, f"{p.stat().st_size / 1e6:.2f} MB")
