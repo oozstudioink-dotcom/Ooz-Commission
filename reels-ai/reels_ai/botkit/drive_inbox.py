@@ -21,6 +21,29 @@ from .common import (  # noqa: F401
 
 class DriveMixin:
     # ------------------------------------------------------------------ Google Drive inbox
+    def lessons_without_shorts(self, new: list[tuple], seen: list) -> list[tuple]:
+        """Inbox recordings named for a series with shorts = false ("Hands - lesson.MOV"): no Shorts;
+        straight to Longform › <series> › <name>, ready for /longform."""
+        from ..series import match as series_match
+        rest = []
+        for src in new:
+            f, where = src[0], src[1]
+            ser = series_match(self.cfg, f["name"]) if where == "Inbox" else None
+            if not ser or ser.get("shorts", True):
+                rest.append(src)
+                continue
+            lesson = Path(f["name"]).stem
+            try:
+                self.drive.move_to(f["id"], self.drive.folder(f"Longform/{ser['folder']}/{lesson}"))
+            except Exception as e:  # noqa: BLE001 - tried again on the next look
+                print(f"warn: couldn't file the lesson {f['name']}: {str(e)[:150]}")
+                continue
+            seen.append(f["id"])
+            self.say(f"\U0001f4da {f['name']} is a lesson recording: no Shorts from it. It's in Drive \u203a Longform "
+                     f"\u203a {ser['folder'].replace('/', ' \u203a ')} \u203a {lesson}. Add more parts there, then send "
+                     f"/longform {lesson} to build the lesson video.")
+        return rest
+
     def group_parts(self, new: list[tuple]) -> list[tuple]:
         """Numbered recordings of one name uploaded to Inbox together ("Gojo 1", "Gojo 2" …): each waits
         [drive] part_wait_minutes after the newest upload of its name, so all of them arrive; then they
@@ -102,6 +125,7 @@ class DriveMixin:
         self.follow_known(sources, seen, parse_name)
         new = self.group_parts([src for src in sources if src[0]["id"] not in seen])
         labels: dict[str, str] = {}
+        new = self.lessons_without_shorts(new, seen)
         for f, where, keep, project in new:
             meta = f.get("videoMediaMetadata") or {}
             did = new_id(self.state, "d")

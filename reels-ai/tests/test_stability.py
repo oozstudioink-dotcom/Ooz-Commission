@@ -253,9 +253,9 @@ class SmallFixesTest(unittest.TestCase):
         from datetime import date
         from reels_ai import descriptions
         cfg = load_config()
-        self.assertIn("every Friday", descriptions.schedule_block(cfg, date(2026, 12, 31)))
-        self.assertIn("Wednesday and Friday", descriptions.schedule_block(cfg, date(2027, 1, 1)))
-        self.assertIn("Wed · Fri", descriptions.scheduled(cfg["panels"], date(2026, 12, 26))[1])
+        self.assertIn("New long video: every Friday", descriptions.schedule_block(cfg, date(2026, 12, 31)))
+        self.assertIn("New drawing lesson: every week", descriptions.schedule_block(cfg, date(2027, 1, 1)))
+        self.assertIn("Drawing lesson", descriptions.scheduled(cfg["panels"], date(2026, 12, 26))[2])
         self.assertIn("every Friday", descriptions.scheduled(cfg["panels"], date(2026, 12, 20))[1])
 
 

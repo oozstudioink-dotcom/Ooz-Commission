@@ -29,7 +29,7 @@ class AboutMixin:
             if n and key(n):
                 self._notes()[key(n)] = info
 
-    def about_or_ask(self, name: str, then: dict, also=()) -> dict | None:
+    def about_or_ask(self, name: str, then: dict, also=(), lesson: bool = False) -> dict | None:
         """{subject, series, note} when known (remembered or looked up); {} when no writer is set up;
         None when the bot has asked you: `then` runs after you answer or skip."""
         from ..about import lookup
@@ -40,15 +40,19 @@ class AboutMixin:
         how = self.route("about")
         if how is None:
             return {}
-        info = lookup(name, self._model(), how)
+        info = None if lesson else lookup(name, self._model(), how)
         if info:
             self.remember_about(names, info)
             return info
         token = new_id(self.state, "q")
-        m = self.say(f"✍️ What are you drawing in “{name}”? I couldn't tell from the name, and it goes in the "
-                     "video's description (About this drawing). Reply to this message with a few words, e.g. "
-                     "“an ink study of hands from a Berserk panel” or “my own samurai character”, and I'll "
-                     "polish it.", reply_markup=skip_markup(token))
+        question = (f"\U0001f4da What does the lesson “{name}” teach? Reply to this message with a few words, e.g. "
+                    "“how I ink hair with a brush pen” or “drawing hands from simple shapes”; I'll polish it for "
+                    "the title and the description (What you will learn)." if lesson else
+                    f"✍️ What are you drawing in “{name}”? I couldn't tell from the name, and it goes in the "
+                    "video's description (About this drawing). Reply to this message with a few words, e.g. "
+                    "“an ink study of hands from a Berserk panel” or “my own samurai character”, and I'll "
+                    "polish it.")
+        m = self.say(question, reply_markup=skip_markup(token))
         self.state.setdefault("about_asks", {})[token] = {
             "name": name, "also": list(also), "then": then, "at": iso(self.clock()),
             "msg": (m or {}).get("message_id")}

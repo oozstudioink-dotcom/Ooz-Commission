@@ -264,6 +264,8 @@ class Runner(ShortsFlowMixin, NotionMixin, AboutMixin, AuditMixin, SponsorMixin,
             return self.on_desc_fix(action, q)
         if action == "abs":
             return self.on_about_skip(vid, q)
+        if action == "lk":
+            return self.on_kind(vid, q)
         if action in ("pu", "pr", "tk", "td"):
             return self.on_flow(action, vid, q)
         if action == "noname":

@@ -140,6 +140,9 @@ def run(project: str) -> None:
         title, desc, tags = youtube_text(title_name, episode, res["chapters"], cfg, res["speed"],
                                          res["raw"], res.get("tracks"), lcfg.get("music_source", "YouTube Audio Library"),
                                          series=series, info=info)
+        from .eyes import MODEL
+        from .titles import write_title                  # a title written to be found and clicked
+        title = write_title(title_name, info, bool(series), title, cfg.get("watch", {}).get("model", MODEL))
 
         ep_folder = drive.folder(f"{done_path}/{tag} - {folder['name']}")
         up = drive.upload(res["video"], ep_folder)

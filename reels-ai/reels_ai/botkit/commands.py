@@ -141,19 +141,62 @@ class CommandsMixin:
             hint = f"No project called \u201c{project}\u201d. " if project else ""
             self.say(f"{hint}Projects ready in Drive \u203a Longform:\n{listing}\n\nSend /longform <name> to build one.")
             return
+        from ..series import of_path
+        if not of_path(self.cfg, match):         # not in a lesson folder yet: drawing video or lesson?
+            from ..state import new_id
+            token = new_id(self.state, "k")
+            self.state.setdefault("kind_asks", {})[token] = {"match": match, "id": hit["id"], "name": hit["name"]}
+            return self.say(f"\U0001f3ac \u201c{hit['name']}\u201d: what kind of long video is it?",
+                            reply_markup={"inline_keyboard": [[
+                                {"text": "\U0001f3a8 Drawing video", "callback_data": f"lk:{token}:d"},
+                                {"text": "\U0001f4da Drawing lesson", "callback_data": f"lk:{token}:e"}]]})
+        self.longform_ready(match)
+
+    def lessons_series(self) -> dict | None:
+        from ..series import all_series
+        want = self.cfg.get("longform", {}).get("lessons_series", "Studio Lessons")
+        return next((s for s in all_series(self.cfg) if s["name"] == want), None)
+
+    def on_kind(self, arg: str, q: dict) -> None:
+        """The answer to "drawing video or lesson?": a lesson's folder moves into the lessons series."""
+        from .common import label_markup
+        token, _, kind = arg.partition(":")
+        ask = self.state.get("kind_asks", {}).pop(token, None)
+        if not ask:
+            return self.bot.answer_callback(q["id"], "Already answered")
+        self.bot.answer_callback(q["id"], "Got it")
+        mid = q.get("message", {}).get("message_id")
+        match = ask["match"]
+        if kind == "e":
+            ser = self.lessons_series()
+            if ser and self.drive:
+                try:
+                    self.drive.move_to(ask["id"], self.drive.folder(f"Longform/{ser['folder']}"))
+                    match = f"{ser['folder']}/{ask['name']}"
+                except Exception as e:  # noqa: BLE001
+                    return self.say(f"\u26a0\ufe0f Couldn't move it to the lessons folder: {str(e)[:150]}")
+            self.bot.edit_markup(self.owner, mid, label_markup("\U0001f4da Drawing lesson"))
+        else:
+            self.bot.edit_markup(self.owner, mid, label_markup("\U0001f3a8 Drawing video"))
+        self.longform_ready(match)
+
+    def longform_ready(self, match: str) -> None:
+        """What the video is about (asked when the name doesn't say), then the build."""
         from ..drive import parse_name
+        from ..series import of_path
         seg = match.split("/")[-1]
         subj, hints = parse_name(seg)
         title_name = " - ".join([subj, *hints.get("unknown", [])]) if subj else seg
-        if self.about_or_ask(title_name, {"longform": match}, also=[subj or "", seg]) is None:
+        lesson = bool(of_path(self.cfg, match))
+        if self.about_or_ask(title_name, {"longform": match}, also=[subj or "", seg], lesson=lesson) is None:
             return                               # asked what it is: the build starts after your answer
         self.start_longform(match)
 
     def start_longform(self, match: str) -> None:
         try:
             dispatch_workflow("longform.yml", {"project": match})
-            self.say(f"\U0001f680 Started LongDraw for \u201c{match}\u201d. I'll message you when it's ready "
-                     "(roughly 1 to 3 hours for 4K).")
+            self.say(f"\U0001f680 Started the long video for \u201c{match}\u201d. I'll message you when it's ready "
+                     "(roughly 1 to 3 hours for 4K). The title is written for search by itself.")
         except Exception as e:  # noqa: BLE001
             self.say(f"\u26a0\ufe0f Couldn't start the LongDraw job: {str(e)[:200]}\n"
                      f"Start it by hand: GitHub \u203a Actions \u203a longform \u203a Run workflow, project = {match}")

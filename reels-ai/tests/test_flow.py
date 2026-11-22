@@ -81,3 +81,55 @@ class FlowTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class LongVideoTest(unittest.TestCase):
+    def test_longform_asks_drawing_or_lesson_and_files_lessons(self):
+        from unittest import mock
+        b, r = runner()
+        moved = []
+
+        class D:
+            def folder(self, p=""): return "id:" + p
+            def move_to(self, fid, to): moved.append((fid, to))
+        r.drive = D()
+        projects = [{"id": "p1", "name": "Hands", "path": "Hands"}]
+        started = []
+        r.start_longform = started.append
+        with mock.patch("reels_ai.longform_job.list_projects", return_value=projects), \
+                mock.patch.object(Runner, "about_or_ask", return_value={}):
+            r.longform_command("Hands")
+            ask = [t for k, _, t in b.sent if "what kind of long video" in t]
+            self.assertEqual(len(ask), 1)
+            token = next(iter(r.state["kind_asks"]))
+            b.push(**tap(f"lk:{token}:e"))
+            r.poll()
+        self.assertEqual(moved, [("p1", "id:Longform/Educational Drawing/Studio Lessons")])
+        self.assertEqual(started, ["Educational Drawing/Studio Lessons/Hands"])
+
+    def test_lesson_recordings_skip_shorts(self):
+        b, r = runner()
+        moved = []
+
+        class D:
+            def folder(self, p=""): return "id:" + p
+            def move_to(self, fid, to): moved.append((fid, to))
+            def list(self, fid, kind="video"):
+                return [{"id": "x", "name": "Hands - lesson.MOV"}, {"id": "y", "name": "Gojo.MOV"}] if fid == "id:Inbox" else []
+        r.drive = D()
+        r.check_drive_inbox()
+        self.assertEqual(moved, [("x", "id:Longform/Educational Drawing/Studio Lessons/Hands - lesson")])
+        self.assertEqual([d.get("drive_id") for d in r.state["drawings"].values() if d.get("drive_id")], ["y"])
+
+    def test_lesson_description_and_titles(self):
+        from reels_ai import descriptions, titles
+        cfg = load_config()
+        d = descriptions.longdraw(cfg, "Studio Lessons · Lesson 03", descriptions.topic_line("Inking hair", lesson=True),
+                                  "How I ink hair with a brush pen.", "0:00 Intro\n0:05 Hair\n9:00 Ink")
+        self.assertTrue(d.startswith("Welcome to Studio Lessons · Lesson 03! Grab a pencil"))
+        self.assertIn("Today's lesson: Inking hair.", d)
+        self.assertIn("What you will learn\nHow I ink hair", d)
+        self.assertIn("New Shorts: Monday, Wednesday and Friday\n", d + "\n")
+        t = titles.write_title("Hands", {"subject": "drawing hands"}, True, "FALLBACK",
+                               ask=lambda s, sc, txt: {"title": "How to Draw Hands From Simple Shapes"})
+        self.assertEqual(t, "How to Draw Hands From Simple Shapes")

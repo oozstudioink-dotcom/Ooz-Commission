@@ -79,8 +79,19 @@ def shorts_body(cfg: dict) -> str:
     return "\n\n".join(p for p in parts if p.strip())
 
 
-def topic_line(subject: str, series: str = "", extra: str = "") -> str:
-    subject = (subject or "this drawing").strip()
+LESSON_WELCOME = ("Welcome to {label}! Grab a pencil and draw along: everything here is done by hand, "
+                  "step by step.")
+
+
+def is_lesson(label: str) -> bool:
+    """Lesson videos (a series badge like "Studio Lessons · Lesson 03") get the lesson layout."""
+    return "lesson" in (label or "").lower()
+
+
+def topic_line(subject: str, series: str = "", extra: str = "", lesson: bool = False) -> str:
+    subject = (subject or ("this lesson" if lesson else "this drawing")).strip()
+    if lesson:
+        return f"Today's lesson: {subject}{(' ' + extra) if extra else ''}."
     if series and series.strip().lower() not in subject.lower():
         subject = f"{subject} from {series.strip()}"
     return f"Today: {subject}, drawn and inked by hand{(' ' + extra) if extra else ''}."
@@ -90,9 +101,11 @@ def longdraw(cfg: dict, label: str, topic: str, note: str = "", chapters: str = 
              music: list[str] | None = None, music_source: str = "YouTube Audio Library",
              tags_line: str = TAGS_LINE) -> str:
     y = _yt(cfg)
-    head = [y.get("welcome", WELCOME).format(label=label), topic]
+    lesson = is_lesson(label)
+    welcome = y.get("lesson_welcome", LESSON_WELCOME) if lesson else y.get("welcome", WELCOME)
+    head = [welcome.format(label=label), topic]
     if note:
-        head.append(f"About this drawing\n{note}")
+        head.append(f"{'What you will learn' if lesson else 'About this drawing'}\n{note}")
     head += [schedule_block(cfg), commission_block(cfg), dm_block(cfg)]
     if chapters.strip():
         head.append(f"Chapters\n{chapters.strip()}")
@@ -141,7 +154,7 @@ def parse_old(desc: str) -> dict:
             if len(name) > 2:
                 music.append(name)
     note = ""
-    n = re.search(r"(?is)About this drawing\s*\n(.+?)(?:\n\s*\n|$)", desc)
+    n = re.search(r"(?is)(?:About this drawing|What you will learn)\s*\n(.+?)(?:\n\s*\n|$)", desc)
     if n:
         note = re.sub(r"\s+", " ", n.group(1)).strip()
     hours = ""
@@ -174,6 +187,6 @@ def rebuild_longdraw(cfg: dict, desc: str, label: str, subject: str, info: dict 
     """An older LongDraw description in the current layout, keeping its chapters, songs and hashtags."""
     old = parse_old(desc)
     info = info or {}
-    topic = topic_line(info.get("subject") or subject, info.get("series", ""), old["hours"])
+    topic = topic_line(info.get("subject") or subject, info.get("series", ""), old["hours"], is_lesson(label))
     return longdraw(cfg, label, topic, info.get("note") or old["note"], old["chapters"],
                     full_track_names(old["music"], beats or []), music_source, old["tags"])

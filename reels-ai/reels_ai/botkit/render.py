@@ -267,7 +267,7 @@ class RenderMixin:
     QUICK_COMMANDS = {"/status", "/queue", "/help", "/start", "/fixdescriptions", "/undo_descriptions",
                       "/audit", "/undo_rewrite", "/calendar", "/trends", "/sponsors", "/report",
                       "/rethumb", "/reupload", "/longform", "/notion", "/styles", "/primary"}
-    QUICK_TAPS = {"fd", "fs", "abs", "ta", "ts", "pu", "pr", "tk", "td"}     # your Shorts buttons work instantly
+    QUICK_TAPS = {"fd", "fs", "abs", "ta", "ts", "pu", "pr", "tk", "td", "lk"}     # these buttons work instantly
 
     def quick(self, u: dict) -> bool:
         if "callback_query" in u:
