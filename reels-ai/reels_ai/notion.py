@@ -126,6 +126,10 @@ def day_of(page: dict) -> str:
     return (read(page, "Publish Date") or "")[:10]
 
 
+def _label(d: str) -> str:
+    return label(d)
+
+
 def label(d: str) -> str:
     return date.fromisoformat(d).strftime("%a %b %-d") if d else "no date"
 
@@ -159,17 +163,18 @@ def record_short(nt, character: str, today: date) -> str:
     return f"added {character} as a Short published {label(t)} (there was no slot for today)"
 
 
-def record_longdraw(nt, character: str, episode: int, youtube_url: str, today: date) -> str:
-    """A LongDraw uploaded privately: into the next empty LongDraw slot. Returns what was done."""
-    rows = [p for p in nt.query({"property": "Format", "select": {"equals": "LongDraw"}})
-            if read(p, "Format") == "LongDraw"]
+def record_longdraw(nt, character: str, episode: int, youtube_url: str, today: date, fmt: str = "LongDraw") -> str:
+    """A long video uploaded privately: into the next empty slot of its format (LongDraw or Lesson)."""
+    rows = [p for p in nt.query({"property": "Format", "select": {"equals": fmt}})
+            if read(p, "Format") == fmt]
     if youtube_url and any(read(p, "YouTube") == youtube_url for p in rows):
         return "it's already in the pipeline"
     open_ = sorted((p for p in rows if read(p, "Status") not in DONE), key=lambda p: day_of(p) or "9999")
     key = squash(character)
     planned = [p for p in open_ if key and squash(read(p, "Character")) == key]
     empty = [p for p in open_ if not read(p, "Character").strip() and (day_of(p) or "") >= today.isoformat()]
-    props = {"Title": p_title(f"LongDraw EP. {episode:02d} · {character}"), "Character": p_text(character),
+    label = f"Lesson {episode:02d}" if fmt == "Lesson" else f"LongDraw EP. {episode:02d}"
+    props = {"Title": p_title(f"{label} · {character}"), "Character": p_text(character),
              "Episode": {"number": episode}, "Status": p_select("Editing"),
              "Notes": p_text("Built and uploaded privately by the bot. Schedule it for this slot in YouTube "
                              "Studio; the row turns Scheduled, then Published, by itself.")}
@@ -179,10 +184,11 @@ def record_longdraw(nt, character: str, episode: int, youtube_url: str, today: d
     if target:
         nt.update(target["id"], props)
         when = day_of(target)
-        return (f"EP. {episode:02d} · {character} is in the {label(when)} LongDraw slot: schedule it on YouTube "
-                f"for {label(when)}, 12 PM EST" if when else f"EP. {episode:02d} · {character} updated")
-    nt.create({**props, "Format": p_select("LongDraw"), "Platform": {"multi_select": [{"name": "YouTube Long-form"}]}})
-    return f"EP. {episode:02d} · {character} added (there was no empty LongDraw slot: add more in Notion)"
+        what = "lesson" if fmt == "Lesson" else "LongDraw"
+        return (f"{props['Title']['title'][0]['text']['content']} is in the {_label(when)} {what} slot: schedule it on "
+                f"YouTube for {_label(when)}" if when else f"{character} updated")
+    nt.create({**props, "Format": p_select(fmt), "Platform": {"multi_select": [{"name": "YouTube Long-form"}]}})
+    return f"{character} added (there was no empty {fmt} slot: add more in Notion)"
 
 
 def video_id(url: str) -> str:
@@ -194,7 +200,8 @@ def sync_youtube(nt, videos: list[dict]) -> list[str]:
     """LongDraw rows follow YouTube: scheduled there -> Scheduled with that date; public -> Published."""
     by_id = {v["id"]: v for v in videos if v.get("seconds", 0) > 90}
     changed = []
-    for p in nt.query({"and": [{"property": "Format", "select": {"equals": "LongDraw"}},
+    for p in nt.query({"and": [{"or": [{"property": "Format", "select": {"equals": "LongDraw"}},
+                                       {"property": "Format", "select": {"equals": "Lesson"}}]},
                                {"property": "YouTube", "url": {"is_not_empty": True}}]}):
         v = by_id.get(video_id(read(p, "YouTube") or ""))
         if not v:
@@ -216,6 +223,8 @@ def open_slots(nt, today: date) -> dict[str, list[str]]:
     out: dict[str, list[str]] = {"Short": [], "LongDraw": []}
     for p in sorted(nt.query(), key=lambda p: day_of(p) or "9999"):
         f = read(p, "Format")
+        if f == "Lesson":
+            f = "LongDraw"                                 # long videos of either kind
         if f in out and read(p, "Status") not in DONE and not read(p, "Character").strip() \
                 and (day_of(p) or "") >= today.isoformat() and len(out[f]) < 5:
             out[f].append(label(day_of(p)))

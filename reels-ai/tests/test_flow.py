@@ -133,3 +133,34 @@ class LongVideoTest(unittest.TestCase):
         t = titles.write_title("Hands", {"subject": "drawing hands"}, True, "FALLBACK",
                                ask=lambda s, sc, txt: {"title": "How to Draw Hands From Simple Shapes"})
         self.assertEqual(t, "How to Draw Hands From Simple Shapes")
+
+
+class VaultTest(unittest.TestCase):
+    def test_vault_counts_and_review_walk_through(self):
+        b, r = runner()
+        D, V = r.state["drawings"], r.state["variants"]
+        D.clear()
+        for i, st in enumerate(["up", "old1", "old2", "new"]):
+            D[f"d{i}"] = {"subject": f"S{i}", "status": "rendered"}
+        V.update({
+            "v1": {"drawing": "d0", "style": "rewind", "status": "posted", "used_at": "x"},
+            "v2": {"drawing": "d1", "style": "one_take", "status": "approved", "file_id": "f2"},
+            "v3": {"drawing": "d2", "style": "rewind", "status": "pending", "file_id": "f3"},
+            "v4": {"drawing": "d3", "style": "rewind", "status": "pending", "role": "primary", "file_id": "f4"},
+            "v5": {"drawing": "d3", "style": "slow_open", "status": "trial"}})
+        txt = r.vault_text()
+        self.assertIn("Uploaded: 1", txt)
+        self.assertIn("Ready to upload: 1", txt)
+        self.assertIn("Still to review: 2", txt)
+        self.assertIn("Trial reels kept for Facebook: 1", txt)
+        r.review_next(first=True)
+        self.assertIn("Review 2 left · S1", [x for x in b.sent if x[0] == "video"][-1][2])
+        b.push(**tap("rr:d1"))                                              # old style: make its Rewind version
+        r.poll()
+        self.assertEqual((D["d1"]["status"], D["d1"]["redo_styles"]), ("queued", ["rewind"]))
+        self.assertEqual(V["v2"]["status"], "trial")
+        self.assertIn("Review 1 left · S2", [x for x in b.sent if x[0] == "video"][-1][2])
+        b.push(**tap("rd:d2"))
+        r.poll()
+        self.assertEqual(V["v3"]["status"], "discarded")
+        self.assertTrue(any("Nothing left to review" in x[2] for x in b.sent))

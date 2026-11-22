@@ -160,7 +160,7 @@ def run(project: str) -> None:
             try:
                 y = yt.upload_file(res["video"], title, desc, tags, lcfg.get("privacy", "private"))
                 lines.append(f"YouTube: {y['permalink']}")
-                lines += pipeline_note(cfg, title_name, episode, y["permalink"])
+                lines += pipeline_note(cfg, title_name, episode, y["permalink"], "Lesson" if series else "LongDraw")
                 if lcfg.get("privacy", "private") == "private":
                     lines.append("\U0001f512 Uploaded privately. When you're ready: YouTube Studio \u203a this video "
                                  "\u203a Visibility \u203a Schedule (pick your LongDraw slot).")
@@ -274,7 +274,7 @@ def art_from_thumbnail(png) -> "Image.Image":
     return Image.fromarray(panel[ys.min():ys.max() + 1, xs.min():xs.max() + 1])
 
 
-def pipeline_note(cfg: dict, character: str, episode: int, url: str) -> list[str]:
+def pipeline_note(cfg: dict, character: str, episode: int, url: str, fmt: str = "LongDraw") -> list[str]:
     """The finished LongDraw in the Notion Content Pipeline (when NOTION_TOKEN is set)."""
     from datetime import datetime
     from zoneinfo import ZoneInfo
@@ -284,7 +284,7 @@ def pipeline_note(cfg: dict, character: str, episode: int, url: str) -> list[str
         if not nt:
             return []
         today = datetime.now(ZoneInfo(cfg.get("timezone", "America/New_York"))).date()
-        return [f"\U0001f4d2 Notion: {record_longdraw(nt, character, episode, url, today)}."]
+        return [f"\U0001f4d2 Notion: {record_longdraw(nt, character, episode, url, today, fmt)}."]
     except Exception as e:  # noqa: BLE001 - the LongDraw is done either way
         print(f"warn: notion: {str(e)[:200]}")
         return [f"\U0001f4d2 Couldn't update Notion ({str(e)[:120]})."]
