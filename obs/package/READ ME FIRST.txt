@@ -4,6 +4,7 @@ OOZ STUDIO INK - OBS STREAM SCENES
 Scenes
   Starting Soon   countdown, today's topic, schedule, commission link
   Drawing         page camera big, face camera, YouTube chat, commissions + rotating socials
+  Drawing · No Webcam   page camera big and chat, no face camera
   Drawing Focus   page camera full screen with a small LIVE badge and rotating socials
   Just Chatting   face camera big, chat big
   Be Right Back   a looping video of your sketchbook pieces (7 s each, crossfading)

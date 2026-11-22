@@ -26,6 +26,7 @@ LAYOUT = {
     "drawing": {"page": (32, 32, 1376, 774), "face": (1432, 32, 456, 256), "chat": (1432, 312, 456, 736)},
     "chatting": {"face": (32, 32, 1280, 720), "chat": (1344, 32, 544, 878)},
     "focus": {"page": (0, 0, 1920, 1080)},
+    "nocam": {"page": (32, 32, 1376, 774), "card": (1432, 32, 456, 256), "chat": (1432, 312, 456, 736)},
     "reveal": {"page": (240, 120, 1440, 810)},
 }
 
@@ -178,6 +179,7 @@ README = """OOZ STUDIO INK - OBS STREAM SCENES
 Scenes
   Starting Soon   countdown, today's topic, schedule, commission link
   Drawing         page camera big, face camera, YouTube chat, commissions + rotating socials
+  Drawing · No Webcam   page camera big and chat, no face camera
   Drawing Focus   page camera full screen with a small LIVE badge and rotating socials
   Just Chatting   face camera big, chat big
   Be Right Back   a looping video of your sketchbook pieces (7 s each, crossfading)
@@ -276,6 +278,25 @@ def pages() -> dict[str, str]:
     <div class="link" style="margin:12px 0 18px;font-size:22px" data-ooz="commissionLink"></div>
     <div class="rot right" style="width:700px"></div></div>
 </div>""", "Drawing")
+
+    n = LAYOUT["nocam"]
+    cx, cy, cw, ch = n["card"]
+    out["drawing-nocam.html"] = page("bg", f"""
+{win(n["page"], "Page camera<br>(add it in the scene &ldquo;&#9881; Page Cam&rdquo;)", "page")}
+{win(n["chat"], "YouTube chat", "chat")}
+<div class="abs" style="left:{cx}px;top:{cy}px;width:{cw}px;height:{ch}px;background:var(--ink2);outline:3px solid var(--paper);
+  display:flex;flex-direction:column;justify-content:center;padding:0 30px">
+  <div class="brand" style="gap:16px"><img src="assets/mark.svg" style="width:64px;height:64px"><div class="name" style="font-size:40px">OOZ STUDIO INK</div></div>
+  <div style="display:flex;align-items:center;gap:14px;margin-top:22px"><span class="live"><i></i>Live</span>
+    <span class="kicker">Today</span></div>
+  <div class="topic" style="margin-top:14px;font-size:24px" data-ooz="topic"></div>
+</div>
+<div class="abs" style="left:32px;top:832px;width:1376px;height:216px;display:flex;justify-content:space-between;align-items:center">
+  <div><div class="pill">Commissions open</div>
+    <div class="link" style="margin-top:14px;font-size:26px" data-ooz="commissionLink"></div></div>
+  <div style="width:640px"><div class="kicker" style="text-align:right;margin-bottom:12px">Follow along</div>
+    <div class="rot right" style="width:640px"></div></div>
+</div>""", "Drawing · No Webcam")
 
     out["focus.html"] = page("clear", """
 <div class="abs" style="left:28px;top:28px;display:flex;align-items:center;gap:14px;background:rgba(21,21,21,.86);padding:12px 18px 12px 12px">
@@ -380,6 +401,7 @@ def collection(root: str) -> dict:
         browser("Overlay · Starting Soon", "starting.html", restart=True),
         browser("Overlay · Drawing", "drawing.html"),
         browser("Overlay · Drawing Focus", "focus.html"),
+        browser("Overlay · Drawing (No Webcam)", "drawing-nocam.html"),
         browser("Overlay · Just Chatting", "chatting.html"),
         browser("Overlay · Be Right Back", "brb.html"),
         browser("Overlay · Final Piece", "reveal.html"),
@@ -400,6 +422,8 @@ def collection(root: str) -> dict:
         ("Starting Soon", [("Overlay · Starting Soon", None)]),
         ("Drawing", [("Overlay · Drawing", None), ("\u2699 Page Cam", d["page"]), ("\u2699 Face Cam", d["face"]),
                      ("YouTube Chat", d["chat"])]),
+        ("Drawing \u00b7 No Webcam", [("Overlay · Drawing (No Webcam)", None),
+                                     ("\u2699 Page Cam", LAYOUT["nocam"]["page"]), ("YouTube Chat", LAYOUT["nocam"]["chat"])]),
         ("Drawing Focus", [("\u2699 Page Cam", LAYOUT["focus"]["page"]), ("Overlay · Drawing Focus", None)]),
         ("Just Chatting", [("Overlay · Just Chatting", None), ("\u2699 Face Cam", c["face"]),
                            ("YouTube Chat", c["chat"])]),
