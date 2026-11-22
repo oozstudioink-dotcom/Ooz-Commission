@@ -30,6 +30,8 @@ def load_config():
     cfg = _load_config()
     cfg["delivery"]["auto_drop"] = True
     cfg["delivery"].pop("drop_days", None)        # every day: these tests check the drop machinery
+    cfg["variants"]["flow"] = ""                   # the older Post / Skip flow (tests/test_flow.py has the new one)
+    cfg["variants"]["per_drawing"] = 3
     return cfg
 
 OWNER, STRANGER = 111, 999

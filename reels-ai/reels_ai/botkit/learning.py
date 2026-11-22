@@ -68,7 +68,11 @@ class LearningMixin:
         # least-used first, random tie-break; styles that get more views count as "used" less,
         # so they come round more often (and the weakest gets skipped when per_drawing < styles)
         styles.sort(key=lambda s: uses.get(s, 0) / weight.get(s, 1.0))
-        return styles[: self.cfg["variants"].get("per_drawing", 2)]
+        n = self.cfg["variants"].get("per_drawing", 2)
+        if getattr(self, "flow_on", False):              # your channel Short first, then the trial reels
+            primary = self.primary_style()
+            return [primary] + [s for s in styles if s != primary][: n - 1]
+        return styles[:n]
 
     def style_weights(self) -> dict[str, float]:
         """From the weekly report: average views per style vs the average style (0.5x..2x).

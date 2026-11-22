@@ -315,6 +315,8 @@ class DriveMixin:
             folder = self.drive.folder(f"Done/Shorts/{name}")
             for r in results:
                 tag = " (redo)" if d.get("redo") else ""
+                if self.flow_on:                     # Completed Shorts / Trial Reel Shorts
+                    folder = self.drive.folder(self.shorts_folder(r["name"], name))
                 up = self.drive.upload(out_dir / r["file"], folder,
                                        f"{name} - {STYLE_LABELS.get(r['name'], r['name'])}{tag}.mp4")
                 if up.get("webViewLink"):

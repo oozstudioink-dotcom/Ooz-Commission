@@ -266,8 +266,8 @@ class RenderMixin:
     # is being made. Anything that changes recordings or Shorts waits for the drawing to finish.
     QUICK_COMMANDS = {"/status", "/queue", "/help", "/start", "/fixdescriptions", "/undo_descriptions",
                       "/audit", "/undo_rewrite", "/calendar", "/trends", "/sponsors", "/report",
-                      "/rethumb", "/reupload", "/longform", "/notion"}
-    QUICK_TAPS = {"fd", "fs", "abs", "ta", "ts"}
+                      "/rethumb", "/reupload", "/longform", "/notion", "/styles", "/primary"}
+    QUICK_TAPS = {"fd", "fs", "abs", "ta", "ts", "pu", "pr", "tk", "td"}     # your Shorts buttons work instantly
 
     def quick(self, u: dict) -> bool:
         if "callback_query" in u:
@@ -392,7 +392,7 @@ class RenderMixin:
                         self.split_page(did, d, src, tmp, raw.get("raw_duration"), 2160 if big else 1080,
                                         raw.get("raw_input"))
                     out_dir, results = make_variants(src, tmp / "out", styles,
-                                                     seed=int(did[1:]), subject=d["subject"],
+                                                     seed=int(did[1:]) + 7919 * d.get("redo_count", 0), subject=d["subject"],
                                                      review_page=False, copy=copy,
                                                      max_width=2160 if big else 1080,
                                                      hints=d.get("hints"),
@@ -430,6 +430,11 @@ class RenderMixin:
                                  f"/redo {d.get('subject') or ''} tries again.")
                         self.checkpoint()
                         continue
+                    d["status"] = "rendered"
+                    self.checkpoint()
+                    continue
+                if self.flow_on:                     # channel Short + trial reels, sent right away
+                    self.send_flow(did, d, out_dir, results, links)
                     d["status"] = "rendered"
                     self.checkpoint()
                     continue

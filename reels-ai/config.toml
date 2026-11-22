@@ -38,7 +38,12 @@ mode = "approve"                 # you tap ✅ / ❌ on every new video; only �
 fallback_hours = 6
 
 [variants]
-per_drawing = 3                  # versions made from each drawing: one per platform in [delivery] split
+# flow = "primary": each drawing makes ONE Short for your channel in the primary style (sent with
+# Uploaded / Redo) plus per_drawing - 1 trial reels for Facebook (Keep / Discard), sent as soon as
+# they're made. Drive: Completed Shorts and Trial Reel Shorts. /styles and /primary change it.
+flow = "primary"
+primary = "rewind"
+per_drawing = 5                  # 1 channel Short + 4 trial reels
 # The "whole process" family: one locked view of the whole page, first line to last, no zooms,
 # wipes or cuts (the edits you liked best were one_take and reveal_first). Styles you can add back:
 # "process_cuts", "before_after", "detail_zoom", "ink_only".
