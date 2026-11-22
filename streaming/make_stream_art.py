@@ -6,7 +6,8 @@ Run from the repo root:  python streaming/make_stream_art.py
   offline-banner.png         1920x1080  video player / offline banner (Twitch and Kick)
   twitch-panel-*.png         320x100    About, Commissions, Schedule, Socials panels
   kick-profile.png           512x512    profile picture (Kick asks for at least 128x128, under 4 MB)
-  kick-banner.png            1280x700   profile banner (content kept central: Kick crops it differently by device)
+  kick-banner.png            1280x700   older Kick banner size
+  kick-banner-3000x335.png   3000x335   Kick channel banner (the size Kick's upload box asks for)
 """
 import importlib.util
 from pathlib import Path
@@ -75,6 +76,21 @@ def kick_banner():
     im.save(OUT / "kick-banner.png", optimize=True)
 
 
+def kick_wide_banner():
+    """Kick's channel banner, 3000x335. The brand sits left of centre so narrower screens, which crop
+    the sides, still show all of it."""
+    im = Image.new("RGB", (3000, 335), BG)
+    art_right(im, "01-samurai.jpg", 1750, 520, 3.4, -560)
+    d = ImageDraw.Draw(im)
+    m = mark(150)
+    im.paste(m, (560, 92), m)
+    d.text((750, 70), "OOZ STUDIO INK", font=font("InterDisplay-Bold.otf", 118), fill=PAPER)
+    sub, sf = "C O M I C   A R T   \u00b7   C H A R A C T E R   D E S I G N", font("Inter-SemiBold.otf", 28)
+    d.text((756, 214), sub, font=sf, fill=GREY)
+    tag(d, 756 + d.textlength(sub, font=sf) + 36, 207, "LIVE INKING \u00b7 COMMISSIONS OPEN", 22)
+    im.save(OUT / "kick-banner-3000x335.png", optimize=True)
+
+
 def offline_banner():
     im = Image.new("RGB", (1920, 1080), BG)
     art_right(im, "05-the-clash.jpg", 1060, 420, 1.0)
@@ -115,6 +131,7 @@ if __name__ == "__main__":
     profile(512, "kick-profile.png")
     twitch_banner()
     kick_banner()
+    kick_wide_banner()
     offline_banner()
     panels()
     for p in sorted(OUT.glob("*.png")):
