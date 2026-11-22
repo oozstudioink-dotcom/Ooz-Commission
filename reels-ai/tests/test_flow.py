@@ -49,7 +49,8 @@ class FlowTest(unittest.TestCase):
         self.assertIn("trial reel: One take", sent[1][2])
         vids = {v["style"]: k for k, v in r.state["variants"].items()}
         self.assertEqual(r.state["variants"][vids["rewind"]]["role"], "primary")
-        self.assertEqual(b.markups[100 + 1]["inline_keyboard"][0][0]["callback_data"], f"pu:{vids['rewind']}")
+        self.assertEqual([x["callback_data"] for row in b.markups[100 + 1]["inline_keyboard"] for x in row],
+                         [f"ps:{vids['rewind']}", f"pu:{vids['rewind']}", f"pr:{vids['rewind']}"])
         r.notion = None
         for data in (f"pu:{vids['rewind']}", f"tk:{vids['one_take']}", f"td:{vids['slow_open']}"):
             b.push(**tap(data))
@@ -164,3 +165,44 @@ class VaultTest(unittest.TestCase):
         r.poll()
         self.assertEqual(V["v3"]["status"], "discarded")
         self.assertTrue(any("Nothing left to review" in x[2] for x in b.sent))
+
+
+class ScheduleAndScoreTest(unittest.TestCase):
+    def test_schedule_on_youtube_takes_the_next_free_posting_day(self):
+        b, r = runner()                                   # Mon Nov 23, 12 PM in New York
+        out, res = results(["rewind", "rewind"])
+        r.send_flow("d1", r.state["drawings"]["d1"], out, res, {})
+        uploads = []
+
+        class YT:
+            def upload_file(self, path, title, desc, tags, privacy, publish_at=None):
+                uploads.append((title, privacy, publish_at, desc))
+                return {"id": f"y{len(uploads)}", "permalink": f"https://youtu.be/y{len(uploads)}"}
+        r.clients["youtube"] = YT()
+        r.bot.download = lambda fid, dst: (Path(dst).write_bytes(b"x"), Path(dst))[1]
+        a, c = list(r.state["variants"])
+        b.push(**tap(f"ps:{a}"))
+        b.push(**tap(f"ps:{c}"))
+        r.poll()
+        self.assertEqual([u[2] for u in uploads], ["2026-11-25T17:00:00Z", "2026-11-27T17:00:00Z"])  # Wed, then Fri
+        self.assertEqual(uploads[0][1], "private")
+        self.assertIn("Commission link", uploads[0][3])
+        self.assertIn("#shorts", uploads[0][3])
+        v = r.state["variants"][a]
+        self.assertEqual((v["status"], v["posts"]["youtube"]["id"]), ("posted", "y1"))
+        self.assertTrue(any("Scheduled on YouTube for Wed Nov 25" in x[2] for x in b.sent))
+
+    def test_trial_scores_rank_styles_and_suggest_a_switch(self):
+        from reels_ai.botkit.shorts_flow import parse_views
+        self.assertEqual([parse_views(x) for x in ("12k", "1.2m", "12,345", "abc")], [12000, 1200000, 12345, None])
+        b, r = runner()
+        for v in ("12k", "9k", "15k"):
+            r.score_command(f"one take {v}")
+        r.score_command("slow open 2k")
+        r.state["variants"]["v9"] = {"drawing": "d1", "style": "speedrun", "status": "trial"}
+        r.score_command("v9 500")
+        txt = r.styles_text()
+        self.assertLess(txt.index("One take: 12,000"), txt.index("Slow open: 2,000"))
+        self.assertIn("/primary one take", txt)
+        r.score_command("nonsense")
+        self.assertTrue(any("Tell me the style" in x[2] for x in b.sent))

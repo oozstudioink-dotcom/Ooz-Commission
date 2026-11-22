@@ -17,7 +17,8 @@ drop_days = ["Mon", "Wed", "Fri"]    # three Shorts a week; the LongDraw goes up
 split = ["tiktok", "youtube", "instagram"]
 options = 3
 instagram_post = true
-# auto_drop = false: nothing is sent on a schedule. You sort your library with /videos:
+# auto_drop = false
+youtube_time = "12:00"               # Schedule on YouTube: channel Shorts go public at this time on drop_days: nothing is sent on a schedule. You sort your library with /videos:
 # Uploaded (file to Done > Uploaded), Variant (kept for Facebook trial reels once a version of
 # that drawing is uploaded), Discard (file to Delete Me). true = the daily drop above.
 auto_drop = false

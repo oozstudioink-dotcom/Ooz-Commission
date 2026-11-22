@@ -126,7 +126,7 @@ class BotTest(unittest.TestCase):
         r.state["drawings"]["d1"] = {"subject": "Vegeta", "status": "rendered"}
         r.notion_short({"drawing": "d1", "style": "one_take"})
         self.assertEqual(val(r.notion.updates[0][1], "Character"), "Vegeta")
-        self.assertTrue(any("Notion: today's Short slot filled with Vegeta" in t for k, _, t in b.sent))
+        self.assertTrue(any("Notion: the Wed Jan 6 Short slot filled with Vegeta" in t for k, _, t in b.sent))
 
     def test_from_env_needs_the_token(self):
         cfg = load_config()

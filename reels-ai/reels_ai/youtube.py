@@ -201,13 +201,15 @@ class YouTube:
 
 
     def upload_file(self, path: Path, title: str, description: str, tags: list[str],
-                    privacy: str = "public", category_id: int = 1, chunk: int = 32 * 1024 * 1024) -> dict:
+                    privacy: str = "public", category_id: int = 1, chunk: int = 32 * 1024 * 1024,
+                    publish_at: str | None = None) -> dict:
         """Chunked resumable upload for big files (a 25 min 4K video is several GB)."""
         path = Path(path)
         size = path.stat().st_size
         meta = {"snippet": {"title": title[:100], "description": description[:4900],
                             "tags": tags[:30], "categoryId": str(category_id)},
-                "status": {"privacyStatus": privacy, "selfDeclaredMadeForKids": False}}
+                "status": {"privacyStatus": privacy, "selfDeclaredMadeForKids": False,
+                           **({"publishAt": publish_at} if publish_at else {})}}   # scheduled: private until then
         start = self._req("POST", self.upload_url, {"uploadType": "resumable", "part": "snippet,status"},
                           body=meta, headers={"X-Upload-Content-Type": "video/mp4",
                                               "X-Upload-Content-Length": str(size)}, raw=True)

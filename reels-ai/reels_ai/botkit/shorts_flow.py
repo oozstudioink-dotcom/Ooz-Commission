@@ -21,8 +21,22 @@ TRIALS = "Trial Reel Shorts"
 
 
 def primary_markup(vid: str) -> dict:
-    return {"inline_keyboard": [[{"text": "\U0001f4e4 Uploaded", "callback_data": f"pu:{vid}"},
+    return {"inline_keyboard": [[{"text": "\U0001f4c5 Schedule on YouTube", "callback_data": f"ps:{vid}"}],
+                                [{"text": "\U0001f4e4 Uploaded", "callback_data": f"pu:{vid}"},
                                  {"text": "\U0001f501 Redo", "callback_data": f"pr:{vid}"}]]}
+
+
+def parse_views(text: str) -> int | None:
+    """'12k' -> 12000, '1.2m' -> 1200000, '12,345' -> 12345."""
+    import re
+    m = re.fullmatch(r"\s*([\d.,]+)\s*([km])?\s*(views?)?\s*", (text or "").lower())
+    if not m:
+        return None
+    try:
+        n = float(m.group(1).replace(",", ""))
+    except ValueError:
+        return None
+    return int(n * {"k": 1e3, "m": 1e6}.get(m.group(2) or "", 1))
 
 
 def trial_markup(vid: str) -> dict:
@@ -58,7 +72,8 @@ class ShortsFlowMixin:
             head = (f"\U0001f3ac {name} · your channel Short ({STYLE_LABELS[r['name']]}) · {r['seconds']:.0f}s"
                     if primary else
                     f"\U0001f9ea {name} · trial reel: {STYLE_LABELS[r['name']]} · {r['seconds']:.0f}s")
-            tail = ("Posted it? Tap \U0001f4e4 Uploaded. Not right? \U0001f501 Redo makes a new take."
+            tail = ("\U0001f4c5 Schedule on YouTube puts it in your next free Mon/Wed/Fri slot. Posted it yourself? "
+                    "\U0001f4e4 Uploaded. Not right? \U0001f501 Redo makes a new take."
                     if primary else "For Facebook trial reels: ✅ Keep or ❌ Discard.")
             text = f"{head} · {vid}\nHook: “{r['hook']}”\n\n{r['caption']}\n\n{tail}"
             if r.get("look"):
@@ -85,6 +100,9 @@ class ShortsFlowMixin:
         if v["status"] != "pending":
             return self.bot.answer_callback(q["id"], f"Already {v['status']}")
         name = self.folder_name(v)
+        if action == "ps":                                   # scheduled on YouTube by the bot
+            self.bot.answer_callback(q["id"], "Scheduling on YouTube\u2026")
+            return self.schedule_short(vid, v, mid)
         if action == "pu":                                   # posted to your channel
             v.update(status="posted", used_at=iso(self.clock()), dropped_at=iso(self.clock()),
                      decided_by="you", decided_at=iso(self.clock()))
@@ -117,6 +135,115 @@ class ShortsFlowMixin:
             return self.bot.edit_markup(self.owner, mid, label_markup("❌ Discarded · in Delete Me"))
         return self.bot.answer_callback(q["id"])
 
+    # ------------------------------------------------------------------ YouTube scheduling
+    def next_short_slot(self):
+        """The next posting day ([delivery] drop_days) at [delivery] youtube_time with no Short of yours
+        scheduled yet, starting at least an hour from now. A local datetime."""
+        from datetime import datetime, timedelta
+        dc = self.cfg.get("delivery", {})
+        days = {d[:3].title() for d in dc.get("drop_days") or ["Mon", "Wed", "Fri"]}
+        hh, mm = (int(x) for x in str(dc.get("youtube_time", "12:00")).split(":"))
+        taken = {x.get("yt_at", "")[:10] for x in self.state["variants"].values() if x.get("yt_at")}
+        now = self.local(self.clock())
+        day = now.replace(hour=hh, minute=mm, second=0, microsecond=0)
+        for _ in range(120):
+            if day.strftime("%a") in days and day >= now + timedelta(hours=1) and \
+                    self.local(day).date().isoformat() not in taken:
+                return day
+            day += timedelta(days=1)
+        raise RuntimeError("no free posting day in the next four months")
+
+    def schedule_short(self, vid: str, v: dict, mid) -> None:
+        """Upload the channel Short to YouTube, private, going public in the next free slot."""
+        import re
+        import tempfile
+        from datetime import timezone
+        from pathlib import Path
+        from .. import descriptions
+        from ..youtube import shorts_title
+        yt = self.clients.get("youtube")
+        if not yt:
+            return self.say("Scheduling needs the YouTube connection.")
+        try:
+            slot = self.next_short_slot()
+            with tempfile.TemporaryDirectory() as tmp:
+                m = re.search(r"/d/([\w-]+)", v.get("full_link") or "")
+                if m and self.drive:                         # the full-quality file from Drive
+                    path = self.drive.download(m.group(1), Path(tmp) / "short.mp4")
+                else:                                        # else Telegram's copy
+                    path = self.bot.download(v["file_id"], Path(tmp) / "short.mp4")
+                d = self.state["drawings"].get(v.get("drawing"), {})
+                subject = d.get("subject")
+                tags_line = " ".join(w for w in (v.get("caption") or "").split() if w.startswith("#"))
+                desc = descriptions.shorts_body(self.cfg) + "\n\n" + " ".join(dict.fromkeys(f"{tags_line} #shorts".split()))
+                at = slot.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+                y = yt.upload_file(path, shorts_title(v.get("hook") or "", subject), desc,
+                                   [t.lstrip("#") for t in tags_line.split()][:15], "private", publish_at=at)
+        except Exception as e:  # noqa: BLE001
+            return self.say(f"\u26a0\ufe0f Couldn't schedule it on YouTube: {str(e)[:200]}")
+        v.update(status="posted", used_at=iso(self.clock()), dropped_at=iso(self.clock()), decided_by="you",
+                 yt_id=y["id"], yt_at=iso(slot))
+        v.setdefault("posts", {})["youtube"] = {"id": y["id"], "at": iso(slot), "url": y["permalink"]}
+        self.file_to(v, f"{COMPLETED}/Uploaded/{self.folder_name(v)}")
+        when = slot.strftime("%a %b %-d, %-I:%M %p")
+        self.bot.edit_markup(self.owner, mid, label_markup(f"\U0001f4c5 On YouTube {when}"))
+        self.say(f"\U0001f4c5 Scheduled on YouTube for {when} EST: {y['permalink']}\nPost it on Instagram and "
+                 "TikTok yourself that day (they don't allow scheduling from here).")
+        self.feedback(v["style"], True)
+        if getattr(self, "notion", None):
+            try:
+                from ..notion import record_short
+                self.say(f"\U0001f4d2 Notion: {record_short(self.notion, subject or self.folder_name(v), slot.date(), 'Scheduled')}.")
+            except Exception as e:  # noqa: BLE001
+                print(f"warn: notion: {str(e)[:150]}")
+
+    # ------------------------------------------------------------------ trial reel results
+    def score_command(self, arg: str) -> None:
+        """/score <style or video id> <views>: how a trial reel did on Facebook."""
+        import re
+        parts = (arg or "").strip().rsplit(maxsplit=1)
+        views = parse_views(parts[-1]) if parts else None
+        what = parts[0] if len(parts) == 2 else ""
+        style = None
+        if re.fullmatch(r"v\d+", what.strip()):
+            style = (self.state["variants"].get(what.strip()) or {}).get("style")
+        else:
+            want = _norm_name(what)
+            style = next((s for s in STYLE_LABELS if want and want in (_norm_name(s), _norm_name(STYLE_LABELS[s]))), None)
+        if not style or views is None:
+            return self.say("Tell me the style (or the video id from its message) and its views, e.g. "
+                            "/score one take 12k or /score v412 3500. /styles lists the names.")
+        self.state.setdefault("trial_scores", {}).setdefault(style, []).append({"views": views, "at": iso(self.clock())})
+        n = len(self.state["trial_scores"][style])
+        self.say(f"\U0001f4ca {STYLE_LABELS[style]}: {views:,} views noted ({n} result(s) so far). /styles compares them.")
+
+    def trial_ranking(self) -> list[tuple[str, float, int]]:
+        """(style, average views, results) for styles with trial results, best first."""
+        out = [(st, sum(x["views"] for x in xs) / len(xs), len(xs))
+               for st, xs in self.state.get("trial_scores", {}).items() if xs and st in STYLE_LABELS]
+        return sorted(out, key=lambda r: -r[1])
+
+    def channel_views(self, style: str) -> tuple[float, int]:
+        """Average YouTube views of your channel Shorts in this style (from the bot's stats)."""
+        vs = [x["posts"]["youtube"]["stats"].get("views", 0) for x in self.state["variants"].values()
+              if x.get("style") == style and (x.get("posts") or {}).get("youtube", {}).get("stats")]
+        return (sum(vs) / len(vs), len(vs)) if vs else (0.0, 0)
+
+    def trial_prompt(self) -> None:
+        """Sundays (after [audit] hour): ask how the week's trial reels did."""
+        lt = self.local(self.clock())
+        week = lt.strftime("%G-W%V")
+        if (not self.flow_on or lt.weekday() != 6 or lt.hour < int(self.cfg.get("audit", {}).get("hour", 11))
+                or self.state.get("trial_prompt_week") == week):
+            return
+        self.state["trial_prompt_week"] = week
+        kept = sum(1 for v in self.state["variants"].values() if v["status"] == "trial")
+        if not kept:
+            return
+        self.say("\U0001f9ea How did this week's Facebook trial reels do? For each one worth noting, send its style "
+                 "and views, e.g. /score one take 12k (or the video id: /score v412 3500). After a few weeks /styles "
+                 "shows which effect wins.")
+
     # ------------------------------------------------------------------ /styles and /primary
     def styles_text(self) -> str:
         primary = self.primary_style()
@@ -133,7 +260,19 @@ class ShortsFlowMixin:
             liked = f", you liked {f.get('liked', 0)}/{f.get('liked', 0) + f.get('disliked', 0)}" if f else ""
             star = "⭐ " if st == primary else "• "
             lines.append(f"{star}{STYLE_LABELS[st]} ({st}): kept {kept}, discarded {dropped}{views}{liked}")
-        return ("\U0001f3a8 Your Short styles (⭐ = your channel Short):\n" + "\n".join(lines)
+        rank = self.trial_ranking()
+        if rank:
+            lines.append("\n\U0001f9ea Facebook trial reels, average views:")
+            lines += [f"{i}. {STYLE_LABELS[st]}: {avg:,.0f} ({n} result{'s' if n != 1 else ''})"
+                      for i, (st, avg, n) in enumerate(rank, 1)]
+            best, avg, n = rank[0]
+            if best != primary and n >= 3:
+                lines.append(f"\U0001f3c6 {STYLE_LABELS[best]} is winning on Facebook. To make it your channel Short: "
+                             f"/primary {STYLE_LABELS[best].lower()}")
+        ch, chn = self.channel_views(primary)
+        if chn:
+            lines.append(f"\n\u2b50 {STYLE_LABELS[primary]} on YouTube: {ch:,.0f} average views over {chn} Short(s).")
+        return ("\U0001f3a8 Your Short styles (\u2b50 = your channel Short):\n" + "\n".join(lines)
                 + "\n\nTrial reels show their style name in the message and the Drive file name. "
                   "To make another style your channel Short: /primary <name>, e.g. /primary one take")
 

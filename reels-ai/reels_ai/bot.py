@@ -132,6 +132,7 @@ class Runner(VaultMixin, ShortsFlowMixin, NotionMixin, AboutMixin, AuditMixin, S
             self.weekly_audit()
             self.notion_sync()
             self.avoid_notice()
+            self.trial_prompt()
         return (any(d["status"] == "queued" for d in self.state["drawings"].values())
                 or bool(self.state.get("compile_request")))
 
@@ -232,6 +233,8 @@ class Runner(VaultMixin, ShortsFlowMixin, NotionMixin, AboutMixin, AuditMixin, S
             self.say(self.vault_text())
         elif cmd == "/review":
             self.review_next(first=True)
+        elif cmd == "/score":
+            self.score_command(text.split(maxsplit=1)[1] if len(text.split(maxsplit=1)) > 1 else "")
         elif cmd == "/styles":
             self.say(self.styles_text())
         elif cmd == "/primary":
@@ -273,7 +276,7 @@ class Runner(VaultMixin, ShortsFlowMixin, NotionMixin, AboutMixin, AuditMixin, S
             return self.on_review(action, vid, q)
         if action == "lk":
             return self.on_kind(vid, q)
-        if action in ("pu", "pr", "tk", "td"):
+        if action in ("ps", "pu", "pr", "tk", "td"):
             return self.on_flow(action, vid, q)
         if action == "noname":
             d = self.state["drawings"].get(vid)

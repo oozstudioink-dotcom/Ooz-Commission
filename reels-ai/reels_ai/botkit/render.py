@@ -266,8 +266,8 @@ class RenderMixin:
     # is being made. Anything that changes recordings or Shorts waits for the drawing to finish.
     QUICK_COMMANDS = {"/status", "/queue", "/help", "/start", "/fixdescriptions", "/undo_descriptions",
                       "/audit", "/undo_rewrite", "/calendar", "/trends", "/sponsors", "/report",
-                      "/rethumb", "/reupload", "/longform", "/notion", "/styles", "/primary", "/vault", "/review"}
-    QUICK_TAPS = {"fd", "fs", "abs", "ta", "ts", "pu", "pr", "tk", "td", "lk", "rk", "rd", "rr", "rl"}     # these buttons work instantly
+                      "/rethumb", "/reupload", "/longform", "/notion", "/styles", "/primary", "/vault", "/review", "/score"}
+    QUICK_TAPS = {"fd", "fs", "abs", "ta", "ts", "ps", "pu", "pr", "tk", "td", "lk", "rk", "rd", "rr", "rl"}     # these buttons work instantly
 
     def quick(self, u: dict) -> bool:
         if "callback_query" in u:
