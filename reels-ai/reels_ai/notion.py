@@ -135,32 +135,32 @@ def label(d: str) -> str:
 
 
 # ------------------------------------------------------------------ what the bot does
-def record_short(nt, character: str, today: date) -> str:
+def record_short(nt, character: str, today: date, status: str = "Published") -> str:
     """A Short you uploaded today, in the pipeline. Returns what was done, for Telegram."""
     t, key = today.isoformat(), squash(character)
     rows = [p for p in nt.query({"or": [{"property": "Format", "select": {"equals": "Short"}},
                                          {"property": "Format", "select": {"is_empty": True}}]})
             if read(p, "Format") in ("Short", "", None)]
-    if key and any(squash(read(p, "Character")) == key and read(p, "Status") == "Published" and day_of(p) == t
+    if key and any(squash(read(p, "Character")) == key and read(p, "Status") in ("Published", "Scheduled") and day_of(p) == t
                    for p in rows):
-        return f"{character} is already marked Published today"
+        return f"{character} is already in the pipeline for {label(t)}"
     open_ = sorted((p for p in rows if read(p, "Status") not in DONE), key=lambda p: day_of(p) or "9999")
     planned = [p for p in open_ if key and squash(read(p, "Character")) == key]
     if planned:
         p = planned[0]
-        nt.update(p["id"], {"Status": p_select("Published"), "Format": p_select("Short"),
+        nt.update(p["id"], {"Status": p_select(status), "Format": p_select("Short"),
                             "Publish Date": p_date(t if day_of(p) != t else read(p, "Publish Date"))})
-        return f"“{read(p, 'Title') or character}” marked Published ({label(t)})"
+        return f"“{read(p, 'Title') or character}” marked {status} ({label(t)})"
     title = f"Short · {character} · {label(t)}"
     slot = [p for p in open_ if not read(p, "Character").strip() and day_of(p) == t]
     if slot:
         nt.update(slot[0]["id"], {"Title": p_title(title), "Character": p_text(character),
-                                  "Status": p_select("Published"), "Format": p_select("Short")})
-        return f"today's Short slot filled with {character} and marked Published"
+                                  "Status": p_select(status), "Format": p_select("Short")})
+        return f"the {label(t)} Short slot filled with {character} and marked {status}"
     nt.create({"Title": p_title(title), "Format": p_select("Short"), "Character": p_text(character),
-               "Status": p_select("Published"), "Publish Date": p_date(t),
+               "Status": p_select(status), "Publish Date": p_date(t),
                "Platform": {"multi_select": [{"name": n} for n in SHORT_PLATFORMS]}})
-    return f"added {character} as a Short published {label(t)} (there was no slot for today)"
+    return f"added {character} as a Short, {status.lower()} {label(t)} (there was no slot that day)"
 
 
 def record_longdraw(nt, character: str, episode: int, youtube_url: str, today: date, fmt: str = "LongDraw") -> str:
