@@ -30,6 +30,8 @@ def load_config():
     cfg = _load_config()
     cfg["delivery"]["auto_drop"] = True
     cfg["delivery"].pop("drop_days", None)        # every day: these tests check the drop machinery
+    cfg["variants"]["flow"] = ""                   # the older Post / Skip flow (tests/test_flow.py has the new one)
+    cfg["variants"]["per_drawing"] = 3
     return cfg
 
 OWNER, STRANGER = 111, 999
@@ -1148,7 +1150,7 @@ class ScheduleAndRethumbTest(unittest.TestCase):
         self.assertEqual(parts[1], "Today: Satoru Gojo from Jujutsu Kaisen, drawn and inked by hand "
                                    "(1.0 hours of drawing, sped up 4x).")
         self.assertEqual(parts[2], "About this drawing\nGojo is a sorcerer from Jujutsu Kaisen by Gege Akutami.")
-        self.assertTrue(parts[3].startswith("Upload schedule (Eastern Time)\nNew Shorts: Monday, Wednesday and Friday at 12 PM EST"))
+        self.assertTrue(parts[3].startswith("Upload schedule (Eastern Time)\nNew Shorts: Monday, Wednesday and Friday\nNew long video: every Friday at 12 PM EST"))
         self.assertTrue(parts[4].startswith("Commissions are open\nCommission link: https://"))
         self.assertTrue(parts[5].startswith("DM me"))
         self.assertIn("Instagram: https://www.instagram.com/oozstudioink1/", parts[5])

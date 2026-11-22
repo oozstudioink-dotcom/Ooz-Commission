@@ -34,13 +34,15 @@ from .botkit.common import (  # noqa: F401 - re-exported: other modules and test
 from .botkit.auditing import AuditMixin
 from .botkit.about_asks import AboutMixin
 from .botkit.pipeline_sync import NotionMixin
+from .botkit.shorts_flow import ShortsFlowMixin
+from .botkit.vault import VaultMixin
 from .botkit.sponsoring import SponsorMixin
 from .botkit.library import LibraryMixin
 from .botkit.inbox_tools import InboxToolsMixin
 from .botkit.connect import check, tiktok_connect  # noqa: F401
 
 
-class Runner(NotionMixin, AboutMixin, AuditMixin, SponsorMixin, LibraryMixin, InboxToolsMixin, CommandsMixin, DriveMixin, InventoryMixin, NamingMixin, DropsMixin, PostingMixin, LearningMixin, RenderMixin):
+class Runner(VaultMixin, ShortsFlowMixin, NotionMixin, AboutMixin, AuditMixin, SponsorMixin, LibraryMixin, InboxToolsMixin, CommandsMixin, DriveMixin, InventoryMixin, NamingMixin, DropsMixin, PostingMixin, LearningMixin, RenderMixin):
     def __init__(self, bot: Bot, state: dict, config: dict, clock=now, clients: dict | None = None,
                  drive=None, checkpoint=None):
         self.bot, self.state, self.cfg, self.clock = bot, state, config, clock
@@ -226,6 +228,14 @@ class Runner(NotionMixin, AboutMixin, AuditMixin, SponsorMixin, LibraryMixin, In
             self.send_calendar()
         elif cmd == "/undo_rewrite":
             self.undo_rewrite()
+        elif cmd == "/vault":
+            self.say(self.vault_text())
+        elif cmd == "/review":
+            self.review_next(first=True)
+        elif cmd == "/styles":
+            self.say(self.styles_text())
+        elif cmd == "/primary":
+            self.set_primary(text.split(maxsplit=1)[1] if len(text.split(maxsplit=1)) > 1 else "")
         elif cmd == "/notion":
             self.notion_status()
         elif cmd == "/fixdescriptions":
@@ -259,6 +269,12 @@ class Runner(NotionMixin, AboutMixin, AuditMixin, SponsorMixin, LibraryMixin, In
             return self.on_desc_fix(action, q)
         if action == "abs":
             return self.on_about_skip(vid, q)
+        if action in ("rk", "rd", "rr", "rl"):
+            return self.on_review(action, vid, q)
+        if action == "lk":
+            return self.on_kind(vid, q)
+        if action in ("pu", "pr", "tk", "td"):
+            return self.on_flow(action, vid, q)
         if action == "noname":
             d = self.state["drawings"].get(vid)
             if d and d.get("status") == "naming":

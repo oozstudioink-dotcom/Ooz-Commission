@@ -368,7 +368,8 @@ def youtube_text(project: str, episode: int, chapters: str, cfg: dict, speed: fl
     info = info or {}
     songs = [t[0] if isinstance(t, (list, tuple)) else t for t in tracks or []]
     topic = descriptions.topic_line(info.get("subject") or project, info.get("series", ""),
-                                    f"({raw_s / 3600:.1f} hours of drawing, sped up {round(speed, 1):g}x)")
+                                    f"({raw_s / 3600:.1f} hours of drawing, sped up {round(speed, 1):g}x)",
+                                    lesson=bool(series))
     desc = descriptions.longdraw(cfg, episode_line(episode, series), topic, info.get("note", ""), chapters,
                                  songs, music_source)
     tags = ["manga", "manga art", "inking", "timelapse", "drawing", "traditional art", "longdraw",
