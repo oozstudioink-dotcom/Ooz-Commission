@@ -1,0 +1,18 @@
+/* Ooz Studio Ink - Streamlabs Event List (recent follows, subs, tips)
+   Streamlabs > Widgets > Event List > Enable Custom HTML/CSS > CSS tab: replace with this. */
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@600;700&display=swap');
+
+html, body { background: transparent; margin: 0; }
+.widget-EventList, #widget { font-family: 'Inter', Arial, sans-serif; }
+.event, li {
+  list-style: none;
+  background: rgba(21, 21, 21, 0.92);
+  border-left: 4px solid #c0392b;
+  color: #f5f4f0 !important;
+  font-size: 18px;
+  font-weight: 600;
+  padding: 8px 12px;
+  margin-bottom: 6px;
+}
+.event .name, .username, .name { color: #e2786c !important; font-weight: 700; }
+.event .details, .details, .message { color: #a9a9a4 !important; font-weight: 600; }

@@ -1,0 +1,33 @@
+/* Ooz Studio Ink - Streamlabs Alert Box (follows, subs, raids, tips)
+   Streamlabs > Widgets > Alert Box > each alert type > Enable Custom HTML/CSS > CSS tab: replace with this.
+   Image: alert-image.png (in this folder) under Alert Image. Layout: image above text. */
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@600;700&family=Anton&display=swap');
+
+html, body { background: transparent; margin: 0; }
+#wrap { font-family: 'Inter', Arial, sans-serif; text-align: center; }
+#alert-image img { max-height: 220px; animation: ooz-pop 0.5s cubic-bezier(.2, 1.4, .4, 1) both; }
+#alert-text-wrap { display: inline-block; margin-top: 10px; animation: ooz-up 0.45s 0.15s ease-out both; }
+#alert-text {
+  background: #151515;
+  border-bottom: 6px solid #c0392b;
+  padding: 16px 30px 14px;
+}
+#alert-message {
+  font-family: 'Anton', 'Inter', sans-serif;
+  font-size: 46px;
+  line-height: 1.05;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  color: #f5f4f0 !important;
+  text-shadow: none !important;
+}
+#alert-message span { color: #e2786c !important; }          /* the name, the amount */
+#alert-user-message {
+  font-size: 22px;
+  font-weight: 600;
+  color: #a9a9a4 !important;
+  margin-top: 8px;
+  text-shadow: none !important;
+}
+@keyframes ooz-pop { from { opacity: 0; transform: scale(0.6) rotate(-8deg); } to { opacity: 1; transform: none; } }
+@keyframes ooz-up { from { opacity: 0; transform: translateY(16px); } to { opacity: 1; transform: none; } }

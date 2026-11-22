@@ -1,0 +1,41 @@
+<!doctype html><html><head><meta charset="utf-8"><style>
+@font-face{font-family:Anton;src:url(Anton-Regular.ttf)}
+@font-face{font-family:Inter;font-weight:700;src:url(Inter-Bold.otf)}
+html,body{margin:0;width:640px;height:360px;background:transparent;overflow:hidden}
+.stage{position:absolute;inset:0}
+.brush{position:absolute;left:40px;top:208px;width:560px;height:86px;background:#c0392b;transform-origin:left center;
+  clip-path:polygon(0 18%,3% 4%,40% 0,72% 6%,100% 0,98% 50%,100% 96%,60% 100%,25% 94%,2% 100%);
+  animation:brush .45s cubic-bezier(.3,.9,.3,1) .05s both, out .4s ease-in 3.1s forwards}
+.ring{position:absolute;left:250px;top:28px;width:140px;height:140px;border-radius:50%;background:#151515;
+  box-shadow:0 0 0 7px #c0392b;animation:pop .55s cubic-bezier(.2,1.5,.4,1) .15s both, out .4s ease-in 3.1s forwards}
+.mark{position:absolute;left:265px;top:43px;width:110px;height:110px;animation:spin .7s cubic-bezier(.2,1.2,.4,1) .2s both, out .4s ease-in 3.1s forwards}
+.dot{transform-origin:50px 50px;animation:drop .3s ease-out both}
+.title{position:absolute;left:0;right:0;top:214px;text-align:center;font:72px/1 Anton;letter-spacing:.03em;color:#f5f4f0;
+  text-transform:uppercase;animation:up .45s cubic-bezier(.2,1.1,.4,1) .45s both, out .4s ease-in 3.1s forwards}
+.splat{position:absolute;border-radius:50%;background:#c0392b;animation:splat .4s cubic-bezier(.2,1.6,.4,1) both, out .4s ease-in 3.1s forwards}
+@keyframes brush{from{transform:scaleX(0)}to{transform:scaleX(1)}}
+@keyframes pop{from{transform:scale(0)}to{transform:scale(1)}}
+@keyframes spin{from{transform:scale(.3) rotate(-160deg);opacity:0}to{transform:none;opacity:1}}
+@keyframes drop{from{transform:translateY(-30px);opacity:0}to{transform:none;opacity:1}}
+@keyframes up{from{transform:translateY(30px);opacity:0}to{transform:none;opacity:1}}
+@keyframes splat{from{transform:scale(0)}to{transform:scale(1)}}
+@keyframes out{to{opacity:0;transform:translateY(-14px)}}
+</style></head><body><div class="stage">
+<div class="brush"></div>
+<div class="splat" style="left:212px;top:52px;width:14px;height:14px;animation-delay:.35s,3.1s"></div>
+<div class="splat" style="left:420px;top:40px;width:10px;height:10px;animation-delay:.42s,3.1s"></div>
+<div class="splat" style="left:404px;top:150px;width:18px;height:18px;animation-delay:.38s,3.1s"></div>
+<div class="splat" style="left:196px;top:140px;width:9px;height:9px;animation-delay:.46s,3.1s"></div>
+<div class="splat" style="left:586px;top:196px;width:12px;height:12px;animation-delay:.5s,3.1s"></div>
+<div class="splat" style="left:44px;top:300px;width:10px;height:10px;animation-delay:.52s,3.1s"></div>
+<div class="ring"></div>
+<svg class="mark" viewBox="0 0 100 100">
+ <circle cx="50" cy="50" r="45" fill="none" stroke="#f5f4f0" stroke-width="5"/>
+ <rect x="15" y="48.6" width="70" height="2.8" fill="#f5f4f0"/>
+ <circle class="dot" style="animation-delay:.55s" cx="50" cy="18" r="5" fill="#c0392b"/>
+ <circle class="dot" style="animation-delay:.62s" cx="50" cy="34" r="5" fill="#c0392b"/>
+ <circle class="dot" style="animation-delay:.69s" cx="50" cy="66" r="5" fill="#c0392b"/>
+ <circle class="dot" style="animation-delay:.76s" cx="50" cy="82" r="5" fill="#c0392b"/>
+</svg>
+<div class="title" id="t">New follower</div>
+</div><script>document.getElementById('t').textContent=decodeURIComponent(location.hash.slice(1)||'New follower');</script></body></html>

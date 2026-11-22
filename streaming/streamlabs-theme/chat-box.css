@@ -1,0 +1,22 @@
+/* Ooz Studio Ink - Streamlabs Chat Box
+   Streamlabs > Widgets > Chat Box > Enable Custom HTML/CSS > CSS tab: replace everything with this. */
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@500;700&family=Anton&display=swap');
+
+html, body { background: transparent; margin: 0; overflow: hidden; }
+#log { font-family: 'Inter', Arial, sans-serif; font-size: 21px; padding: 0 14px 10px; }
+#log > div {
+  background: rgba(21, 21, 21, 0.92);
+  border-left: 4px solid #c0392b;
+  color: #f5f4f0;
+  margin: 0 0 10px;
+  padding: 10px 14px 11px;
+  line-height: 1.35;
+  animation: ooz-in 0.35s ease-out both;
+}
+#log > div.deleted { visibility: hidden; }
+#log .meta { display: block; margin-bottom: 3px; color: #e2786c !important; }
+#log .name { font-weight: 700; letter-spacing: 0.02em; color: #e2786c !important; }
+#log .badges img { height: 18px; vertical-align: -3px; margin-right: 4px; }
+#log .message { font-weight: 500; color: #f5f4f0; word-wrap: break-word; }
+#log .message img.emote { height: 26px; vertical-align: middle; }
+@keyframes ooz-in { from { opacity: 0; transform: translateX(-12px); } to { opacity: 1; transform: none; } }
