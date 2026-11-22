@@ -48,3 +48,22 @@ body.clear{background:transparent}
 .slides{position:absolute}
 .slides img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;opacity:0;transition:opacity 1.6s}
 .slides img.on{opacity:1}
+/* manga touches: screentone corners, faint speed lines, inked panel frames, sound effects */
+@font-face{font-family:SFX;src:url(assets/fonts/ooz-sfx.ttf)}
+.tone{position:absolute;pointer-events:none;background-image:radial-gradient(circle,var(--paper) 1.7px,transparent 2.2px);
+  background-size:12px 12px;opacity:.13}
+.tone.red{background-image:radial-gradient(circle,var(--red) 2.2px,transparent 2.7px);opacity:.5}
+.tone.tr{right:0;top:0;width:640px;height:440px;-webkit-mask-image:radial-gradient(ellipse at 100% 0,#000 0,#000 20%,transparent 68%)}
+.tone.bl{left:0;bottom:0;width:600px;height:400px;-webkit-mask-image:radial-gradient(ellipse at 0 100%,#000 0,#000 20%,transparent 68%)}
+.tone.br{right:0;bottom:0;width:600px;height:400px;-webkit-mask-image:radial-gradient(ellipse at 100% 100%,#000 0,#000 20%,transparent 68%)}
+.speed{position:absolute;inset:0;pointer-events:none;opacity:.55;
+  background:repeating-conic-gradient(from 0deg at var(--cx) var(--cy),rgba(245,244,240,.09) 0 .5deg,transparent .5deg 3.2deg);
+  -webkit-mask-image:radial-gradient(ellipse at var(--cx) var(--cy),transparent 38%,#000 80%)}
+.win{outline:4px solid var(--paper);box-shadow:14px 14px 0 rgba(0,0,0,.55)}
+.win::after{content:"";position:absolute;inset:0;pointer-events:none;box-shadow:inset 0 0 0 2px rgba(0,0,0,.6)}
+.tag,.live,.pill{transform:skewX(-7deg)}
+.narr{display:inline-block;background:var(--ink);border:2px solid var(--paper);padding:9px 16px 8px;transform:skewX(-7deg);
+  font:700 16px Inter;letter-spacing:.3em;color:var(--paper);text-transform:uppercase;line-height:1}
+.sfx{position:absolute;font-family:SFX;color:var(--red);line-height:1;white-space:nowrap;pointer-events:none;
+  -webkit-text-stroke:12px var(--ink);paint-order:stroke fill;filter:drop-shadow(0 0 0 var(--paper))
+  drop-shadow(3px 0 0 var(--paper)) drop-shadow(-3px 0 0 var(--paper)) drop-shadow(0 3px 0 var(--paper)) drop-shadow(0 -3px 0 var(--paper))}

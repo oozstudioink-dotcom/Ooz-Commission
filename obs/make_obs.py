@@ -109,7 +109,34 @@ body.clear{background:transparent}
 .slides{position:absolute}
 .slides img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;opacity:0;transition:opacity 1.6s}
 .slides img.on{opacity:1}
+/* manga touches: screentone corners, faint speed lines, inked panel frames, sound effects */
+@font-face{font-family:SFX;src:url(assets/fonts/ooz-sfx.ttf)}
+.tone{position:absolute;pointer-events:none;background-image:radial-gradient(circle,var(--paper) 1.7px,transparent 2.2px);
+  background-size:12px 12px;opacity:.13}
+.tone.red{background-image:radial-gradient(circle,var(--red) 2.2px,transparent 2.7px);opacity:.5}
+.tone.tr{right:0;top:0;width:640px;height:440px;-webkit-mask-image:radial-gradient(ellipse at 100% 0,#000 0,#000 20%,transparent 68%)}
+.tone.bl{left:0;bottom:0;width:600px;height:400px;-webkit-mask-image:radial-gradient(ellipse at 0 100%,#000 0,#000 20%,transparent 68%)}
+.tone.br{right:0;bottom:0;width:600px;height:400px;-webkit-mask-image:radial-gradient(ellipse at 100% 100%,#000 0,#000 20%,transparent 68%)}
+.speed{position:absolute;inset:0;pointer-events:none;opacity:.55;
+  background:repeating-conic-gradient(from 0deg at var(--cx) var(--cy),rgba(245,244,240,.09) 0 .5deg,transparent .5deg 3.2deg);
+  -webkit-mask-image:radial-gradient(ellipse at var(--cx) var(--cy),transparent 38%,#000 80%)}
+.win{outline:4px solid var(--paper);box-shadow:14px 14px 0 rgba(0,0,0,.55)}
+.win::after{content:"";position:absolute;inset:0;pointer-events:none;box-shadow:inset 0 0 0 2px rgba(0,0,0,.6)}
+.tag,.live,.pill{transform:skewX(-7deg)}
+.narr{display:inline-block;background:var(--ink);border:2px solid var(--paper);padding:9px 16px 8px;transform:skewX(-7deg);
+  font:700 16px Inter;letter-spacing:.3em;color:var(--paper);text-transform:uppercase;line-height:1}
+.sfx{position:absolute;font-family:SFX;color:var(--red);line-height:1;white-space:nowrap;pointer-events:none;
+  -webkit-text-stroke:12px var(--ink);paint-order:stroke fill;filter:drop-shadow(0 0 0 var(--paper))
+  drop-shadow(3px 0 0 var(--paper)) drop-shadow(-3px 0 0 var(--paper)) drop-shadow(0 3px 0 var(--paper)) drop-shadow(0 -3px 0 var(--paper))}
 """
+
+# The sound effects, one per scene (katakana, the way they're lettered in manga)
+SFX_CHARS = "ドキカリワイシーンジャ！"
+
+
+def sfx(text: str, x: int, y: int, size: int, rot: float = -8, title: str = "") -> str:
+    return (f'<div class="sfx" title="{title}" style="left:{x}px;top:{y}px;font-size:{size}px;'
+            f'transform:rotate({rot}deg)">{text}</div>')
 
 APP_JS = """(function(){
 var C=window.OOZ||{}, Q=location.search.indexOf('preview')>=0;
@@ -252,9 +279,11 @@ def pages() -> dict[str, str]:
     out = {}
     out["starting.html"] = page("bg", f"""
 <div class="art-bg" style="background-image:url(assets/art/01-samurai.jpg);left:700px"></div><div class="fade-left"></div>
+<div class="speed" style="--cx:380px;--cy:640px"></div><div class="tone bl"></div><div class="tone red tr"></div>
 <div class="abs" style="left:140px;top:120px">{BRAND}</div>
+{sfx("ドキドキ", 1290, 190, 112, -10, "doki doki: heart pounding")}
 <div class="abs" style="left:140px;top:300px">
-  <div class="kicker">The stream starts in</div>
+  <div class="narr">The stream starts in…</div>
   <div class="big" style="font-size:190px;margin-top:14px">Starting soon</div>
   <div class="rule" style="width:180px;margin:34px 0 30px"></div>
   <div class="big" data-countdown style="font-size:110px;color:var(--red)">5:00</div>
@@ -269,6 +298,8 @@ def pages() -> dict[str, str]:
 {win(d["page"], "Page camera<br>(add it in the scene &ldquo;&#9881; Page Cam&rdquo;)", "page")}
 {win(d["face"], "Face camera", "face")}
 {win(d["chat"], "YouTube chat", "chat")}
+<div class="tone br" style="opacity:.09"></div>
+{sfx("カリカリ", 1250, 2, 66, -9, "kari kari: the scratch of the pen")}
 <div class="abs" style="left:32px;top:832px;width:1376px;height:216px;display:flex;justify-content:space-between;align-items:center">
   <div>{BRAND}
     <div style="display:flex;align-items:center;gap:18px;margin-top:20px"><span class="live"><i></i>Live</span>
@@ -284,6 +315,8 @@ def pages() -> dict[str, str]:
     out["drawing-nocam.html"] = page("bg", f"""
 {win(n["page"], "Page camera<br>(add it in the scene &ldquo;&#9881; Page Cam&rdquo;)", "page")}
 {win(n["chat"], "YouTube chat", "chat")}
+<div class="tone br" style="opacity:.09"></div>
+{sfx("カリカリ", 1250, 2, 66, -9, "kari kari: the scratch of the pen")}
 <div class="abs" style="left:{cx}px;top:{cy}px;width:{cw}px;height:{ch}px;background:var(--ink2);outline:3px solid var(--paper);
   display:flex;flex-direction:column;justify-content:center;padding:0 30px">
   <div class="brand" style="gap:16px"><img src="assets/mark.svg" style="width:64px;height:64px"><div class="name" style="font-size:40px">OOZ STUDIO INK</div></div>
@@ -308,6 +341,8 @@ def pages() -> dict[str, str]:
     out["chatting.html"] = page("bg", f"""
 {win(c["face"], "Face camera<br>(add it in the scene &ldquo;&#9881; Face Cam&rdquo;)", "face")}
 {win(c["chat"], "YouTube chat", "chat")}
+<div class="tone bl" style="opacity:.09"></div>
+{sfx("ワイワイ", 1110, 4, 70, -8, "wai wai: lively chatter")}
 <div class="abs" style="left:32px;top:790px;width:1280px;height:258px;display:flex;justify-content:space-between;align-items:center">
   <div>{BRAND}
     <div style="display:flex;align-items:center;gap:18px;margin-top:20px"><span class="live"><i></i>Live</span>
@@ -323,9 +358,11 @@ def pages() -> dict[str, str]:
     out["brb.html"] = page("bg", f"""
 <div class="slides" data-preview-only style="left:920px;top:0;width:1000px;height:1080px">{arts}</div>
 <div class="abs" data-preview-only style="left:920px;top:0;width:220px;height:1080px;background:linear-gradient(90deg,var(--ink),rgba(21,21,21,0))"></div>
+<div class="tone bl"></div>
 <div class="abs" style="left:120px;top:120px">{BRAND}</div>
+{sfx("シーン", 560, 250, 104, -7, "shiin: the silence")}
 <div class="abs" style="left:120px;top:360px">
-  <div class="kicker">Short break</div>
+  <div class="narr">Short break…</div>
   <div class="big" style="font-size:170px;margin-top:14px">Be right<br>back</div>
   <div class="rule" style="width:180px;margin:34px 0 26px"></div>
   <div class="topic" style="color:var(--grey)">From the sketchbook while you wait</div>
@@ -336,7 +373,9 @@ def pages() -> dict[str, str]:
 <div class="abs" style="left:240px;top:34px;width:1440px;display:flex;justify-content:space-between;align-items:center">
   <div class="big" style="font-size:58px">The final piece</div>
   <div class="topic" data-ooz="topic"></div></div>
+<div class="speed" style="--cx:960px;--cy:525px;opacity:.8"></div><div class="tone tr" style="opacity:.1"></div><div class="tone bl" style="opacity:.1"></div>
 {win(r["page"], "Page camera", "page")}
+{sfx("ジャーン！", 1470, 122, 80, -8, "jaan: ta-da")}
 <div class="abs" style="left:240px;top:960px;width:1440px;display:flex;justify-content:space-between;align-items:center">
   <div class="brand" style="gap:14px"><img src="assets/mark.svg" style="width:52px;height:52px"><div class="name" style="font-size:34px">OOZ STUDIO INK</div></div>
   <div style="display:flex;align-items:center;gap:20px"><div class="pill">Commissions open</div>
@@ -345,9 +384,11 @@ def pages() -> dict[str, str]:
 
     out["ending.html"] = page("bg", f"""
 <div class="art-bg" style="background-image:url(assets/art/05-the-clash.jpg);left:760px"></div><div class="fade-left"></div>
+<div class="speed" style="--cx:420px;--cy:560px"></div><div class="tone bl"></div><div class="tone red tr"></div>
 <div class="abs" style="left:140px;top:120px">{BRAND}</div>
+{sfx("ドン！", 1130, 330, 130, -9, "don: the closing beat")}
 <div class="abs" style="left:140px;top:300px">
-  <div class="kicker">That's it for today</div>
+  <div class="narr">That's it for today…</div>
   <div class="big" style="font-size:170px;margin-top:14px">Thanks for<br>watching</div>
   <div class="rule" style="width:180px;margin:34px 0 28px"></div>
   <div class="topic" data-ooz="nextStream"></div>
@@ -466,8 +507,10 @@ def vpages() -> dict[str, str]:
 <div class="art-bg" style="background-image:url(assets/art/01-samurai.jpg)"></div>
 <div class="abs" style="inset:0;background:linear-gradient(180deg,var(--ink) 30%,rgba(21,21,21,.55) 75%,var(--ink))"></div>
 <div class="abs" style="left:80px;top:250px">{BRAND}</div>
+<div class="tone bl"></div><div class="tone red tr" style="top:200px"></div>
+{sfx("ドキドキ", 640, 560, 96, -10, "doki doki")}
 <div class="abs" style="left:80px;top:430px;width:920px">
-  <div class="kicker">The stream starts in</div>
+  <div class="narr">The stream starts in…</div>
   <div class="big" style="font-size:200px;margin-top:14px">Starting<br>soon</div>
   <div class="rule" style="width:180px;margin:36px 0 30px"></div>
   <div class="big" data-countdown style="font-size:140px;color:var(--red)">5:00</div>
@@ -489,8 +532,10 @@ def vpages() -> dict[str, str]:
 <div class="slides" data-preview-only style="left:{x}px;top:{y}px;width:{w}px;height:{h}px">{arts}</div>
 <div class="abs" data-preview-only style="left:0;top:{y}px;width:{w}px;height:220px;background:linear-gradient(180deg,var(--ink),rgba(21,21,21,0))"></div>
 <div class="abs" style="left:80px;top:250px">{BRAND}</div>
+<div class="tone tr" style="top:200px"></div>
+{sfx("シーン", 700, 330, 90, -7, "shiin")}
 <div class="abs" style="left:80px;top:410px">
-  <div class="kicker">Short break</div>
+  <div class="narr">Short break…</div>
   <div class="big" style="font-size:170px;margin-top:14px">Be right back</div>
   <div class="topic" style="color:var(--grey);margin-top:24px">From the sketchbook while you wait</div>
 </div>""", "Be Right Back (vertical)")
@@ -498,8 +543,10 @@ def vpages() -> dict[str, str]:
 <div class="art-bg" style="background-image:url(assets/art/05-the-clash.jpg)"></div>
 <div class="abs" style="inset:0;background:linear-gradient(180deg,var(--ink) 35%,rgba(21,21,21,.6) 80%,var(--ink))"></div>
 <div class="abs" style="left:80px;top:250px">{BRAND}</div>
+<div class="tone bl"></div><div class="tone red tr" style="top:200px"></div>
+{sfx("ドン！", 760, 560, 110, -9, "don")}
 <div class="abs" style="left:80px;top:420px;width:920px">
-  <div class="kicker">That's it for today</div>
+  <div class="narr">That's it for today…</div>
   <div class="big" style="font-size:180px;margin-top:14px">Thanks for<br>watching</div>
   <div class="rule" style="width:180px;margin:34px 0 26px"></div>
   <div class="topic" data-ooz="nextStream"></div>
@@ -563,6 +610,10 @@ def build() -> None:
     for f in ("Inter-Medium.otf", "Inter-SemiBold.otf", "Inter-Bold.otf"):
         shutil.copy(Path("/usr/share/fonts/opentype/inter") / f, fonts)
     shutil.copy("/usr/share/doc/fonts-inter/copyright", fonts / "LICENSE-Inter.txt")
+    import subprocess
+    subprocess.run(["pyftsubset", "/usr/share/fonts/opentype/ipafont-gothic/ipag.ttf", f"--text={SFX_CHARS}",
+                    f"--output-file={fonts / 'ooz-sfx.ttf'}"], check=True)
+    shutil.copy("/usr/share/doc/fonts-ipafont-gothic/copyright", fonts / "LICENSE-IPA-Gothic.txt")
     from PIL import Image
     for p in sorted((ROOT / "portfolio").glob("*.jpg")):    # your sketchbook pieces, for Be Right Back
         img = Image.open(p).convert("RGB")
