@@ -1,0 +1,144 @@
+<!doctype html><html><head><meta charset="utf-8"><style>
+@font-face{font-family:Anton;src:url(Anton-Regular.ttf)}
+@font-face{font-family:Inter;font-weight:700;src:url(Inter-Bold.otf)}
+@font-face{font-family:SFX;src:url(IPAGothic.ttf)}
+html,body{margin:0;width:800px;height:450px;background:transparent;overflow:hidden}
+#stage{position:absolute;inset:0;animation:shake .28s linear .26s both, wipe .4s cubic-bezier(.5,0,.75,0) 3.5s forwards}
+svg{position:absolute;inset:0;overflow:visible}
+*{transform-box:fill-box}
+#panel{transform-origin:center;animation:panelIn .2s cubic-bezier(.2,1.3,.4,1) both}
+#flash{animation:flash .3s ease-out .08s both}
+.linesA{animation:flickA .134s steps(1) infinite}
+.linesB{animation:flickB .134s steps(1) infinite}
+#tone{animation:fadeIn .25s ease-out .12s both}
+#burst{transform-origin:center;animation:burst .26s cubic-bezier(.2,1.6,.4,1) .2s both}
+#title{transform-origin:center;animation:slam .22s cubic-bezier(.3,1.5,.5,1) .22s both}
+.sfx{transform-origin:center;animation:sfx .24s cubic-bezier(.2,1.8,.4,1) both}
+#cap{animation:capIn .32s cubic-bezier(.2,1,.3,1) .62s both}
+#stamp{animation:fadeIn .3s ease-out .85s both}
+#slash{animation:slash .4s cubic-bezier(.5,0,.75,0) 3.5s both}
+@keyframes panelIn{from{transform:scale(1.25) rotate(3deg);opacity:0}to{transform:none;opacity:1}}
+@keyframes flash{from{opacity:1}to{opacity:0}}
+@keyframes flickA{0%{opacity:1}50%{opacity:0}}
+@keyframes flickB{0%{opacity:0}50%{opacity:1}}
+@keyframes fadeIn{from{opacity:0}to{opacity:1}}
+@keyframes burst{from{transform:scale(0) rotate(-12deg)}to{transform:none}}
+@keyframes slam{from{transform:scale(2.6);opacity:0}to{transform:none;opacity:1}}
+@keyframes sfx{from{transform:scale(0) rotate(-25deg);opacity:0}to{transform:none;opacity:1}}
+@keyframes capIn{from{clip-path:inset(0 100% 0 0)}to{clip-path:inset(0 0 0 0)}}
+@keyframes shake{0%{transform:translate(9px,-6px)}20%{transform:translate(-8px,5px)}40%{transform:translate(6px,4px)}
+  60%{transform:translate(-4px,-3px)}80%{transform:translate(2px,1px)}100%{transform:none}}
+@keyframes wipe{from{clip-path:polygon(-200px 0,1100px 0,1100px 450px,-300px 450px)}to{clip-path:polygon(1100px 0,1100px 0,1100px 450px,1000px 450px)}}
+@keyframes slash{from{transform:translateX(-222px)}to{transform:translateX(1078px)}}
+</style></head><body><div id="stage"><svg id="svg" width="800" height="450" viewBox="0 0 800 450"></svg></div>
+<div style="position:absolute;inset:0;pointer-events:none"><svg width="800" height="450"><g id="slash">
+ <polygon points="-60,0 -10,0 -110,450 -160,450" fill="#151515"/><polygon points="0,0 22,0 -78,450 -100,450" fill="#c0392b"/></g></svg></div>
+<script>
+const P = new URLSearchParams(location.hash.slice(1));
+const TITLE = P.get('t') || 'New follower', SFX = P.get('s') || 'ドン', CAP = P.get('c') || 'A new reader joins the story',
+      LINES = P.get('l') || 'radial';
+const NS = 'http://www.w3.org/2000/svg', svg = document.getElementById('svg');
+const el = (tag, attrs, parent) => { const e = document.createElementNS(NS, tag);
+  for (const k in attrs) e.setAttribute(k, attrs[k]); (parent || svg).appendChild(e); return e; };
+let seed = 7; const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
+const INK = '#111', PAPER = '#f5f4f0', RED = '#c0392b';
+const PANEL = [[58, 74], [748, 50], [728, 396], [72, 384]];
+const pts = a => a.map(p => p.join(',')).join(' ');
+const defs = el('defs', {});
+const clip = el('clipPath', { id: 'pc' }, defs); el('polygon', { points: pts(PANEL) }, clip);
+
+const panel = el('g', { id: 'panel' });
+el('polygon', { points: pts(PANEL), fill: PAPER }, panel);
+const inner = el('g', { 'clip-path': 'url(#pc)' }, panel);
+const cx = 400, cy = 228;
+
+// screentone: real halftone, dot size grows toward two corners
+const tone = el('g', { id: 'tone' }, inner);
+for (let y = 40; y < 410; y += 9) for (let x = 50; x < 760; x += 9) {
+  const ox = (Math.floor(y / 9) % 2) * 4.5;
+  const a = Math.max(0, 1 - Math.hypot(x + ox - 748, y - 50) / 330), b = Math.max(0, 1 - Math.hypot(x + ox - 58, y - 396) / 300);
+  const r = 3.8 * Math.max(a, b);
+  if (r > .5) el('circle', { cx: x + ox, cy: y, r: r.toFixed(2), fill: RED }, tone);
+}
+// speed lines: two sets that flicker, like a hand-drawn impact panel
+function lines(cls) {
+  const g = el('g', { class: cls }, inner);
+  if (LINES === 'radial') {
+    for (let i = 0; i < 170; i++) {
+      const a = rnd() * Math.PI * 2, w = .003 + rnd() * .014, R = 700, r = 112 + rnd() * 60;
+      const rx = r * 2.85;
+      el('polygon', { points: pts([[cx + R * Math.cos(a - w), cy + R * Math.sin(a - w)], [cx + R * Math.cos(a + w), cy + R * Math.sin(a + w)],
+        [cx + rx * Math.cos(a), cy + r * Math.sin(a)]]), fill: INK }, g);
+    }
+  } else {                                       // parallel rush lines (raids)
+    for (let i = 0; i < 70; i++) {
+      const y = 50 + rnd() * 350, h = .8 + rnd() * 3.2, len = 140 + rnd() * 260, x = 40 + rnd() * 80;
+      const side = rnd() < .5;
+      const x0 = side ? x : 760 - x - len;
+      if (Math.abs(y - cy) < 70 && rnd() < .8) continue;
+      el('polygon', { points: pts([[x0, y], [x0 + len, y - h / 2], [x0 + len, y + h / 2]].map(p => side ? p : [2 * x0 + len - p[0], p[1]])), fill: INK }, g);
+    }
+  }
+}
+lines('linesA'); lines('linesB');
+el('polygon', { id: 'flash', points: pts(PANEL), fill: '#fff' }, inner);
+el('polygon', { points: pts(PANEL), fill: 'none', stroke: INK, 'stroke-width': 7, 'stroke-linejoin': 'round' }, panel);
+
+// jagged shout balloon behind the title
+const burst = el('g', { id: 'burst' });
+const bp = []; const n = 30;
+for (let i = 0; i < n; i++) {
+  const a = i / n * Math.PI * 2, k = i % 2 ? .84 : 1 + rnd() * .16;
+  bp.push([cx + 285 * k * Math.cos(a), cy + 4 + 92 * k * Math.sin(a)]);
+}
+el('polygon', { points: pts(bp.map(([x, y]) => [x + 9, y + 9])), fill: RED, stroke: INK, 'stroke-width': 5, 'stroke-linejoin': 'miter' }, burst);
+el('polygon', { points: pts(bp), fill: '#fff', stroke: INK, 'stroke-width': 5, 'stroke-linejoin': 'miter' }, burst);
+
+// title
+const tg = el('g', { id: 'title' });
+const title = el('text', { x: cx, y: cy + 30, 'text-anchor': 'middle', 'font-family': 'Anton', 'font-size': 84,
+  fill: INK, transform: `skewX(-8)`, 'letter-spacing': 2 }, tg);
+title.textContent = TITLE.toUpperCase();
+
+// SFX breaking out of the panel
+const sg = el('g', {});
+const chars = [...SFX];
+chars.forEach((c, i) => {
+  const x0 = Math.min(612, 705 - (chars.length - 1) * 64), x = x0 + i * 64, y = 122 + i * 20, rot = -14 + i * 7;
+  const g = el('g', { class: 'sfx', style: `animation-delay:${.42 + i * .07}s`, transform: `rotate(${rot} ${x} ${y - 35})` }, sg);
+  const base = { x, y, 'text-anchor': 'middle', 'font-family': 'SFX', 'font-size': 100, 'stroke-linejoin': 'round' };
+  el('text', { ...base, fill: '#fff', stroke: '#fff', 'stroke-width': 24 }, g).textContent = c;
+  el('text', { ...base, fill: INK, stroke: INK, 'stroke-width': 16 }, g).textContent = c;
+  el('text', { ...base, fill: RED, stroke: RED, 'stroke-width': 5 }, g).textContent = c;
+});
+
+// narration box, overlapping the top-left border
+const cap = el('g', { id: 'cap' });
+const capT = el('text', { x: 52, y: 66, 'font-family': 'Inter', 'font-weight': 700, 'font-size': 17, fill: PAPER, 'letter-spacing': 1.5 }, cap);
+capT.textContent = CAP.toUpperCase() + '…';
+
+// studio stamp, bottom right like a page credit
+const st = el('g', { id: 'stamp' });
+el('rect', { x: 538, y: 334, width: 178, height: 36, fill: PAPER }, st);
+const mk = el('g', { transform: 'translate(560 352)' }, st);
+el('circle', { cx: 0, cy: 0, r: 13, fill: 'none', stroke: INK, 'stroke-width': 2.4 }, mk);
+el('rect', { x: -9.5, y: -.8, width: 19, height: 1.6, fill: INK }, mk);
+[-8.5, -3.5, 3.5, 8.5].forEach(y => el('circle', { cx: 0, cy: y, r: 1.6, fill: RED }, mk));
+const stT = el('text', { x: 580, y: 358, 'font-family': 'Anton', 'font-size': 17, fill: INK, 'letter-spacing': 2.5 }, st);
+stT.textContent = 'OOZ STUDIO INK';
+
+window.ready = document.fonts.ready.then(() => {
+  // fit the title inside the balloon
+  let size = 84;
+  while (title.getComputedTextLength() > 440 && size > 40) { size -= 2; title.setAttribute('font-size', size); }
+  title.setAttribute('y', cy + size * .36);
+  // white outline under the title for that printed-lettering edge
+  const out = title.cloneNode(true); out.setAttribute('stroke', '#fff'); out.setAttribute('stroke-width', 10);
+  out.setAttribute('stroke-linejoin', 'round'); tg.insertBefore(out, title);
+  // caption box sized to its text
+  const w = capT.getComputedTextLength();
+  const box = el('polygon', { points: pts([[38, 42], [52 + w + 18, 40], [52 + w + 14, 76], [42, 78]]), fill: INK }, cap);
+  cap.insertBefore(box, capT);
+  el('rect', { x: 38, y: 74, width: w + 32, height: 4, fill: RED, transform: 'skewX(-4)' }, cap);
+});
+</script></body></html>

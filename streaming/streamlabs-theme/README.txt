@@ -1,26 +1,29 @@
 OOZ STUDIO INK - STREAMLABS THEME
 =================================
-Black, off-white and brush red, the same look as the channel, the OBS scenes and the Twitch/Kick art.
+Manga style: every alert is an inked manga panel that slams onto the screen with speed lines, red
+screentone, a Japanese sound effect breaking out of the panel, a narration box, and the studio credit,
+then a brush slash wipes it away. Black, off-white and brush red, like the rest of the channel.
 
 WHAT'S IN HERE
-  alert-follower.webm   follow animation   ("NEW FOLLOWER", red brush stroke, ink-dot mark spins in)
-  alert-tip.webm        tip / donation     ("THANK YOU")
-  alert-sub.webm        subscriber         ("NEW SUBSCRIBER")
-  alert-raid.webm       raid / host        ("RAID INCOMING")
-  alert-sound.mp3       short swish + two-note chime for every alert
+  alert-follower.webm   follow     "NEW FOLLOWER"    ドン (DON, the impact beat)   "A new reader joins the story..."
+  alert-tip.webm        tip        "THANK YOU"       キラッ (KIRA, sparkle)        "The studio thanks you..."
+  alert-sub.webm        sub        "NEW SUBSCRIBER"  ゴゴゴ (GOGOGO, the rumble)    "A new member of the studio..."
+  alert-raid.webm       raid       "RAID INCOMING"   ドドド (DODODO, charging)      "An army approaches..."  (rush lines)
+  alert-sound.mp3       whoosh + impact hit + small sparkle, timed to the panel slam
   alert-image.png       still version of the mark, for any alert type without its own animation
-  alert-box.css         custom CSS for the Alert Box (the viewer's name, amount and message under the animation)
+  alert-box.css         custom CSS for the Alert Box: the viewer's name slams in under the panel in a manga
+                        caption box (white, inked border, red offset shadow), with their tip message under it
   chat-box.css          custom CSS for the Chat Box
   event-list.css        custom CSS for the Event List (recent follows/tips for the side of the screen)
   preview/alerts-preview.mp4   all four alerts with sound on a dark background, to look at
   src/                  how the animations were made (not needed in Streamlabs)
 
-The animations are transparent videos (3.6 seconds, 640x360), so they sit over your drawing without a box.
+The animations are transparent videos (4 seconds, 800x450), so they sit over your drawing without a box.
 
 1) ALERT BOX  (streamlabs.com > Dashboard > All Widgets > Alert Box)
    General settings:
      Layout: image above text
-     Alert duration: 4 seconds    Text animation delay: 0
+     Alert duration: 4 seconds    Text animation delay: 0    Alert animation in/out: none (the video has its own)
    Then for each tab - Follows, Subscriptions, Donations (tips), Raids - and on Kick through
    Streamlabs, the matching Kick follow/sub tabs:
      Image/Video:  upload the matching .webm (Follows = alert-follower, Donations = alert-tip,
@@ -34,7 +37,7 @@ The animations are transparent videos (3.6 seconds, 640x360), so they sit over y
      Font: leave it, the CSS sets it.
      Enable Custom HTML/CSS > CSS tab: replace everything with alert-box.css
    In Streamlabs Desktop the Alert Box source then picks this up by itself. Size the source to about
-   800x600 and put it top-centre or over the empty corner of your page.
+   900x650 and put it top-centre or over the empty corner of your page.
 
 2) CHAT BOX  (All Widgets > Chat Box)
    Theme: Clean.  Background: transparent.  Font size: 18.

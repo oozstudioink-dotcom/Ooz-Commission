@@ -1,33 +1,41 @@
-/* Ooz Studio Ink - Streamlabs Alert Box (follows, subs, raids, tips)
+/* Ooz Studio Ink - Streamlabs Alert Box, manga style (follows, subs, raids, tips)
    Streamlabs > Widgets > Alert Box > each alert type > Enable Custom HTML/CSS > CSS tab: replace with this.
-   Image: alert-image.png (in this folder) under Alert Image. Layout: image above text. */
+   Image/Video: the matching alert-*.webm. Layout: image above text. Message template: {name} (see README). */
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@600;700&family=Anton&display=swap');
 
 html, body { background: transparent; margin: 0; }
 #wrap { font-family: 'Inter', Arial, sans-serif; text-align: center; }
-#alert-image img { max-height: 220px; animation: ooz-pop 0.5s cubic-bezier(.2, 1.4, .4, 1) both; }
-#alert-text-wrap { display: inline-block; margin-top: 10px; animation: ooz-up 0.45s 0.15s ease-out both; }
+#alert-image img, #alert-image video { max-width: 100%; }
+/* the name: a manga caption box that slams in under the panel, just after the title */
+#alert-text-wrap { display: inline-block; margin-top: -26px; animation: ooz-slam .22s cubic-bezier(.3,1.6,.5,1) .55s both, ooz-out .3s ease-in 3.55s forwards; }
 #alert-text {
-  background: #151515;
-  border-bottom: 6px solid #c0392b;
-  padding: 16px 30px 14px;
+  background: #fff;
+  border: 5px solid #111;
+  box-shadow: 9px 9px 0 #c0392b, 9px 9px 0 5px #111;
+  padding: 10px 34px 8px;
+  transform: rotate(-2deg) skewX(-6deg);
 }
 #alert-message {
   font-family: 'Anton', 'Inter', sans-serif;
-  font-size: 46px;
+  font-size: 50px;
   line-height: 1.05;
-  letter-spacing: 0.02em;
+  letter-spacing: 0.03em;
   text-transform: uppercase;
-  color: #f5f4f0 !important;
+  color: #111 !important;
   text-shadow: none !important;
 }
-#alert-message span { color: #e2786c !important; }          /* the name, the amount */
+#alert-message span { color: #c0392b !important; }          /* the amount, the months, the raid count */
 #alert-user-message {
-  font-size: 22px;
-  font-weight: 600;
-  color: #a9a9a4 !important;
-  margin-top: 8px;
+  font-size: 21px;
+  font-weight: 700;
+  color: #111 !important;
+  background: #f5f4f0;
+  border-top: 3px solid #111;
+  margin: 8px -34px -8px;
+  padding: 8px 20px 10px;
+  text-transform: none;
   text-shadow: none !important;
 }
-@keyframes ooz-pop { from { opacity: 0; transform: scale(0.6) rotate(-8deg); } to { opacity: 1; transform: none; } }
-@keyframes ooz-up { from { opacity: 0; transform: translateY(16px); } to { opacity: 1; transform: none; } }
+#alert-user-message:empty { display: none; }
+@keyframes ooz-out { to { opacity: 0; transform: translateX(120px) skewX(-20deg); } }
+@keyframes ooz-slam { from { opacity: 0; transform: scale(2.2); } to { opacity: 1; transform: none; } }
