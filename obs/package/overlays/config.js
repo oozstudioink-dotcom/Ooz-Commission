@@ -8,7 +8,7 @@ window.OOZ = {
   socials: [
     ["Instagram", "@oozstudioink1"],
     ["TikTok", "@oozstudioink1"],
-    ["YouTube", "Ooz Studio Ink"],
+    ["YouTube", "OozStudioInk"],
     ["X", "@OozStudioInk"],
     ["Facebook", "Ooz Studio Ink"],
   ],
