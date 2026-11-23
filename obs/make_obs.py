@@ -537,6 +537,30 @@ def vpages() -> dict[str, str]:
     return out
 
 
+# TikTok (Streamlabs Dual Output): the landscape cameras sit in a 4:3 panel in the top half, the
+# bottom third stays clear for TikTok's comments, the top bar sits under its header.
+TT_PANEL = (30, 420, 1020, 765)
+
+
+def tt_page(head: str, label: str, sample: str) -> str:
+    x, y, w, h = TT_PANEL
+    return f"""<div class="tone tr"></div><div class="tone bl"></div>
+<div class="speed" style="--cx:540px;--cy:{y + h // 2}px;opacity:.35"></div>
+{head}
+{win(TT_PANEL, label, sample)}
+<div class="abs" style="left:{x}px;top:{y + h + 30}px;width:{w}px;display:flex;justify-content:space-between;align-items:center">
+  <div class="pill">Commissions open</div><div class="link" style="font-size:22px" data-ooz="commissionLink"></div></div>"""
+
+
+def ttpages() -> dict[str, str]:
+    reveal_head = """<div class="abs panel" style="left:30px;top:230px;width:1020px;display:flex;
+  justify-content:space-between;align-items:center"><div class="big" style="font-size:54px">The final piece</div>
+  <div class="topic" style="font-size:22px" data-ooz="topic"></div></div>"""
+    return {"tt-drawing.html": page("bg v", tt_page(vtop(), "Page camera", "page"), "Drawing (TikTok)"),
+            "tt-chatting.html": page("bg v", tt_page(vtop("Just chatting"), "Face camera", "face"), "Just Chatting (TikTok)"),
+            "tt-reveal.html": page("bg v", tt_page(reveal_head, "Page camera", "page"), "Final Piece (TikTok)")}
+
+
 def vcollection(root: str) -> dict:
     ov = lambda f: f"{root}/overlays/{f}"  # noqa: E731
     browser = lambda name, f, restart=False: source(name, "browser_source", {  # noqa: E731
@@ -577,7 +601,7 @@ def build() -> None:
     ovl = OUT / "overlays"
     (ovl / "assets" / "fonts").mkdir(parents=True)
     (ovl / "assets" / "art").mkdir(parents=True)
-    for name, html in {**pages(), **vpages()}.items():
+    for name, html in {**pages(), **vpages(), **ttpages()}.items():
         (ovl / name).write_text(html)
     (ovl / "style.css").write_text(STYLE)
     (ovl / "app.js").write_text(APP_JS)
