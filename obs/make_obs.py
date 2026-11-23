@@ -561,7 +561,14 @@ def ttpages() -> dict[str, str]:
 """ + vtop() + """
 <div class="abs" style="left:30px;top:392px;display:flex;gap:16px;align-items:center"><div class="pill">Commissions open</div>
   <div class="link" style="font-size:20px;text-shadow:0 2px 8px #000" data-ooz="commissionLink"></div></div>"""
+    fade = """<div class="abs" style="left:0;top:0;width:1080px;height:560px;
+  background:linear-gradient(180deg,rgba(21,21,21,.8),rgba(21,21,21,.45) 60%,rgba(21,21,21,0))"></div>
+"""
+    reveal_cam = fade + reveal_head + """
+<div class="abs" style="left:30px;top:362px;display:flex;gap:16px;align-items:center"><div class="pill">Commissions open</div>
+  <div class="link" style="font-size:20px;text-shadow:0 2px 8px #000" data-ooz="commissionLink"></div></div>"""
     return {"tt-cam.html": page("clear v", cam, "Hand cam close-up (TikTok)"),
+            "tt-reveal-cam.html": page("clear v", reveal_cam, "Final Piece close-up (TikTok)"),
             "tt-drawing.html": page("bg v", tt_page(vtop(), "Page camera", "page"), "Drawing (TikTok)"),
             "tt-chatting.html": page("bg v", tt_page(vtop("Just chatting"), "Face camera", "face"), "Just Chatting (TikTok)"),
             "tt-reveal.html": page("bg v", tt_page(reveal_head, "Page camera", "page"), "Final Piece (TikTok)")}
